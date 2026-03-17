@@ -1,12 +1,12 @@
+use crate::core::{
+    map::{Tile, TileOverlay},
+    tool::Tool,
+};
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
     style::{Color, Style},
     widgets::Widget,
-};
-use crate::core::{
-    map::{Tile, TileOverlay},
-    tool::Tool,
 };
 
 pub struct InfoPanel {
@@ -39,7 +39,7 @@ impl Widget for InfoPanel {
         buf.set_string(
             area.x,
             row,
-            &truncate(title, w),
+            truncate(title, w),
             Style::default()
                 .fg(Color::Rgb(140, 140, 180))
                 .bg(Color::Rgb(10, 10, 20)),
@@ -54,7 +54,7 @@ impl Widget for InfoPanel {
         buf.set_string(
             area.x,
             row,
-            &truncate(&pos, w),
+            truncate(&pos, w),
             Style::default()
                 .fg(Color::Rgb(160, 160, 160))
                 .bg(Color::Rgb(10, 10, 20)),
@@ -69,7 +69,7 @@ impl Widget for InfoPanel {
         buf.set_string(
             area.x,
             row,
-            &truncate(tile_name, w),
+            truncate(tile_name, w),
             Style::default()
                 .fg(Color::Rgb(220, 220, 100))
                 .bg(Color::Rgb(10, 10, 20)),
@@ -84,7 +84,7 @@ impl Widget for InfoPanel {
             buf.set_string(
                 area.x,
                 row,
-                &truncate("⚡ Powered", w),
+                truncate("⚡ Powered", w),
                 Style::default()
                     .fg(Color::Rgb(255, 230, 0))
                     .bg(Color::Rgb(10, 10, 20)),
@@ -104,7 +104,7 @@ impl Widget for InfoPanel {
                 buf.set_string(
                     area.x,
                     row,
-                    &truncate(&cost_str, w),
+                    truncate(&cost_str, w),
                     Style::default()
                         .fg(Color::Rgb(180, 220, 180))
                         .bg(Color::Rgb(10, 10, 20)),

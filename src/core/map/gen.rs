@@ -1,7 +1,7 @@
-use rand::SeedableRng;
+use super::{Map, Tile};
 use rand::rngs::StdRng;
 use rand::seq::SliceRandom;
-use super::{Map, Tile};
+use rand::SeedableRng;
 
 pub struct GenParams {
     pub water_pct: u8,
@@ -84,8 +84,12 @@ impl Perlin {
         let ba = self.perm[self.perm[xi + 1] as usize + yi];
         let bb = self.perm[self.perm[xi + 1] as usize + yi + 1];
 
-        let x1 = Self::lerp(u, Self::grad(aa, xf, yf),       Self::grad(ba, xf - 1.0, yf));
-        let x2 = Self::lerp(u, Self::grad(ab, xf, yf - 1.0), Self::grad(bb, xf - 1.0, yf - 1.0));
+        let x1 = Self::lerp(u, Self::grad(aa, xf, yf), Self::grad(ba, xf - 1.0, yf));
+        let x2 = Self::lerp(
+            u,
+            Self::grad(ab, xf, yf - 1.0),
+            Self::grad(bb, xf - 1.0, yf - 1.0),
+        );
         Self::lerp(v, x1, x2)
     }
 
@@ -101,7 +105,7 @@ impl Perlin {
             amplitude *= 0.5;
             frequency *= 2.0;
         }
-        value / max_amp   // normalised to roughly [-1, 1]
+        value / max_amp // normalised to roughly [-1, 1]
     }
 }
 
@@ -115,7 +119,7 @@ pub fn generate(p: &GenParams) -> Map {
     // Two independent noise generators:
     //   elevation — determines water / land boundary
     //   forest    — determines tree patches on land (independent shape)
-    let elev_noise  = Perlin::new(p.seed);
+    let elev_noise = Perlin::new(p.seed);
     let forest_noise = Perlin::new(p.seed.wrapping_add(0x9e3779b97f4a7c15));
 
     // Scale: ~0.025 → feature width ≈ 40 tiles on a 128-tile map.
@@ -123,7 +127,7 @@ pub fn generate(p: &GenParams) -> Map {
     let base_scale = 0.025_f32;
 
     let mut elevation: Vec<f32> = Vec::with_capacity(w * h);
-    let mut forest: Vec<f32>    = Vec::with_capacity(w * h);
+    let mut forest: Vec<f32> = Vec::with_capacity(w * h);
 
     for y in 0..h {
         for x in 0..w {
@@ -158,9 +162,9 @@ pub fn generate(p: &GenParams) -> Map {
 
     // We want the top `trees_pct`% of land tiles to become trees.
     // So threshold = the value at the (100 - trees_pct)% mark.
-    let tree_cut = land_forest.len().saturating_sub(
-        land_forest.len() * p.trees_pct as usize / 100,
-    );
+    let tree_cut = land_forest
+        .len()
+        .saturating_sub(land_forest.len() * p.trees_pct as usize / 100);
     let forest_thresh = if land_forest.is_empty() {
         f32::MAX
     } else {

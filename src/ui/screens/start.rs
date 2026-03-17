@@ -1,10 +1,10 @@
+use crate::app::StartState;
 use ratatui::{
     layout::Rect,
     style::{Color, Modifier, Style},
     widgets::{Block, Borders, Clear},
     Frame,
 };
-use crate::app::StartState;
 
 pub fn render_start(frame: &mut Frame, area: Rect, state: &StartState) {
     // Dark background

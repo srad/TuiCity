@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 #[repr(u8)]
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub enum Tile {
@@ -115,7 +116,7 @@ impl Tile {
     }
 }
 
-#[derive(Clone, Copy, Default, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, Default, Debug, serde::Serialize, serde::Deserialize)]
 pub struct TileOverlay {
     pub powered: bool,
     pub on_fire: bool,

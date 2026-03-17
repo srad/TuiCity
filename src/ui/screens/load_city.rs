@@ -1,10 +1,10 @@
+use crate::app::LoadCityState;
 use ratatui::{
+    layout::Rect,
     style::{Color, Modifier, Style},
     widgets::{Block, Borders},
     Frame,
-    layout::Rect,
 };
-use crate::app::LoadCityState;
 
 pub fn render_load_city(frame: &mut Frame, area: Rect, state: &LoadCityState) {
     let block = Block::default()
@@ -32,7 +32,7 @@ pub fn render_load_city(frame: &mut Frame, area: Rect, state: &LoadCityState) {
     buf.set_string(
         inner.x,
         row,
-        &truncate(&header, w),
+        truncate(&header, w),
         Style::default()
             .fg(Color::Rgb(140, 140, 180))
             .bg(Color::Rgb(8, 8, 18))
@@ -77,7 +77,7 @@ pub fn render_load_city(frame: &mut Frame, area: Rect, state: &LoadCityState) {
                     .fg(Color::Rgb(200, 200, 220))
                     .bg(Color::Rgb(8, 8, 18))
             };
-            buf.set_string(inner.x, row, &truncate(&line, w), style);
+            buf.set_string(inner.x, row, truncate(&line, w), style);
             row += 1;
         }
     }
@@ -88,7 +88,7 @@ pub fn render_load_city(frame: &mut Frame, area: Rect, state: &LoadCityState) {
     buf.set_string(
         inner.x,
         hint_y,
-        &truncate(hint, w),
+        truncate(hint, w),
         Style::default()
             .fg(Color::Rgb(80, 80, 100))
             .bg(Color::Rgb(8, 8, 18)),
@@ -105,9 +105,18 @@ fn truncate(s: &str, max: usize) -> String {
 
 fn month_name(month: u8) -> &'static str {
     match month {
-        1 => "Jan", 2 => "Feb", 3 => "Mar", 4 => "Apr",
-        5 => "May", 6 => "Jun", 7 => "Jul", 8 => "Aug",
-        9 => "Sep", 10 => "Oct", 11 => "Nov", 12 => "Dec",
+        1 => "Jan",
+        2 => "Feb",
+        3 => "Mar",
+        4 => "Apr",
+        5 => "May",
+        6 => "Jun",
+        7 => "Jul",
+        8 => "Aug",
+        9 => "Sep",
+        10 => "Oct",
+        11 => "Nov",
+        12 => "Dec",
         _ => "???",
     }
 }

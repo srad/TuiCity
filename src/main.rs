@@ -2,46 +2,60 @@ mod app;
 mod core;
 mod ui;
 
-use std::{io, time::Duration};
+use std::{io, time::Duration, sync::mpsc};
 
 use crossterm::{
-    event::{
-        self, DisableMouseCapture, EnableMouseCapture,
-    },
+    event::{self, DisableMouseCapture, EnableMouseCapture},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
-use ratatui::{backend::CrosstermBackend, Terminal};
+
+use ui::{Renderer, TerminalRenderer};
 
 fn main() -> io::Result<()> {
     // Terminal setup
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
-    let backend = CrosstermBackend::new(stdout);
-    let mut terminal = Terminal::new(backend)?;
-
-    let result = run(&mut terminal);
+    
+    let mut renderer = TerminalRenderer::new()?;
+    let result = run(&mut renderer);
 
     // Always restore terminal
     disable_raw_mode()?;
     execute!(
-        terminal.backend_mut(),
+        io::stdout(),
         LeaveAlternateScreen,
         DisableMouseCapture
     )?;
-    terminal.show_cursor()?;
 
     result
 }
 
-fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> io::Result<()> {
+fn run(renderer: &mut dyn Renderer) -> io::Result<()> {
     let mut app = app::AppState::new();
+    let (tx, rx) = mpsc::channel();
+    app.cmd_tx = Some(tx);
+
+    let engine_arc = app.engine.clone();
+    
+    std::thread::spawn(move || {
+        loop {
+            // Process all pending commands
+            while let Ok(cmd) = rx.try_recv() {
+                let mut engine = engine_arc.write().unwrap();
+                let _ = engine.execute_command(cmd);
+            }
+            
+            // Sleep a bit to prevent 100% CPU usage
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    });
 
     loop {
-        terminal.draw(|f| ui::render(f, &mut app))?;
+        renderer.render(&mut app)?;
 
-        if event::poll(Duration::from_millis(100))? {
+        if event::poll(Duration::from_millis(16))? { // ~60fps poll
             let event = event::read()?;
             let action = app::input::translate_event(event);
             app.on_action(action);

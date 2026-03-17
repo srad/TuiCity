@@ -1,11 +1,8 @@
+use crate::{app::ClickArea, core::tool::Tool};
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
     style::{Color, Modifier, Style},
-};
-use crate::{
-    app::ClickArea,
-    core::tool::Tool,
 };
 
 pub const TOOL_GROUPS: &[(&str, &[Tool])] = &[
@@ -63,7 +60,7 @@ pub fn render_toolbar(
         let start_x = area.x + header_char_count;
         if start_x < area.x + area.width {
             let remaining = (area.x + area.width - start_x) as usize;
-            let rest: String = std::iter::repeat('─').take(remaining).collect();
+            let rest: String = std::iter::repeat_n('─', remaining).collect();
             buf.set_string(
                 start_x,
                 row,
@@ -83,7 +80,11 @@ pub fn render_toolbar(
             let hint = tool.key_hint();
             let label = tool.label();
             let cost = tool.cost();
-            let cost_str = if cost == 0 { String::new() } else { format!(" (${cost})") };
+            let cost_str = if cost == 0 {
+                String::new()
+            } else {
+                format!(" (${cost})")
+            };
             let btn_text = format!("[{}] {}{}", hint, label, cost_str);
             let btn_text = truncate(&btn_text, (area.width as usize).saturating_sub(1));
 
@@ -117,9 +118,7 @@ pub fn render_toolbar(
 
         // Group footer
         if row < area.y + area.height {
-            let footer: String = std::iter::repeat('─')
-                .take(area.width as usize)
-                .collect();
+            let footer: String = std::iter::repeat_n('─', area.width as usize).collect();
             buf.set_string(
                 area.x,
                 row,

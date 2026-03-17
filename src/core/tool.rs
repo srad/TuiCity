@@ -89,20 +89,29 @@ impl Tool {
         match self {
             Tool::Bulldoze => !matches!(tile, Tile::Water),
             Tool::Inspect => false,
-            Tool::Road      => matches!(tile, Tile::Grass | Tile::Trees | Tile::Dirt | Tile::PowerLine),
+            Tool::Road => matches!(
+                tile,
+                Tile::Grass | Tile::Trees | Tile::Dirt | Tile::PowerLine
+            ),
             Tool::PowerLine => matches!(tile, Tile::Grass | Tile::Trees | Tile::Dirt | Tile::Road),
-            Tool::ZoneRes | Tool::ZoneComm | Tool::ZoneInd =>
-                matches!(tile, Tile::Grass | Tile::Trees | Tile::Dirt
-                             | Tile::ZoneRes | Tile::ZoneComm | Tile::ZoneInd),
+            Tool::ZoneRes | Tool::ZoneComm | Tool::ZoneInd => matches!(
+                tile,
+                Tile::Grass
+                    | Tile::Trees
+                    | Tile::Dirt
+                    | Tile::ZoneRes
+                    | Tile::ZoneComm
+                    | Tile::ZoneInd
+            ),
             _ => matches!(tile, Tile::Grass | Tile::Trees | Tile::Dirt),
         }
     }
 
     pub fn is_traversable(self, tile: Tile) -> bool {
         match self {
-            Tool::Road      => matches!(tile, Tile::Road | Tile::RoadPowerLine),
+            Tool::Road => matches!(tile, Tile::Road | Tile::RoadPowerLine),
             Tool::PowerLine => matches!(tile, Tile::PowerLine | Tile::RoadPowerLine),
-            _               => self.target_tile() == Some(tile),
+            _ => self.target_tile() == Some(tile),
         }
     }
 

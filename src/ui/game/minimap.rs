@@ -1,14 +1,5 @@
-use ratatui::{
-    buffer::Buffer,
-    layout::Rect,
-    style::Color,
-    widgets::Widget,
-};
-use crate::{
-    app::camera::Camera,
-    core::map::Map,
-    ui::theme,
-};
+use crate::{app::camera::Camera, core::map::Map, ui::theme};
+use ratatui::{buffer::Buffer, layout::Rect, style::Color, widgets::Widget};
 
 pub struct MiniMap<'a> {
     pub map: &'a Map,
@@ -47,10 +38,8 @@ impl<'a> Widget for MiniMap<'a> {
 
         for row in 0..render_area.height {
             for col in 0..render_area.width {
-                let map_x =
-                    ((col as f32 / render_area.width as f32) * mw) as usize;
-                let map_y =
-                    ((row as f32 / render_area.height as f32) * mh) as usize;
+                let map_x = ((col as f32 / render_area.width as f32) * mw) as usize;
+                let map_y = ((row as f32 / render_area.height as f32) * mh) as usize;
 
                 let map_x = map_x.min(self.map.width.saturating_sub(1));
                 let map_y = map_y.min(self.map.height.saturating_sub(1));
@@ -59,7 +48,9 @@ impl<'a> Widget for MiniMap<'a> {
                 let overlay = self.map.get_overlay(map_x, map_y);
                 let glyph = theme::tile_glyph(tile, overlay);
 
-                let cell = buf.cell_mut((render_area.x + col, render_area.y + row)).unwrap();
+                let cell = buf
+                    .cell_mut((render_area.x + col, render_area.y + row))
+                    .unwrap();
                 cell.set_char(' ');
                 cell.set_bg(glyph.bg);
             }

@@ -35,17 +35,20 @@ pub fn saves_dir() -> PathBuf {
     base.join(".tuicity2").join("saves")
 }
 
-pub fn save_city(
-    sim: &SimState,
-    map: &Map,
-) -> io::Result<()> {
+pub fn save_city(sim: &SimState, map: &Map) -> io::Result<()> {
     let dir = saves_dir();
     fs::create_dir_all(&dir)?;
 
     let safe_name: String = sim
         .city_name
         .chars()
-        .map(|c| if c.is_alphanumeric() || c == '_' || c == '-' { c } else { '_' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '_' || c == '-' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect();
     let filename = format!("{}_{}{:02}.json", safe_name, sim.year, sim.month);
     let path = dir.join(&filename);
@@ -66,16 +69,16 @@ pub fn save_city(
         overlays,
     };
 
-    let json = serde_json::to_string_pretty(&save)
-        .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+    let json =
+        serde_json::to_string_pretty(&save).map_err(io::Error::other)?;
     fs::write(&path, json)?;
     Ok(())
 }
 
 pub fn load_city(path: &Path) -> io::Result<(Map, SimState)> {
     let json = fs::read_to_string(path)?;
-    let save: SaveFile = serde_json::from_str(&json)
-        .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+    let save: SaveFile =
+        serde_json::from_str(&json).map_err(io::Error::other)?;
 
     let mut map = Map::new(save.width, save.height);
     for (i, &v) in save.tiles.iter().enumerate() {
@@ -85,7 +88,11 @@ pub fn load_city(path: &Path) -> io::Result<(Map, SimState)> {
     }
     for (i, &(powered, on_fire, crime)) in save.overlays.iter().enumerate() {
         if i < map.overlays.len() {
-            map.overlays[i] = TileOverlay { powered, on_fire, crime };
+            map.overlays[i] = TileOverlay {
+                powered,
+                on_fire,
+                crime,
+            };
         }
     }
 
@@ -119,8 +126,6 @@ pub fn list_saves() -> Vec<SaveEntry> {
         }
     }
 
-    entries.sort_by(|a, b| {
-        a.city_name.cmp(&b.city_name).then(a.year.cmp(&b.year))
-    });
+    entries.sort_by(|a, b| a.city_name.cmp(&b.city_name).then(a.year.cmp(&b.year)));
     entries
 }

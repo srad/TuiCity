@@ -47,15 +47,13 @@ impl Camera {
             self.offset_x = (cx - margin).max(0);
         }
         if cx >= self.offset_x + vw - margin {
-            self.offset_x = (cx - vw + margin + 1)
-                .clamp(0, (map_w as i32 - vw).max(0));
+            self.offset_x = (cx - vw + margin + 1).clamp(0, (map_w as i32 - vw).max(0));
         }
         if cy < self.offset_y + margin {
             self.offset_y = (cy - margin).max(0);
         }
         if cy >= self.offset_y + vh - margin {
-            self.offset_y = (cy - vh + margin + 1)
-                .clamp(0, (map_h as i32 - vh).max(0));
+            self.offset_y = (cy - vh + margin + 1).clamp(0, (map_h as i32 - vh).max(0));
         }
     }
 

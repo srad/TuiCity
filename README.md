@@ -1,0 +1,116 @@
+# TuiCity 2000
+
+A terminal-based city building simulation inspired by SimCity 2000, written in Rust using `ratatui`.
+
+`tuicity2` features a decoupled, multi-threaded architecture where the simulation engine runs independently of the frontend renderer, allowing for smooth gameplay and a robust platform for future expansion.
+
+![Version](https://img.shields.io/badge/version-0.1.0-blue)
+![Language](https://img.shields.io/badge/language-Rust-orange)
+![License](https://img.shields.io/badge/license-MIT-green)
+
+---
+
+## Features
+
+- **Multi-threaded Simulation**: The game logic runs on a dedicated background thread, ensuring the UI remains responsive even during complex calculations.
+- **Deep Simulation Mechanics**:
+    - **RCI Demand**: Dynamic demand based on ideal residential, commercial, and industrial ratios.
+    - **Power Grid**: BFS-based power distribution logic. Buildings require power connectivity to develop.
+    - **Road Access**: Manhattan-distance pathfinding for zone development.
+    - **Economic Management**: Adjustable tax rates (0-20%) that directly impact city growth and demand.
+- **Interactive UI**:
+    - Full mouse support for building and dragging (Lines/Rectangles).
+    - Minimap for quick navigation.
+    - Real-time info panel and status bar.
+    - Modal Budget menu for financial oversight.
+- **Save/Load System**: Persistence for your urban creations.
+
+---
+
+## How to Play
+
+### Installation
+Ensure you have [Rust](https://www.rust-lang.org/) installed.
+```bash
+git clone https://github.com/yourusername/tuicity2.git
+cd tuicity2
+cargo run --release
+```
+
+### Controls
+| Key | Action |
+|-----|--------|
+| `Arrows` / `Mouse` | Move Cursor / Navigate Map |
+| `1`, `2`, `3` | Select Zones (Res, Comm, Ind) |
+| `R` | Road Tool |
+| `P` | Power Line Tool |
+| `E` | Power Plant |
+| `B` | Bulldoze |
+| `$` / `B` | Open Budget Menu |
+| `Space` | Pause / Unpause Simulation |
+| `Q` | Quit |
+| `ESC` | Back to Menu / Cancel Drag |
+
+---
+
+## Architecture & Design
+
+`tuicity2` is designed with a strict separation of concerns to allow for easy porting to other frontends (like WGPU or Pixels).
+
+### 1. The Simulation Engine (`src/core/engine.rs`)
+The "Brain" of the game. It is completely agnostic of any UI library or terminal concepts. 
+- It manages the `Map` (tiles and overlays) and `SimState` (money, population, demand).
+- It processes `EngineCommand`s sent from the frontend.
+- It performs the "Month Advance" logic, including power grid recalculation and growth ticks.
+
+### 2. Multi-threading & Thread Safety
+The application utilizes a **Producer-Consumer** model:
+- **Simulation Thread**: Runs a loop that waits for commands via an `mpsc` channel and executes them. It holds the authoritative state inside an `Arc<RwLock<SimulationEngine>>`.
+- **UI Thread**: Handles user input and rendering. It sends commands to the simulation thread and acquires a short-lived **Read Lock** on the engine to display the map and stats.
+
+### 3. UI State Machine (`src/app/screens/mod.rs`)
+The frontend uses a **State Machine** pattern implemented with a `Screen` trait:
+- **Modular Logic**: Each screen (Start, New City, Load City, In-Game) is a self-contained struct implementing `on_action`, `on_tick`, and `render`.
+- **Screen Stack**: `AppState` manages a stack of screens, allowing for nested menus and easy transitions (Push, Pop, Replace).
+- **Decoupled Rendering**: The core game loop delegates rendering to the active screen, which in turn uses the `Renderer` abstraction.
+
+### 4. Renderer Abstraction (`src/ui/mod.rs`)
+The project uses a `Renderer` trait:
+```rust
+pub trait Renderer {
+    fn render(&mut self, app: &mut AppState) -> io::Result<()>;
+}
+```
+Currently, `TerminalRenderer` implements this using `ratatui`. This abstraction means the `main.rs` loop doesn't know it's in a terminal, making it trivial to swap the backend.
+
+### 5. Command Pattern
+User interactions (like clicking to place a road) do not mutate the map directly. Instead, they generate an `EngineCommand`:
+```rust
+pub enum EngineCommand {
+    PlaceTool { tool: Tool, x: usize, y: usize },
+    SetTaxRate(u8),
+    AdvanceMonth,
+    // ...
+}
+```
+This ensures that the simulation state remains consistent and is only ever modified by one thread.
+
+---
+
+## For Developers
+
+### Testing
+We maintain a robust test suite for the core engine logic to prevent regressions in city growth or building mechanics.
+```bash
+cargo test
+```
+
+### Project Structure
+- `src/core/`: The "Model". Simulation logic, map data, and engine commands.
+- `src/ui/`: The "View". Layouts, widgets, and renderer implementations.
+- `src/app/`: The "Controller". Input handling, camera management, and command generation.
+
+---
+
+## License
+MIT License. See `LICENSE` for details.

@@ -1,14 +1,9 @@
-use ratatui::{
-    buffer::Buffer,
-    layout::Rect,
-    style::Color,
-    widgets::Widget,
-};
 use crate::{
     app::camera::Camera,
     core::{map::Map, map::Tile, map::TileOverlay, tool::Tool},
     ui::theme,
 };
+use ratatui::{buffer::Buffer, layout::Rect, style::Color, widgets::Widget};
 
 pub enum PreviewKind {
     None,
@@ -31,13 +26,19 @@ pub struct MapView<'a> {
 fn map_connectivity(map: &Map, tile: Tile, x: usize, y: usize) -> (bool, bool, bool, bool) {
     let matches_tile = |t: Tile| match tile {
         Tile::Road | Tile::RoadPowerLine => t.road_connects(),
-        Tile::PowerLine                  => t.power_connects(),
-        _                                => t == tile,
+        Tile::PowerLine => t.power_connects(),
+        _ => t == tile,
     };
-    let n = y.checked_sub(1).map(|ny| matches_tile(map.get(x, ny))).unwrap_or(false);
-    let e = (x + 1 < map.width).then(|| matches_tile(map.get(x + 1, y))).unwrap_or(false);
-    let s = (y + 1 < map.height).then(|| matches_tile(map.get(x, y + 1))).unwrap_or(false);
-    let w = x.checked_sub(1).map(|wx| matches_tile(map.get(wx, y))).unwrap_or(false);
+    let n = y
+        .checked_sub(1)
+        .map(|ny| matches_tile(map.get(x, ny)))
+        .unwrap_or(false);
+    let e = if x + 1 < map.width { matches_tile(map.get(x + 1, y)) } else { false };
+    let s = if y + 1 < map.height { matches_tile(map.get(x, y + 1)) } else { false };
+    let w = x
+        .checked_sub(1)
+        .map(|wx| matches_tile(map.get(wx, y)))
+        .unwrap_or(false);
     (n, e, s, w)
 }
 
@@ -46,22 +47,27 @@ fn map_connectivity(map: &Map, tile: Tile, x: usize, y: usize) -> (bool, bool, b
 fn preview_connectivity(
     map: &Map,
     target: Tile,
-    x: usize, y: usize,
+    x: usize,
+    y: usize,
     preview: &std::collections::HashSet<(usize, usize)>,
 ) -> (bool, bool, bool, bool) {
     let connects = |nx: usize, ny: usize| {
-        if preview.contains(&(nx, ny)) { return true; }
-        if nx >= map.width || ny >= map.height { return false; }
+        if preview.contains(&(nx, ny)) {
+            return true;
+        }
+        if nx >= map.width || ny >= map.height {
+            return false;
+        }
         let t = map.get(nx, ny);
         match target {
-            Tile::Road      => t.road_connects(),
+            Tile::Road => t.road_connects(),
             Tile::PowerLine => t.power_connects(),
-            _               => t == target,
+            _ => t == target,
         }
     };
     let n = y.checked_sub(1).map(|ny| connects(x, ny)).unwrap_or(false);
-    let e = (x + 1 < map.width).then(|| connects(x + 1, y)).unwrap_or(false);
-    let s = (y + 1 < map.height).then(|| connects(x, y + 1)).unwrap_or(false);
+    let e = if x + 1 < map.width { connects(x + 1, y) } else { false };
+    let s = if y + 1 < map.height { connects(x, y + 1) } else { false };
     let w = x.checked_sub(1).map(|wx| connects(wx, y)).unwrap_or(false);
     (n, e, s, w)
 }
@@ -90,11 +96,13 @@ impl<'a> Widget for MapView<'a> {
                     let overlay = self.map.get_overlay(map_x, map_y);
                     let glyph = theme::tile_glyph(tile, overlay);
 
-                    let is_cursor =
-                        map_x == self.camera.cursor_x && map_y == self.camera.cursor_y;
+                    let is_cursor = map_x == self.camera.cursor_x && map_y == self.camera.cursor_y;
                     let is_preview = !is_cursor && preview_set.contains(&(map_x, map_y));
 
-                    let ch = if matches!(tile, Tile::Road | Tile::Rail | Tile::PowerLine | Tile::RoadPowerLine) {
+                    let ch = if matches!(
+                        tile,
+                        Tile::Road | Tile::Rail | Tile::PowerLine | Tile::RoadPowerLine
+                    ) {
                         let (n, e, s, w) = map_connectivity(self.map, tile, map_x, map_y);
                         theme::network_char(tile, n, e, s, w)
                     } else {
@@ -108,18 +116,31 @@ impl<'a> Widget for MapView<'a> {
                             PreviewKind::Line(tool) => {
                                 let can_place = tool.can_place(tile);
                                 let preview_ch = if let Some(target) = tool.target_tile() {
-                                    let (n, e, s, w) = preview_connectivity(self.map, target, map_x, map_y, &preview_set);
+                                    let (n, e, s, w) = preview_connectivity(
+                                        self.map,
+                                        target,
+                                        map_x,
+                                        map_y,
+                                        &preview_set,
+                                    );
                                     theme::network_char(target, n, e, s, w)
-                                } else { '╬' };
+                                } else {
+                                    '╬'
+                                };
                                 if can_place {
-                                    (preview_ch, Color::Rgb(100, 200, 255), Color::Rgb(20, 50, 80))
+                                    (
+                                        preview_ch,
+                                        Color::Rgb(100, 200, 255),
+                                        Color::Rgb(20, 50, 80),
+                                    )
                                 } else {
                                     (preview_ch, Color::Rgb(255, 80, 80), Color::Rgb(80, 10, 10))
                                 }
                             }
                             PreviewKind::Rect(tool) => {
                                 let can_place = tool.can_place(tile);
-                                let preview_ch = tool.target_tile()
+                                let preview_ch = tool
+                                    .target_tile()
                                     .map(|t| theme::tile_glyph(t, TileOverlay::default()).ch)
                                     .unwrap_or('?');
                                 if can_place {
@@ -129,7 +150,8 @@ impl<'a> Widget for MapView<'a> {
                                 }
                             }
                             PreviewKind::Footprint(tool, all_valid) => {
-                                let preview_ch = tool.target_tile()
+                                let preview_ch = tool
+                                    .target_tile()
                                     .map(|t| theme::tile_glyph(t, TileOverlay::default()).ch)
                                     .unwrap_or('?');
                                 if *all_valid {

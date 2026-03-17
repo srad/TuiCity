@@ -21,18 +21,22 @@ pub fn translate_event(event: Event) -> Action {
     match event {
         Event::Key(key) => translate_key(key),
         Event::Mouse(mouse) => match mouse.kind {
-            MouseEventKind::Down(MouseButton::Left) => {
-                Action::MouseClick { col: mouse.column, row: mouse.row }
-            }
-            MouseEventKind::Drag(MouseButton::Left) => {
-                Action::MouseDrag { col: mouse.column, row: mouse.row }
-            }
-            MouseEventKind::Up(MouseButton::Left) => {
-                Action::MouseUp { col: mouse.column, row: mouse.row }
-            }
-            MouseEventKind::Moved => {
-                Action::MouseMove { col: mouse.column, row: mouse.row }
-            }
+            MouseEventKind::Down(MouseButton::Left) => Action::MouseClick {
+                col: mouse.column,
+                row: mouse.row,
+            },
+            MouseEventKind::Drag(MouseButton::Left) => Action::MouseDrag {
+                col: mouse.column,
+                row: mouse.row,
+            },
+            MouseEventKind::Up(MouseButton::Left) => Action::MouseUp {
+                col: mouse.column,
+                row: mouse.row,
+            },
+            MouseEventKind::Moved => Action::MouseMove {
+                col: mouse.column,
+                row: mouse.row,
+            },
             MouseEventKind::ScrollUp => Action::PanCamera(0, -3),
             MouseEventKind::ScrollDown => Action::PanCamera(0, 3),
             _ => Action::None,

@@ -1,11 +1,8 @@
+use crate::{app::ClickArea, core::sim::SimState};
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
     style::{Color, Modifier, Style},
-};
-use crate::{
-    app::ClickArea,
-    core::sim::SimState,
 };
 
 /// Renders the status bar and returns the Rect of the pause/resume button.
@@ -106,7 +103,11 @@ pub fn render_statusbar(
     }
 
     // Pause button — right-aligned
-    let pause_text = if paused { "[▶ Run]  " } else { "[⏸ Paused]" };
+    let pause_text = if paused {
+        "[▶ Run]  "
+    } else {
+        "[⏸ Paused]"
+    };
     let btn_col = area.x + area.width.saturating_sub(pause_text.len() as u16 + 1);
     let pause_style = if paused {
         Style::default()

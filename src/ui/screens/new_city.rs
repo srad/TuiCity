@@ -1,21 +1,17 @@
+use crate::{
+    app::{NewCityField, NewCityState},
+    ui::game::map_view::MapPreview,
+};
 use ratatui::{
     layout::{Constraint, Layout, Rect},
     style::{Color, Modifier, Style},
     widgets::{Block, Borders},
     Frame,
 };
-use crate::{
-    app::{NewCityField, NewCityState},
-    ui::game::map_view::MapPreview,
-};
 
 pub fn render_new_city(frame: &mut Frame, area: Rect, state: &NewCityState) {
     // Split: left = map preview, right = controls
-    let chunks = Layout::horizontal([
-        Constraint::Fill(1),
-        Constraint::Length(30),
-    ])
-    .split(area);
+    let chunks = Layout::horizontal([Constraint::Fill(1), Constraint::Length(30)]).split(area);
 
     let map_area = chunks[0];
     let ctrl_area = chunks[1];
@@ -29,7 +25,12 @@ pub fn render_new_city(frame: &mut Frame, area: Rect, state: &NewCityState) {
         .style(Style::default().bg(Color::Rgb(8, 12, 8)));
     let inner_map = map_block.inner(map_area);
     frame.render_widget(map_block, map_area);
-    frame.render_widget(MapPreview { map: &state.preview_map }, inner_map);
+    frame.render_widget(
+        MapPreview {
+            map: &state.preview_map,
+        },
+        inner_map,
+    );
 
     // Controls (right)
     let ctrl_block = Block::default()
@@ -67,7 +68,9 @@ fn render_controls(frame: &mut Frame, area: Rect, state: &NewCityState) {
         );
         row += 1;
 
-        if row >= area.y + area.height { return; }
+        if row >= area.y + area.height {
+            return;
+        }
 
         let display = if state.city_name.is_empty() {
             "_".repeat((w - 2).min(20))
@@ -76,7 +79,9 @@ fn render_controls(frame: &mut Frame, area: Rect, state: &NewCityState) {
         };
         let padded = format!("{:<width$}", display, width = w);
         let style = if is_focused {
-            Style::default().fg(Color::Black).bg(Color::Rgb(200, 200, 60))
+            Style::default()
+                .fg(Color::Black)
+                .bg(Color::Rgb(200, 200, 60))
         } else {
             Style::default()
                 .fg(Color::Rgb(220, 220, 100))
@@ -86,7 +91,9 @@ fn render_controls(frame: &mut Frame, area: Rect, state: &NewCityState) {
         row += 2;
     }
 
-    if row >= area.y + area.height { return; }
+    if row >= area.y + area.height {
+        return;
+    }
 
     // Seed field
     {
@@ -101,12 +108,16 @@ fn render_controls(frame: &mut Frame, area: Rect, state: &NewCityState) {
         );
         row += 1;
 
-        if row >= area.y + area.height { return; }
+        if row >= area.y + area.height {
+            return;
+        }
 
         let display = format!("{}_", state.seed_input);
         let padded = format!("{:<width$}", display, width = w);
         let style = if is_focused {
-            Style::default().fg(Color::Black).bg(Color::Rgb(200, 200, 60))
+            Style::default()
+                .fg(Color::Black)
+                .bg(Color::Rgb(200, 200, 60))
         } else {
             Style::default()
                 .fg(Color::Rgb(160, 200, 255))
@@ -116,7 +127,9 @@ fn render_controls(frame: &mut Frame, area: Rect, state: &NewCityState) {
         row += 2;
     }
 
-    if row >= area.y + area.height { return; }
+    if row >= area.y + area.height {
+        return;
+    }
 
     // Water slider
     render_slider(
@@ -132,7 +145,9 @@ fn render_controls(frame: &mut Frame, area: Rect, state: &NewCityState) {
     );
     row += 2;
 
-    if row >= area.y + area.height { return; }
+    if row >= area.y + area.height {
+        return;
+    }
 
     // Trees slider
     render_slider(
@@ -148,7 +163,9 @@ fn render_controls(frame: &mut Frame, area: Rect, state: &NewCityState) {
     );
     row += 2;
 
-    if row >= area.y + area.height { return; }
+    if row >= area.y + area.height {
+        return;
+    }
 
     row += 1; // spacer
 
@@ -160,7 +177,9 @@ fn render_controls(frame: &mut Frame, area: Rect, state: &NewCityState) {
     ];
 
     for (field, label) in &btns {
-        if row >= area.y + area.height { break; }
+        if row >= area.y + area.height {
+            break;
+        }
         let is_focused = state.focused_field == *field;
         let style = if is_focused {
             Style::default()
@@ -176,7 +195,9 @@ fn render_controls(frame: &mut Frame, area: Rect, state: &NewCityState) {
         buf.set_string(area.x, row, &padded, style);
         row += 1;
 
-        if row >= area.y + area.height { break; }
+        if row >= area.y + area.height {
+            break;
+        }
         row += 1; // spacing between buttons
     }
 
@@ -194,6 +215,7 @@ fn render_controls(frame: &mut Frame, area: Rect, state: &NewCityState) {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn render_slider(
     buf: &mut ratatui::buffer::Buffer,
     x: u16,
@@ -210,7 +232,7 @@ fn render_slider(
     buf.set_string(
         x,
         y,
-        &format!("{:<width$}", label_str, width = w),
+        format!("{:<width$}", label_str, width = w),
         Style::default()
             .fg(if focused {
                 Color::Rgb(255, 220, 60)

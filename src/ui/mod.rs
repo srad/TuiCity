@@ -5,39 +5,50 @@ pub mod theme;
 use ratatui::{
     layout::{Constraint, Layout, Rect},
     Frame,
+    Terminal,
+    backend::CrosstermBackend,
 };
+use std::io;
 
-use crate::app::{AppState, ClickArea, Screen};
+use crate::app::{AppState, ClickArea, screens::AppContext};
 
-pub fn render(frame: &mut Frame, app: &mut AppState) {
-    let area = frame.area();
-    match &app.screen {
-        Screen::Start(_) => render_start_screen(frame, area, app),
-        Screen::NewCity(_) => render_new_city_screen(frame, area, app),
-        Screen::LoadCity(_) => render_load_city_screen(frame, area, app),
-        Screen::InGame => render_game(frame, area, app),
+pub trait Renderer {
+    fn render(&mut self, app: &mut AppState) -> io::Result<()>;
+}
+
+pub struct TerminalRenderer {
+    pub terminal: Terminal<CrosstermBackend<io::Stdout>>,
+}
+
+impl TerminalRenderer {
+    pub fn new() -> io::Result<Self> {
+        let backend = CrosstermBackend::new(io::stdout());
+        let terminal = Terminal::new(backend)?;
+        Ok(Self { terminal })
     }
 }
 
-fn render_start_screen(frame: &mut Frame, area: Rect, app: &AppState) {
-    if let Screen::Start(ref state) = app.screen {
-        screens::start::render_start(frame, area, state);
+impl Renderer for TerminalRenderer {
+    fn render(&mut self, app: &mut AppState) -> io::Result<()> {
+        self.terminal.draw(|frame| {
+            let mut running = app.running;
+            {
+                let context = AppContext {
+                    engine: &app.engine,
+                    cmd_tx: &app.cmd_tx,
+                    running: &mut running,
+                };
+                if let Some(screen) = app.screens.last_mut() {
+                    screen.render(frame, context);
+                }
+            }
+            app.running = running;
+        })?;
+        Ok(())
     }
 }
 
-fn render_new_city_screen(frame: &mut Frame, area: Rect, app: &AppState) {
-    if let Screen::NewCity(ref state) = app.screen {
-        screens::new_city::render_new_city(frame, area, state);
-    }
-}
-
-fn render_load_city_screen(frame: &mut Frame, area: Rect, app: &AppState) {
-    if let Screen::LoadCity(ref state) = app.screen {
-        screens::load_city::render_load_city(frame, area, state);
-    }
-}
-
-fn render_game(frame: &mut Frame, area: Rect, app: &mut AppState) {
+pub fn render_game_v2(frame: &mut Frame, area: Rect, app: &AppState, screen: &mut crate::app::screens::InGameScreen) {
     // Layout: status bar (1 row) + main area
     let vert = Layout::vertical([
         Constraint::Length(1),
@@ -74,61 +85,72 @@ fn render_game(frame: &mut Frame, area: Rect, app: &mut AppState) {
     let info_area = panel_vert[2];
 
     // Update camera viewport dimensions
-    app.camera.view_w = map_area.width as usize;
-    app.camera.view_h = map_area.height as usize;
+    screen.camera.view_w = map_area.width as usize;
+    screen.camera.view_h = map_area.height as usize;
 
     // Update click areas
-    app.ui_areas.map = to_click_area(map_area);
-    app.ui_areas.minimap = to_click_area(minimap_area);
+    screen.ui_areas.map = to_click_area(map_area);
+    screen.ui_areas.minimap = to_click_area(minimap_area);
 
     // Render status bar → get pause button area
-    let pause_area = game::statusbar::render_statusbar(
-        status_area,
-        frame.buffer_mut(),
-        &app.sim,
-        app.paused,
-        app.message.as_deref(),
-    );
-    app.ui_areas.pause_btn = pause_area;
+    let pause_area = {
+        let engine = app.engine.read().unwrap();
+        game::statusbar::render_statusbar(
+            status_area,
+            frame.buffer_mut(),
+            &engine.sim,
+            screen.paused,
+            screen.message.as_deref(),
+        )
+    };
+    screen.ui_areas.pause_btn = pause_area;
 
     // Render map view
     use crate::core::tool::Tool;
     use crate::ui::game::map_view::PreviewKind;
 
+    let engine = app.engine.read().unwrap();
+
     // Pre-compute footprint tiles (owned) so the slice lifetime covers the render call.
     let footprint_tiles: Vec<(usize, usize)> =
-        if app.rect_drag.is_none() && app.line_drag.is_none()
-            && Tool::uses_footprint_preview(app.current_tool)
+        if screen.rect_drag.is_none() && screen.line_drag.is_none()
+            && Tool::uses_footprint_preview(screen.current_tool)
         {
-            let (fw, fh) = app.current_tool.footprint();
-            let (cx, cy) = (app.camera.cursor_x, app.camera.cursor_y);
+            let (fw, fh) = screen.current_tool.footprint();
+            let (cx, cy) = (screen.camera.cursor_x, screen.camera.cursor_y);
             let ax = cx.saturating_sub(fw / 2)
-                       .min(app.map.width.saturating_sub(fw));
+                       .min(engine.map.width.saturating_sub(fw));
             let ay = cy.saturating_sub(fh / 2)
-                       .min(app.map.height.saturating_sub(fh));
+                       .min(engine.map.height.saturating_sub(fh));
             (0..fh).flat_map(|dy| (0..fw).map(move |dx| (ax + dx, ay + dy))).collect()
         } else {
             Vec::new()
         };
     let footprint_all_valid = footprint_tiles.iter().all(|&(x, y)| {
-        x < app.map.width && y < app.map.height
-            && app.current_tool.can_place(app.map.get(x, y))
+        x < engine.map.width && y < engine.map.height
+            && screen.current_tool.can_place(engine.map.get(x, y))
     });
 
     let (preview_tiles, preview_kind): (&[(usize, usize)], PreviewKind) =
-        if let Some(ref d) = app.rect_drag {
-            (app.rect_preview(), PreviewKind::Rect(d.tool))
-        } else if let Some(ref d) = app.line_drag {
-            (app.line_preview(), PreviewKind::Line(d.tool))
+        if let Some(ref _d) = screen.rect_drag {
+            (screen.rect_preview(), PreviewKind::Rect(screen.current_tool)) // Note: tool comes from drag in real impl
+        } else if let Some(ref _d) = screen.line_drag {
+            (screen.line_preview(), PreviewKind::Line(screen.current_tool))
         } else if !footprint_tiles.is_empty() {
-            (&footprint_tiles, PreviewKind::Footprint(app.current_tool, footprint_all_valid))
+            (&footprint_tiles, PreviewKind::Footprint(screen.current_tool, footprint_all_valid))
         } else {
             (&[], PreviewKind::None)
         };
+    
+    // Quick fix for tool from drag:
+    let preview_kind = if let Some(ref d) = screen.rect_drag { PreviewKind::Rect(d.tool) }
+                       else if let Some(ref d) = screen.line_drag { PreviewKind::Line(d.tool) }
+                       else { preview_kind };
+
     frame.render_widget(
         game::map_view::MapView {
-            map: &app.map,
-            camera: &app.camera,
+            map: &engine.map,
+            camera: &screen.camera,
             line_preview: preview_tiles,
             preview_kind,
         },
@@ -139,29 +161,29 @@ fn render_game(frame: &mut Frame, area: Rect, app: &mut AppState) {
     game::toolbar::render_toolbar(
         toolbar_area,
         frame.buffer_mut(),
-        app.current_tool,
-        &mut app.ui_areas.toolbar_buttons,
+        screen.current_tool,
+        &mut screen.ui_areas.toolbar_buttons,
     );
 
     // Render minimap
     frame.render_widget(
         game::minimap::MiniMap {
-            map: &app.map,
-            camera: &app.camera,
+            map: &engine.map,
+            camera: &screen.camera,
         },
         minimap_area,
     );
 
     // Render info panel
-    let cx = app.camera.cursor_x.min(app.map.width.saturating_sub(1));
-    let cy = app.camera.cursor_y.min(app.map.height.saturating_sub(1));
-    let tile = if app.map.width > 0 && app.map.height > 0 {
-        app.map.get(cx, cy)
+    let cx = screen.camera.cursor_x.min(engine.map.width.saturating_sub(1));
+    let cy = screen.camera.cursor_y.min(engine.map.height.saturating_sub(1));
+    let tile = if engine.map.width > 0 && engine.map.height > 0 {
+        engine.map.get(cx, cy)
     } else {
         crate::core::map::Tile::Grass
     };
-    let overlay = if app.map.width > 0 && app.map.height > 0 {
-        app.map.get_overlay(cx, cy)
+    let overlay = if engine.map.width > 0 && engine.map.height > 0 {
+        engine.map.get_overlay(cx, cy)
     } else {
         crate::core::map::TileOverlay::default()
     };
@@ -172,13 +194,28 @@ fn render_game(frame: &mut Frame, area: Rect, app: &mut AppState) {
             overlay,
             x: cx,
             y: cy,
-            current_tool: app.current_tool,
+            current_tool: screen.current_tool,
         },
         info_area,
     );
+    
+    // Explicitly drop the lock before rendering the budget so we don't accidentally hold it across UI bounds
+    drop(engine);
+    
+    if screen.is_budget_open {
+        // Budget renderer needs AppState for now, we'll wrap screen state temporarily
+        let mock_app = crate::app::AppState {
+            screens: Vec::new(),
+            engine: app.engine.clone(),
+            cmd_tx: app.cmd_tx.clone(),
+            running: app.running,
+        };
+        // Budget renderer needs to be updated or we provide what it needs
+        game::budget::render_budget_v2(frame.buffer_mut(), area, &mock_app, screen);
+    }
 }
 
-fn to_click_area(r: Rect) -> ClickArea {
+pub fn to_click_area(r: Rect) -> ClickArea {
     ClickArea {
         x: r.x,
         y: r.y,

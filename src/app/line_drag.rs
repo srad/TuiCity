@@ -1,6 +1,6 @@
-use std::collections::{BinaryHeap, HashMap};
-use std::cmp::Reverse;
 use crate::core::{map::Map, tool::Tool};
+use std::cmp::Reverse;
+use std::collections::{BinaryHeap, HashMap};
 
 /// In-progress line drag (road, rail, or power line): stores the tool, start, end, and cached path.
 pub struct LineDrag {
@@ -15,7 +15,14 @@ pub struct LineDrag {
 
 impl LineDrag {
     pub fn new(tool: Tool, x: usize, y: usize) -> Self {
-        Self { tool, start_x: x, start_y: y, end_x: x, end_y: y, path: vec![(x, y)] }
+        Self {
+            tool,
+            start_x: x,
+            start_y: y,
+            end_x: x,
+            end_y: y,
+            path: vec![(x, y)],
+        }
     }
 }
 
@@ -28,10 +35,24 @@ fn heuristic(x: usize, y: usize, ex: usize, ey: usize) -> usize {
 /// Used when A* finds no navigable route.
 fn l_path(sx: usize, sy: usize, ex: usize, ey: usize) -> Vec<(usize, usize)> {
     let mut tiles = Vec::new();
-    if sx <= ex { for x in sx..=ex { tiles.push((x, sy)); } }
-    else        { for x in (ex..=sx).rev() { tiles.push((x, sy)); } }
-    if sy < ey { for y in (sy+1)..=ey { tiles.push((ex, y)); } }
-    else if ey < sy { for y in (ey..sy).rev() { tiles.push((ex, y)); } }
+    if sx <= ex {
+        for x in sx..=ex {
+            tiles.push((x, sy));
+        }
+    } else {
+        for x in (ex..=sx).rev() {
+            tiles.push((x, sy));
+        }
+    }
+    if sy < ey {
+        for y in (sy + 1)..=ey {
+            tiles.push((ex, y));
+        }
+    } else if ey < sy {
+        for y in (ey..sy).rev() {
+            tiles.push((ex, y));
+        }
+    }
     tiles
 }
 
@@ -42,8 +63,10 @@ fn l_path(sx: usize, sy: usize, ex: usize, ey: usize) -> Vec<(usize, usize)> {
 pub fn line_shortest_path(
     map: &Map,
     tool: Tool,
-    sx: usize, sy: usize,
-    ex: usize, ey: usize,
+    sx: usize,
+    sy: usize,
+    ex: usize,
+    ey: usize,
 ) -> Vec<(usize, usize)> {
     if sx == ex && sy == ey {
         return vec![(sx, sy)];
@@ -73,7 +96,9 @@ pub fn line_shortest_path(
             continue;
         }
         for (nx, ny, tile) in map.neighbors4(x, y) {
-            if !tool.can_place(tile) && !tool.is_traversable(tile) { continue; }
+            if !tool.can_place(tile) && !tool.is_traversable(tile) {
+                continue;
+            }
             let ng = g + 1;
             if ng < *g_score.get(&(nx, ny)).unwrap_or(&usize::MAX) {
                 g_score.insert((nx, ny), ng);
