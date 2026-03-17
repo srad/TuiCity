@@ -18,12 +18,15 @@ A terminal-based city building simulation inspired by SimCity 2000, written in R
     - **Power Grid**: BFS-based power distribution logic. Buildings require power connectivity to develop.
     - **Road Access**: Manhattan-distance pathfinding for zone development.
     - **Economic Management**: Adjustable tax rates (0-20%) that directly impact city growth and demand.
+- **Deep Simulation Systems**: Pollution diffusion, land value, crime, fire risk, and active disasters (fire spread, flooding, tornadoes) — all implemented as independent `SimSystem` plug-ins.
 - **Interactive UI**:
+    - Drop-down menu bar (System / Speed / Disasters / Windows) — fully mouse-clickable.
     - Full mouse support for building and dragging (Lines/Rectangles).
     - Minimap for quick navigation.
-    - Real-time info panel and status bar.
-    - Modal Budget menu for financial oversight.
-- **Save/Load System**: Persistence for your urban creations.
+    - Real-time status bar showing city name, treasury, annualised income (+green/-red), population, and date.
+    - Info panel with RCI demand bars, sparkline demand history, and per-tile pollution/land value/crime overlays.
+    - Budget popup with tax-rate slider and 24-month treasury sparkline.
+- **Save/Load System**: Persistence for your urban creations, with backwards-compatible save files.
 
 ---
 
@@ -40,16 +43,24 @@ cargo run --release
 ### Controls
 | Key | Action |
 |-----|--------|
-| `Arrows` / `Mouse` | Move Cursor / Navigate Map |
-| `1`, `2`, `3` | Select Zones (Res, Comm, Ind) |
-| `R` | Road Tool |
-| `P` | Power Line Tool |
+| `Arrows` / `Mouse` | Move cursor / navigate map |
+| `Mouse drag` | Draw roads, power lines, zones in a line or rectangle |
+| `F1` | Open / navigate the menu bar |
+| `1`, `2`, `3` | Zone: Residential, Commercial, Industrial |
+| `R` | Road tool |
+| `L` | Rail tool |
+| `P` | Power Line tool |
 | `E` | Power Plant |
+| `K` | Park |
+| `S` | Police Station |
+| `F` | Fire Station |
 | `B` | Bulldoze |
-| `$` / `B` | Open Budget Menu |
-| `Space` | Pause / Unpause Simulation |
-| `Q` | Quit |
-| `ESC` | Back to Menu / Cancel Drag |
+| `?` | Inspect tool |
+| `$` / `B` | Open Budget popup |
+| `Space` | Pause / Unpause simulation |
+| `Ctrl+S` | Save city |
+| `Q` / `Ctrl+C` | Quit |
+| `ESC` | Back / close popup / cancel drag |
 
 ---
 
@@ -86,7 +97,9 @@ Currently, `TerminalRenderer` implements this using `ratatui`. This abstraction 
 ### 5. Visual Data & Widgets
 The UI leverages `ratatui` widgets for enhanced clarity:
 - **RCI Demand Bars**: Visual bar charts in the Info Panel showing real-time city needs.
-- **Financial Sparklines**: A 24-month treasury history chart embedded in the Budget menu.
+- **Sparkline History**: 24-month demand trends in the Info Panel; treasury history in the Budget popup.
+- **Annualised Income**: Status bar shows net income (taxes − yearly maintenance) in green or red, always up to date.
+- **Drop-down Menu Bar** (`tui-menu`): System, Speed, Disasters, and Windows menus, navigable by keyboard or mouse click.
 
 ---
 
