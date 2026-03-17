@@ -4,6 +4,7 @@ pub mod theme;
 
 use ratatui::{
     layout::{Constraint, Layout, Rect},
+    widgets::StatefulWidget,
     Frame,
     Terminal,
     backend::CrosstermBackend,
@@ -49,15 +50,17 @@ impl Renderer for TerminalRenderer {
 }
 
 pub fn render_game_v2(frame: &mut Frame, area: Rect, app: &AppState, screen: &mut crate::app::screens::InGameScreen) {
-    // Layout: status bar (1 row) + main area
+    // Layout: menu bar (1 row) + status bar (1 row) + main area
     let vert = Layout::vertical([
-        Constraint::Length(1),
-        Constraint::Fill(1),
+        Constraint::Length(1),  // menu bar
+        Constraint::Length(1),  // status bar
+        Constraint::Fill(1),    // main area
     ])
     .split(area);
 
-    let status_area = vert[0];
-    let main_area = vert[1];
+    let menu_area   = vert[0];
+    let status_area = vert[1];
+    let main_area   = vert[2];
 
     // Main area: map (fill) + right panel (22 cols)
     let horiz = Layout::horizontal([
@@ -89,6 +92,7 @@ pub fn render_game_v2(frame: &mut Frame, area: Rect, app: &AppState, screen: &mu
     screen.camera.view_h = map_area.height as usize;
 
     // Update click areas
+    screen.ui_areas.menu_bar_y = menu_area.y;
     screen.ui_areas.map = to_click_area(map_area);
     screen.ui_areas.minimap = to_click_area(minimap_area);
 
@@ -195,6 +199,12 @@ pub fn render_game_v2(frame: &mut Frame, area: Rect, app: &AppState, screen: &mu
             x: cx,
             y: cy,
             current_tool: screen.current_tool,
+            demand_res: engine.sim.demand_res,
+            demand_comm: engine.sim.demand_comm,
+            demand_ind: engine.sim.demand_ind,
+            demand_history_res:  &engine.sim.demand_history_res,
+            demand_history_comm: &engine.sim.demand_history_comm,
+            demand_history_ind:  &engine.sim.demand_history_ind,
         },
         info_area,
     );
@@ -202,16 +212,33 @@ pub fn render_game_v2(frame: &mut Frame, area: Rect, app: &AppState, screen: &mu
     // Explicitly drop the lock before rendering the budget so we don't accidentally hold it across UI bounds
     drop(engine);
     
+    let mock_app = crate::app::AppState {
+        screens: Vec::new(),
+        engine: app.engine.clone(),
+        cmd_tx: app.cmd_tx.clone(),
+        running: app.running,
+    };
+
     if screen.is_budget_open {
-        // Budget renderer needs AppState for now, we'll wrap screen state temporarily
-        let mock_app = crate::app::AppState {
-            screens: Vec::new(),
-            engine: app.engine.clone(),
-            cmd_tx: app.cmd_tx.clone(),
-            running: app.running,
-        };
-        // Budget renderer needs to be updated or we provide what it needs
         game::budget::render_budget_v2(frame.buffer_mut(), area, &mock_app, screen);
+    }
+
+    // Render the dropdown menubar LAST so it appears on top of everything.
+    // The bar occupies menu_area (row 0); dropdowns overlay the content below.
+    {
+        use tui_menu::Menu;
+        use ratatui::style::{Color, Style};
+        let buf = frame.buffer_mut();
+        Menu::<crate::app::screens::MenuAction>::new()
+            .default_style(
+                Style::default().fg(Color::White).bg(Color::Rgb(20, 20, 45)),
+            )
+            .highlight(
+                Style::default().fg(Color::Black).bg(Color::Rgb(160, 160, 255)),
+            )
+            .dropdown_width(24)
+            .dropdown_style(Style::default().bg(Color::Rgb(20, 20, 45)))
+            .render(menu_area, buf, &mut screen.menu);
     }
 }
 

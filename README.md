@@ -57,11 +57,11 @@ cargo run --release
 
 `tuicity2` is designed with a strict separation of concerns to allow for easy porting to other frontends (like WGPU or Pixels).
 
-### 1. The Simulation Engine (`src/core/engine.rs`)
-The "Brain" of the game. It is completely agnostic of any UI library or terminal concepts. 
-- It manages the `Map` (tiles and overlays) and `SimState` (money, population, demand).
-- It processes `EngineCommand`s sent from the frontend.
-- It performs the "Month Advance" logic, including power grid recalculation and growth ticks.
+### 1. Modular Simulation Engine (`src/core/sim/system.rs`)
+The simulation is built on a "Plug-and-Play" architecture:
+- **SimSystem Trait**: Simulation logic is divided into independent systems (e.g., `PowerSystem`, `GrowthSystem`, `FinanceSystem`, `HistorySystem`).
+- **Extensible**: New mechanics (like Pollution or Crime) can be added by implementing the `SimSystem` trait without touching core engine code.
+- **Background Ticking**: All systems run on a dedicated thread, processing one "month" of simulation data at a time.
 
 ### 2. Multi-threading & Thread Safety
 The application utilizes a **Producer-Consumer** model:
@@ -83,17 +83,10 @@ pub trait Renderer {
 ```
 Currently, `TerminalRenderer` implements this using `ratatui`. This abstraction means the `main.rs` loop doesn't know it's in a terminal, making it trivial to swap the backend.
 
-### 5. Command Pattern
-User interactions (like clicking to place a road) do not mutate the map directly. Instead, they generate an `EngineCommand`:
-```rust
-pub enum EngineCommand {
-    PlaceTool { tool: Tool, x: usize, y: usize },
-    SetTaxRate(u8),
-    AdvanceMonth,
-    // ...
-}
-```
-This ensures that the simulation state remains consistent and is only ever modified by one thread.
+### 5. Visual Data & Widgets
+The UI leverages `ratatui` widgets for enhanced clarity:
+- **RCI Demand Bars**: Visual bar charts in the Info Panel showing real-time city needs.
+- **Financial Sparklines**: A 24-month treasury history chart embedded in the Budget menu.
 
 ---
 

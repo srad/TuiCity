@@ -45,6 +45,7 @@ pub struct UiAreas {
     pub minimap: ClickArea,
     pub pause_btn: ClickArea,
     pub toolbar_buttons: Vec<(Tool, ClickArea)>,
+    pub menu_bar_y: u16,
 }
 
 // ── Screen-specific state ─────────────────────────────────────────────────────

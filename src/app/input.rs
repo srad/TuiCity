@@ -13,6 +13,7 @@ pub enum Action {
     MouseMove { col: u16, row: u16 },
     MenuSelect,
     MenuBack,
+    MenuActivate,
     CharInput(char),
     DeleteChar,
 }
@@ -49,6 +50,11 @@ fn translate_key(key: crossterm::event::KeyEvent) -> Action {
     // Only handle Press (and Repeat for held keys); ignore Release to avoid double-firing
     if key.kind == KeyEventKind::Release {
         return Action::None;
+    }
+
+    // F-keys (no modifiers needed)
+    if key.code == KeyCode::F(1) {
+        return Action::MenuActivate;
     }
 
     // Ctrl combos

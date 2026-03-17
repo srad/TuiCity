@@ -26,17 +26,39 @@ pub enum EngineCommand {
         sim: SimState,
     },
     SetPaused(bool),
+    SetDisasters(super::sim::DisasterConfig),
 }
+
+use super::sim::system::SimSystem;
+use super::sim::systems::*;
 
 pub struct SimulationEngine {
     pub map: Map,
     pub sim: SimState,
     pub is_paused: bool,
+    pub systems: Vec<Box<dyn SimSystem>>,
 }
 
 impl SimulationEngine {
     pub fn new(map: Map, sim: SimState) -> Self {
-        Self { map, sim, is_paused: false }
+        Self {
+            map,
+            sim,
+            is_paused: false,
+            systems: vec![
+                Box::new(PowerSystem),        // 1. power grid
+                Box::new(PollutionSystem),    // 2. pollution (from industry)
+                Box::new(LandValueSystem),    // 3. land value (uses pollution)
+                Box::new(PoliceSystem),       // 4. crime overlays
+                Box::new(FireSystem),         // 5. fire-risk overlays
+                Box::new(GrowthSystem),       // 6. zone → building (uses all overlays)
+                Box::new(FireSpreadSystem),   // 7. active fire disaster
+                Box::new(FloodSystem),        // 8. flood disaster
+                Box::new(TornadoSystem),      // 9. tornado disaster
+                Box::new(FinanceSystem),      // 10. taxes & maintenance
+                Box::new(HistorySystem),      // 11. record history
+            ],
+        }
     }
 
     pub fn execute_command(&mut self, cmd: EngineCommand) -> Result<(), String> {
@@ -46,7 +68,15 @@ impl SimulationEngine {
             EngineCommand::PlaceRect { tool, tiles } => self.place_rect(tool, tiles),
             EngineCommand::AdvanceMonth => {
                 if !self.is_paused {
-                    self.sim.advance_month(&mut self.map);
+                    self.sim.month += 1;
+                    if self.sim.month > 12 {
+                        self.sim.month = 1;
+                        self.sim.year += 1;
+                    }
+                    
+                    for system in &mut self.systems {
+                        system.tick(&mut self.map, &mut self.sim);
+                    }
                 }
                 Ok(())
             }
@@ -65,6 +95,10 @@ impl SimulationEngine {
             }
             EngineCommand::SetPaused(paused) => {
                 self.is_paused = paused;
+                Ok(())
+            }
+            EngineCommand::SetDisasters(cfg) => {
+                self.sim.disasters = cfg;
                 Ok(())
             }
         }

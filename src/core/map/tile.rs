@@ -121,4 +121,13 @@ pub struct TileOverlay {
     pub powered: bool,
     pub on_fire: bool,
     pub crime: u8,
+    /// 0 = clean air, 255 = heavily polluted (computed each tick)
+    #[serde(default)]
+    pub pollution: u8,
+    /// 0 = lowest value, 255 = prime real estate (computed each tick)
+    #[serde(default)]
+    pub land_value: u8,
+    /// 0 = safe, 255 = extreme risk (computed each tick, reduced by fire stations)
+    #[serde(default)]
+    pub fire_risk: u8,
 }

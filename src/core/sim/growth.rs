@@ -8,49 +8,57 @@ pub fn tick_growth(map: &mut Map, sim: &mut SimState) {
     let h = map.height;
     let mut new_pop: u64 = 0;
 
-    // Collect changes to apply after iteration (avoid borrow issues)
     let mut changes: Vec<(usize, usize, Tile)> = Vec::new();
 
     for y in 0..h {
         for x in 0..w {
-            let tile = map.get(x, y);
-            let powered = map.get_overlay(x, y).powered;
-            let road_access = has_road_access(map, x, y, 3);
-            
-            // Zones can only develop into low density if they have roads and power, OR if demand is very high and they have roads (like early game)
-            // But they upgrade to Med/High ONLY if powered.
-            
+            let tile    = map.get(x, y);
+            let overlay = map.get_overlay(x, y);
+            let powered      = overlay.powered;
+            let road_access  = has_road_access(map, x, y, 3);
+
+            // Modifier: pollution hurts residential growth (0.3..1.0)
+            let pollution_penalty = 1.0 - (overlay.pollution as f32 / 255.0) * 0.7;
+            // Modifier: high land value gives a small growth bonus
+            let lv_bonus = overlay.land_value as f32 / 255.0 * 0.1;
+            // Modifier: crime reduces residential and commercial upgrades (0.3..1.0)
+            let crime_penalty = 1.0 - (overlay.crime as f32 / 255.0) * 0.7;
+
             match tile {
                 Tile::ZoneRes => {
-                    if road_access && powered && rng.gen::<f32>() < sim.demand_res * 0.15 {
+                    let chance = (sim.demand_res * 0.15 + lv_bonus) * pollution_penalty * crime_penalty;
+                    if road_access && powered && rng.gen::<f32>() < chance {
                         changes.push((x, y, Tile::ResLow));
                     }
                 }
                 Tile::ZoneComm => {
-                    if road_access && powered && rng.gen::<f32>() < sim.demand_comm * 0.08 {
+                    let chance = (sim.demand_comm * 0.08 + lv_bonus * 0.5) * crime_penalty;
+                    if road_access && powered && rng.gen::<f32>() < chance {
                         changes.push((x, y, Tile::CommLow));
                     }
                 }
                 Tile::ZoneInd => {
+                    // Industry is indifferent to crime and benefits less from land value
                     if road_access && powered && rng.gen::<f32>() < sim.demand_ind * 0.08 {
                         changes.push((x, y, Tile::IndLight));
                     }
                 }
                 Tile::ResLow => {
                     new_pop += 10;
-                    if road_access && powered && rng.gen::<f32>() < sim.demand_res * 0.03 {
+                    let chance = (sim.demand_res * 0.03 + lv_bonus) * pollution_penalty * crime_penalty;
+                    if road_access && powered && rng.gen::<f32>() < chance {
                         changes.push((x, y, Tile::ResMed));
                     } else if !powered && rng.gen::<f32>() < 0.01 {
-                         // Small chance to decay if no power
-                         changes.push((x, y, Tile::ZoneRes));
+                        changes.push((x, y, Tile::ZoneRes));
                     }
                 }
                 Tile::ResMed => {
                     new_pop += 50;
-                    if road_access && powered && rng.gen::<f32>() < sim.demand_res * 0.015 {
+                    let chance = (sim.demand_res * 0.015 + lv_bonus * 0.5) * pollution_penalty * crime_penalty;
+                    if road_access && powered && rng.gen::<f32>() < chance {
                         changes.push((x, y, Tile::ResHigh));
                     } else if !powered && rng.gen::<f32>() < 0.05 {
-                         changes.push((x, y, Tile::ResLow));
+                        changes.push((x, y, Tile::ResLow));
                     }
                 }
                 Tile::ResHigh => {
@@ -61,7 +69,8 @@ pub fn tick_growth(map: &mut Map, sim: &mut SimState) {
                 }
                 Tile::CommLow => {
                     new_pop += 5;
-                    if road_access && powered && rng.gen::<f32>() < sim.demand_comm * 0.02 {
+                    let chance = (sim.demand_comm * 0.02 + lv_bonus * 0.5) * crime_penalty;
+                    if road_access && powered && rng.gen::<f32>() < chance {
                         changes.push((x, y, Tile::CommHigh));
                     } else if !powered && rng.gen::<f32>() < 0.01 {
                         changes.push((x, y, Tile::ZoneComm));
@@ -82,7 +91,7 @@ pub fn tick_growth(map: &mut Map, sim: &mut SimState) {
                 }
                 Tile::IndHeavy => {
                     if !powered && rng.gen::<f32>() < 0.05 {
-                         changes.push((x, y, Tile::IndLight));
+                        changes.push((x, y, Tile::IndLight));
                     }
                 }
                 _ => {}
@@ -100,17 +109,15 @@ pub fn tick_growth(map: &mut Map, sim: &mut SimState) {
 fn has_road_access(map: &Map, start_x: usize, start_y: usize, max_dist: i32) -> bool {
     let ix = start_x as i32;
     let iy = start_y as i32;
-    
+
     for dy in -max_dist..=max_dist {
         for dx in -max_dist..=max_dist {
-            // Manhattan distance
             if dx.abs() + dy.abs() <= max_dist {
                 let nx = ix + dx;
                 let ny = iy + dy;
-                if map.in_bounds(nx, ny)
-                    && map.get(nx as usize, ny as usize).is_road() {
-                        return true;
-                    }
+                if map.in_bounds(nx, ny) && map.get(nx as usize, ny as usize).is_road() {
+                    return true;
+                }
             }
         }
     }

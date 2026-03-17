@@ -92,6 +92,7 @@ pub fn load_city(path: &Path) -> io::Result<(Map, SimState)> {
                 powered,
                 on_fire,
                 crime,
+                ..TileOverlay::default()
             };
         }
     }

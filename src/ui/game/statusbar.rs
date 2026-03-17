@@ -86,6 +86,24 @@ pub fn render_statusbar(
     );
     col += date.len() as u16;
 
+    // Income
+    put_sep(buf, col, area.y);
+    col += 1;
+    let income_sign = if sim.last_income >= 0 { "+" } else { "" };
+    let income_str = format!(" {}${}/yr ", income_sign, fmt_number(sim.last_income));
+    let income_color = if sim.last_income >= 0 {
+        Color::Rgb(80, 220, 80)
+    } else {
+        Color::Rgb(220, 60, 60)
+    };
+    buf.set_string(
+        col,
+        area.y,
+        &income_str,
+        Style::default().fg(income_color).bg(Color::Rgb(15, 15, 30)),
+    );
+    col += income_str.len() as u16;
+
     // Message (ephemeral)
     if let Some(msg) = message {
         put_sep(buf, col, area.y);
