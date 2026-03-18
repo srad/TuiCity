@@ -86,23 +86,42 @@ impl Map {
             }
         }
         
-        // Spread power to adjacent buildings (buildings receive power but do not transmit it)
-        let mut building_queue = Vec::new();
+        // Spread power to adjacent buildings/zones (receivers do not transmit)
+        let mut receiver_idxs = Vec::new();
         for y in 0..self.height {
             for x in 0..self.width {
                 let idx = y * self.width + x;
                 if self.overlays[idx].powered {
                     for (nx, ny, tile) in self.neighbors4(x, y) {
                         let n_idx = ny * self.width + nx;
-                        if !self.overlays[n_idx].powered && tile.is_building() {
-                            building_queue.push(n_idx);
+                        if !self.overlays[n_idx].powered && tile.receives_power() {
+                            receiver_idxs.push(n_idx);
                         }
                     }
                 }
             }
         }
-        for idx in building_queue {
+        for idx in receiver_idxs {
              self.overlays[idx].powered = true;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_power_spread_to_zones() {
+        let mut map = Map::new(5, 5);
+        map.set(0, 0, Tile::PowerPlant);
+        map.set(1, 0, Tile::PowerLine);
+        map.set(2, 0, Tile::ZoneRes);
+        
+        map.update_power_grid();
+        
+        assert!(map.get_overlay(0, 0).powered, "Power plant should be powered");
+        assert!(map.get_overlay(1, 0).powered, "Power line should be powered");
+        assert!(map.get_overlay(2, 0).powered, "Zone adjacent to power line should be powered");
     }
 }

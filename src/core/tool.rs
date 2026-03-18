@@ -1,6 +1,6 @@
 use crate::core::map::Tile;
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub enum Tool {
     Inspect,
     ZoneRes,
@@ -17,6 +17,21 @@ pub enum Tool {
 }
 
 impl Tool {
+    pub const ALL: [Tool; 12] = [
+        Tool::Inspect,
+        Tool::ZoneRes,
+        Tool::ZoneComm,
+        Tool::ZoneInd,
+        Tool::Road,
+        Tool::Rail,
+        Tool::PowerLine,
+        Tool::PowerPlant,
+        Tool::Park,
+        Tool::Police,
+        Tool::Fire,
+        Tool::Bulldoze,
+    ];
+
     pub fn cost(&self) -> i64 {
         match self {
             Tool::Inspect => 0,

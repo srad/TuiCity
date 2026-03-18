@@ -386,10 +386,17 @@ pub struct InGameScreen {
     pub inspect_win: FloatingWindow,
     /// Which window (if any) the user is currently dragging, plus the grab offset.
     pub window_drag: Option<WindowDrag>,
+    /// States for each toolbar button (Feature: rat-widget migration).
+    pub toolbar_btn_states: std::collections::HashMap<Tool, rat_widget::button::ButtonState>,
 }
 
 impl InGameScreen {
     pub fn new() -> Self {
+        let mut toolbar_btn_states = std::collections::HashMap::new();
+        for &tool in Tool::ALL.iter() {
+            toolbar_btn_states.insert(tool, rat_widget::button::ButtonState::default());
+        }
+
         Self {
             camera: Camera::default(),
             current_tool: Tool::Inspect,
@@ -417,7 +424,15 @@ impl InGameScreen {
             budget_win:  FloatingWindow::new(10,       5, 46,  24),
             inspect_win: FloatingWindow::new(15,       5, 34,  16),
             window_drag: None,
+            toolbar_btn_states,
         }
+    }
+
+    /// Returns true if the given screen coordinate overlaps any floating UI window.
+    pub fn is_over_window(&self, col: u16, row: u16) -> bool {
+        self.panel_win.contains(col, row)
+            || (self.is_budget_open && self.budget_win.contains(col, row))
+            || (self.inspect_pos.is_some() && self.inspect_win.contains(col, row))
     }
 
     /// Push a notification message into the event queue (Feature 4).
@@ -634,14 +649,6 @@ impl InGameScreen {
             return;
         }
 
-        let tool = self.ui_areas.toolbar_buttons.iter()
-            .find(|(_, area)| area.contains(col, row))
-            .map(|(t, _)| *t);
-        if let Some(t) = tool {
-            self.current_tool = t;
-            return;
-        }
-
         // If the click is inside an overlay window but didn't hit a recognised
         // element above, consume it so it never falls through to the map.
         if self.panel_win.contains(col, row)
@@ -693,6 +700,25 @@ impl InGameScreen {
 }
 
 impl Screen for InGameScreen {
+    fn on_event(&mut self, event: &crossterm::event::Event, _context: AppContext) -> Option<ScreenTransition> {
+        use rat_widget::event::ButtonOutcome;
+        
+        // Handle toolbar buttons
+        for (tool, state) in self.toolbar_btn_states.iter_mut() {
+            // Toolbar buttons are always considered "focused" for mouse interaction purposes
+            let outcome = rat_widget::button::handle_events(state, true, event);
+            if outcome == ButtonOutcome::Pressed {
+                self.current_tool = *tool;
+                self.line_drag = None;
+                self.rect_drag = None;
+                // No transition, just internal state change
+                return None; 
+            }
+        }
+        
+        None
+    }
+
     fn on_tick(&mut self, context: AppContext) {
         if self.paused { return; }
 
@@ -819,6 +845,12 @@ impl Screen for InGameScreen {
             }
             if self.map_win.title_bar_contains(col, row) {
                 self.window_drag = Some(WindowDrag::Map(col - self.map_win.x, row - self.map_win.y));
+                return None;
+            }
+
+            // If we are over a window, don't trigger map actions (line drag, rect drag, etc.)
+            if self.is_over_window(col, row) {
+                self.handle_click(col, row, true, &context);
                 return None;
             }
 
@@ -962,6 +994,11 @@ impl Screen for InGameScreen {
                     }
                     return None;
                 }
+                
+                if self.is_over_window(col, row) {
+                    return None;
+                }
+
                 if self.line_drag.is_some() && self.ui_areas.map.contains(col, row) {
                     let (mx, my) = self.screen_to_map_clamped(col, row, &context);
                     let (tool, sx, sy) = self.line_drag.as_ref().map(|d| (d.tool, d.start_x, d.start_y)).unwrap();
@@ -981,7 +1018,7 @@ impl Screen for InGameScreen {
             Action::MouseUp { col, row } => {
                 self.window_drag = None;
                 if self.line_drag.is_some() {
-                    if self.ui_areas.map.contains(col, row) {
+                    if self.ui_areas.map.contains(col, row) && !self.is_over_window(col, row) {
                         let (mx, my) = self.screen_to_map_clamped(col, row, &context);
                         let (tool, sx, sy) = self.line_drag.as_ref().map(|d| (d.tool, d.start_x, d.start_y)).unwrap();
                         let final_path = { let e = context.engine.read().unwrap(); crate::app::line_drag::line_shortest_path(&e.map, tool, sx, sy, mx, my) };
@@ -989,7 +1026,7 @@ impl Screen for InGameScreen {
                     }
                     self.commit_line_drag(&context);
                 } else if self.rect_drag.is_some() {
-                    if self.ui_areas.map.contains(col, row) {
+                    if self.ui_areas.map.contains(col, row) && !self.is_over_window(col, row) {
                         let (mx, my) = self.screen_to_map_clamped(col, row, &context);
                         if let Some(ref mut d) = self.rect_drag { d.update_end(mx, my); }
                     }
@@ -999,9 +1036,7 @@ impl Screen for InGameScreen {
             Action::MouseMove { col, row } => {
                 if Tool::uses_footprint_preview(self.current_tool)
                     && self.ui_areas.map.contains(col, row)
-                    && !self.panel_win.contains(col, row)
-                    && !(self.is_budget_open && self.budget_win.contains(col, row))
-                    && !(self.inspect_pos.is_some() && self.inspect_win.contains(col, row))
+                    && !self.is_over_window(col, row)
                 {
                     let (mx, my) = self.screen_to_map_clamped(col, row, &context);
                     self.camera.cursor_x = mx; self.camera.cursor_y = my;
@@ -1102,8 +1137,7 @@ mod tests {
     #[test]
     fn test_new_city_screen_rat_widget() {
         use crate::app::{NewCityState, NewCityField};
-        use rat_widget::slider::SliderState;
-        use crossterm::event::{Event, MouseEvent, MouseEventKind, MouseButton, KeyCode, KeyEvent, KeyModifiers, KeyEventKind, KeyEventState};
+        use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers, KeyEventKind, KeyEventState};
 
         let mut screen = NewCityScreen { state: NewCityState::new() };
         let engine = std::sync::Arc::new(std::sync::RwLock::new(crate::core::engine::SimulationEngine::new(

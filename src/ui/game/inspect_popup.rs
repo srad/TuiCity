@@ -49,6 +49,7 @@ impl<'a> Widget for InspectContent<'a> {
         let overlay = self.map.get_overlay(x, y);
 
         let ix = area.x;
+        #[allow(unused_assignments)]
         let mut row = area.y;
         let max_row = area.y + area.height.saturating_sub(1);
 
@@ -105,6 +106,7 @@ impl<'a> Widget for InspectContent<'a> {
             Style::default().fg(Color::Rgb(220, 130, 50))
         );
 
+        let _ = row;
         let hint_row = area.y + area.height.saturating_sub(1);
         buf.set_string(ix, hint_row, "ESC: close", Style::default().fg(Color::DarkGray));
     }

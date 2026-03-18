@@ -88,7 +88,6 @@ pub struct UiAreas {
     pub map: ClickArea,
     pub minimap: ClickArea,
     pub pause_btn: ClickArea,
-    pub toolbar_buttons: Vec<(Tool, ClickArea)>,
     pub menu_bar_y: u16,
 }
 

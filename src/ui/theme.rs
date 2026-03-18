@@ -67,6 +67,7 @@ fn lerp_color(val: u8, low: (u8, u8, u8), high: (u8, u8, u8)) -> Color {
 
 /// Centralised asset registry.  `default_theme()` returns the current hardcoded
 /// values; swap the struct to change the entire visual style at runtime.
+#[allow(dead_code)]
 pub struct Theme {
     pub road_chars:  [char; 16],
     pub rail_chars:  [char; 16],
@@ -75,6 +76,7 @@ pub struct Theme {
     pub cursor_bg:   Color,
 }
 
+#[allow(dead_code)]
 impl Theme {
     pub fn default_theme() -> Self {
         Self {

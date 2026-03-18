@@ -76,7 +76,16 @@ impl Tile {
     }
 
     pub fn is_road(&self) -> bool {
-        matches!(self, Tile::Road | Tile::Rail)
+        matches!(self, Tile::Road | Tile::Rail | Tile::RoadPowerLine)
+    }
+
+    pub fn receives_power(&self) -> bool {
+        self.is_building()
+            || self.is_zone()
+            || matches!(
+                self,
+                Tile::Park | Tile::Police | Tile::Fire | Tile::Hospital
+            )
     }
 
     pub fn road_connects(self) -> bool {

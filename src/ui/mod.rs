@@ -120,7 +120,7 @@ pub fn render_game_v2(frame: &mut Frame, area: Rect, app: &AppState, screen: &mu
     // ── Update click areas ────────────────────────────────────────────────────
     screen.ui_areas.menu_bar_y = menu_area.y;
     screen.ui_areas.map        = to_click_area(map_inner);
-    // minimap + toolbar_buttons updated when panel content is rendered below
+    // minimap updated when panel content is rendered below; toolbar uses rat-widget states.
 
     // ── Background ────────────────────────────────────────────────────────────
     frame.render_widget(
@@ -248,12 +248,16 @@ pub fn render_game_v2(frame: &mut Frame, area: Rect, app: &AppState, screen: &mu
                 toolbar_area,
                 frame.buffer_mut(),
                 screen.current_tool,
-                &mut screen.ui_areas.toolbar_buttons,
+                &mut screen.toolbar_btn_states,
             );
         }
         if minimap_area.width > 0 && minimap_area.height > 0 {
             frame.render_widget(
-                game::minimap::MiniMap { map: &engine.map, camera: &screen.camera },
+                game::minimap::MiniMap {
+                    map: &engine.map,
+                    camera: &screen.camera,
+                    overlay_mode: screen.overlay_mode,
+                },
                 minimap_area,
             );
         }

@@ -60,6 +60,7 @@ impl<'a> Widget for InfoPanel<'a> {
             }
         }
 
+        #[allow(unused_assignments)]
         let mut row = area.y;
         let w = area.width as usize;
         let bg = Color::Rgb(10, 10, 20);
@@ -180,6 +181,8 @@ impl<'a> Widget for InfoPanel<'a> {
                 print_row!(&text, Color::Rgb(180, 220, 180));
             }
         }
+        
+        let _ = row;
     }
 }
 

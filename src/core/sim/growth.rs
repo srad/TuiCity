@@ -123,3 +123,45 @@ fn has_road_access(map: &Map, start_x: usize, start_y: usize, max_dist: i32) -> 
     }
     false
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::map::Map;
+
+    #[test]
+    fn test_road_access_powerline() {
+        let mut map = Map::new(10, 10);
+        map.set(5, 5, Tile::RoadPowerLine);
+        
+        assert!(has_road_access(&map, 5, 6, 3), "Tile at (5,6) should have road access from (5,5) RoadPowerLine");
+        assert!(has_road_access(&map, 7, 5, 3), "Tile at (7,5) should have road access from (5,5) RoadPowerLine");
+    }
+
+    #[test]
+    fn test_zone_growth() {
+        let mut map = Map::new(5, 5);
+        map.set(0, 0, Tile::PowerPlant);
+        map.set(1, 0, Tile::RoadPowerLine);
+        map.set(2, 0, Tile::ZoneRes);
+        
+        map.update_power_grid();
+        
+        let mut sim = SimState::default();
+        sim.demand_res = 1.0; // High demand
+        
+        // Growth is probabilistic, but with demand=1.0, chance is 0.15 + lv_bonus.
+        // We might need multiple ticks to see growth, or we can mock RNG if we had it.
+        // Since we don't mock RNG, we'll just run it a few times.
+        let mut grown = false;
+        for _ in 0..100 {
+            tick_growth(&mut map, &mut sim);
+            if map.get(2, 0) == Tile::ResLow {
+                grown = true;
+                break;
+            }
+        }
+        
+        assert!(grown, "Zone should have grown into ResLow after some ticks with high demand and infrastructure");
+    }
+}

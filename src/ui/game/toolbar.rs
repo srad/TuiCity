@@ -1,9 +1,11 @@
-use crate::{app::ClickArea, core::tool::Tool};
+use crate::core::tool::Tool;
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
     style::{Color, Modifier, Style},
+    widgets::StatefulWidget,
 };
+use rat_widget::button::Button;
 
 pub const TOOL_GROUPS: &[(&str, &[Tool])] = &[
     ("", &[Tool::Inspect, Tool::Bulldoze]),
@@ -19,10 +21,8 @@ pub fn render_toolbar(
     area: Rect,
     buf: &mut Buffer,
     current_tool: Tool,
-    btn_areas: &mut Vec<(Tool, ClickArea)>,
+    btn_states: &mut std::collections::HashMap<Tool, rat_widget::button::ButtonState>,
 ) {
-    btn_areas.clear();
-
     if area.width < 3 || area.height < 2 {
         return;
     }
@@ -88,30 +88,26 @@ pub fn render_toolbar(
             let btn_text = format!("[{}] {}{}", hint, label, cost_str);
             let btn_text = truncate(&btn_text, (area.width as usize).saturating_sub(1));
 
-            let style = if is_active {
-                Style::default()
-                    .fg(Color::Black)
-                    .bg(Color::Rgb(220, 200, 60))
-                    .add_modifier(Modifier::BOLD)
-            } else {
-                Style::default()
-                    .fg(Color::Rgb(200, 200, 220))
-                    .bg(Color::Rgb(30, 30, 50))
-            };
+            let base_style = Style::default().fg(Color::Rgb(200, 200, 220)).bg(Color::Rgb(30, 30, 50));
+            let active_style = Style::default().fg(Color::Black).bg(Color::Rgb(220, 200, 60)).add_modifier(Modifier::BOLD);
 
-            // Pad to full width
-            let padded = format!("{:<width$}", btn_text, width = area.width as usize);
-            buf.set_string(area.x, row, &padded, style);
+            // Use rat_widget::button::Button for standardized event handling & styling
+            let mut button = Button::new(btn_text.clone())
+                .styles(rat_widget::button::ButtonStyle {
+                    style: if is_active { active_style } else { base_style },
+                    armed: Some(Style::default().bg(Color::Rgb(255, 100, 0))),
+                    ..Default::default()
+                });
+            
+            // If active, we want it to look "selected" even if not focused
+            if is_active {
+                button = button.style(active_style);
+            }
 
-            btn_areas.push((
-                tool,
-                ClickArea {
-                    x: area.x,
-                    y: row,
-                    width: area.width,
-                    height: 1,
-                },
-            ));
+            let btn_area = Rect::new(area.x, row, area.width, 1);
+            if let Some(state) = btn_states.get_mut(&tool) {
+                button.render(btn_area, buf, state);
+            }
 
             row += 1;
         }

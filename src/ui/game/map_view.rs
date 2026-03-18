@@ -257,33 +257,66 @@ impl<'a> Widget for MapPreview<'a> {
             return;
         }
 
-        let mw = self.map.width;
-        let mh = self.map.height;
-        let pw = area.width as usize;
-        let ph = area.height as usize;
+        let mw = self.map.width as f32;
+        let mh = self.map.height as f32;
+        // Main map is rendered with 2:1 tiles (double-width).
+        let map_visual_aspect = (2.0 * mw) / mh;
 
-        // Center crop: find top-left coordinate, ensuring we don't underflow
-        let offset_x = (mw / 2).saturating_sub((pw / 2) / 2);
-        let offset_y = (mh / 2).saturating_sub(ph / 2);
+        // Fit a rectangle into area that matches map_visual_aspect.
+        let (mut rw, mut rh) = if area.width as f32 / area.height as f32 > map_visual_aspect {
+            let h = area.height as f32;
+            let w = h * map_visual_aspect;
+            (w as u16, h as u16)
+        } else {
+            let w = area.width as f32;
+            let h = w / map_visual_aspect;
+            (w as u16, h as u16)
+        };
 
-        for row in 0..area.height {
-            for col in 0..area.width {
-                let map_x = offset_x + (col as usize / 2);
-                let map_y = offset_y + row as usize;
+        // Ensure width is even for double-width tiles
+        rw = (rw / 2) * 2;
+        rw = rw.max(2);
+        rh = rh.max(1);
 
-                if map_x < mw && map_y < mh {
-                    let tile = self.map.get(map_x, map_y);
-                    let overlay = self.map.get_overlay(map_x, map_y);
-                    let glyph = theme::tile_glyph(tile, overlay);
+        // Center the render rectangle
+        let rx = area.x + (area.width.saturating_sub(rw)) / 2;
+        let ry = area.y + (area.height.saturating_sub(rh)) / 2;
+        let render_area = Rect::new(rx, ry, rw, rh);
 
-                    let cell = buf.cell_mut((area.x + col, area.y + row)).unwrap();
-                    cell.set_char(glyph.ch);
-                    cell.set_fg(glyph.fg);
-                    cell.set_bg(glyph.bg);
-                } else {
-                    let cell = buf.cell_mut((area.x + col, area.y + row)).unwrap();
-                    cell.set_char(' ');
-                    cell.set_bg(Color::Rgb(8, 12, 8)); // Match the void background
+        // Clear entire widget area with void color first
+        for y in area.y..area.y + area.height {
+            for x in area.x..area.x + area.width {
+                let cell = buf.cell_mut((x, y)).unwrap();
+                cell.set_char(' ');
+                cell.set_bg(Color::Rgb(8, 12, 8));
+            }
+        }
+
+        let mw_usize = self.map.width;
+        let mh_usize = self.map.height;
+        let num_v_tiles_x = (render_area.width / 2) as usize;
+        let num_v_tiles_y = render_area.height as usize;
+
+        for v_row in 0..num_v_tiles_y {
+            for v_col in 0..num_v_tiles_x {
+                // Endpoint-interpolation
+                let map_x = if num_v_tiles_x <= 1 { 0 } else { (v_col * (mw_usize - 1)) / (num_v_tiles_x - 1) };
+                let map_y = if num_v_tiles_y <= 1 { 0 } else { (v_row * (mh_usize - 1)) / (num_v_tiles_y - 1) };
+
+                let tile = self.map.get(map_x, map_y);
+                let overlay = self.map.get_overlay(map_x, map_y);
+                let glyph = theme::tile_glyph(tile, overlay);
+
+                // Draw two columns for this visual tile
+                for dx in 0..2 {
+                    let bx = render_area.x + (v_col as u16 * 2) + dx;
+                    let by = render_area.y + v_row as u16;
+                    if bx < area.x + area.width && by < area.y + area.height {
+                        let cell = buf.cell_mut((bx, by)).unwrap();
+                        cell.set_char(glyph.ch);
+                        cell.set_fg(glyph.fg);
+                        cell.set_bg(glyph.bg);
+                    }
                 }
             }
         }
