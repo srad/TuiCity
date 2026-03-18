@@ -6,14 +6,13 @@ use ratatui::{
 };
 
 pub const TOOL_GROUPS: &[(&str, &[Tool])] = &[
-    ("Query", &[Tool::Inspect]),
+    ("", &[Tool::Inspect, Tool::Bulldoze]),
     ("Zones", &[Tool::ZoneRes, Tool::ZoneComm, Tool::ZoneInd]),
     ("Roads/Power", &[Tool::Road, Tool::Rail, Tool::PowerLine]),
     (
         "Buildings",
         &[Tool::PowerPlant, Tool::Park, Tool::Police, Tool::Fire],
     ),
-    ("Other", &[Tool::Bulldoze]),
 ];
 
 pub fn render_toolbar(
@@ -44,33 +43,34 @@ pub fn render_toolbar(
             break;
         }
 
-        // Group header
-        let header = format!("┌ {}", group_name);
-        let header_trimmed = truncate(&header, area.width as usize);
-        buf.set_string(
-            area.x,
-            row,
-            &header_trimmed,
-            Style::default()
-                .fg(Color::Rgb(150, 150, 200))
-                .bg(Color::Rgb(20, 20, 35)),
-        );
-        // Fill rest of header line with ─
-        let header_char_count = header_trimmed.chars().count() as u16;
-        let start_x = area.x + header_char_count;
-        if start_x < area.x + area.width {
-            let remaining = (area.x + area.width - start_x) as usize;
-            let rest: String = std::iter::repeat_n('─', remaining).collect();
+        // Group header — omitted for unnamed groups
+        if !group_name.is_empty() {
+            let header = format!("┌ {}", group_name);
+            let header_trimmed = truncate(&header, area.width as usize);
             buf.set_string(
-                start_x,
+                area.x,
                 row,
-                &rest,
+                &header_trimmed,
                 Style::default()
-                    .fg(Color::Rgb(60, 60, 80))
+                    .fg(Color::Rgb(150, 150, 200))
                     .bg(Color::Rgb(20, 20, 35)),
             );
+            let header_char_count = header_trimmed.chars().count() as u16;
+            let start_x = area.x + header_char_count;
+            if start_x < area.x + area.width {
+                let remaining = (area.x + area.width - start_x) as usize;
+                let rest: String = std::iter::repeat_n('─', remaining).collect();
+                buf.set_string(
+                    start_x,
+                    row,
+                    &rest,
+                    Style::default()
+                        .fg(Color::Rgb(60, 60, 80))
+                        .bg(Color::Rgb(20, 20, 35)),
+                );
+            }
+            row += 1;
         }
-        row += 1;
 
         for &tool in tools {
             if row >= area.y + area.height {
@@ -130,6 +130,17 @@ pub fn render_toolbar(
             row += 1;
         }
     }
+}
+
+/// Exact number of rows the toolbar content occupies.
+pub fn toolbar_height() -> u16 {
+    let mut h = 0u16;
+    for &(group_name, tools) in TOOL_GROUPS {
+        if !group_name.is_empty() { h += 1; } // header
+        h += tools.len() as u16;
+        h += 1; // footer separator
+    }
+    h
 }
 
 fn truncate(s: &str, max: usize) -> String {

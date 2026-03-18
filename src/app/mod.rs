@@ -37,6 +37,50 @@ impl ClickArea {
     }
 }
 
+// ── Floating window ───────────────────────────────────────────────────────────
+
+#[derive(Clone, Debug)]
+pub struct FloatingWindow {
+    pub x: u16,
+    pub y: u16,
+    pub width: u16,
+    pub height: u16,
+}
+
+impl FloatingWindow {
+    pub fn new(x: u16, y: u16, width: u16, height: u16) -> Self {
+        Self { x, y, width, height }
+    }
+
+    /// True when (col, row) is on the top border row (the draggable title bar).
+    pub fn title_bar_contains(&self, col: u16, row: u16) -> bool {
+        self.width > 0
+            && row == self.y
+            && col >= self.x
+            && col < self.x + self.width
+    }
+
+    /// True when (col, row) is anywhere inside the window (including border).
+    pub fn contains(&self, col: u16, row: u16) -> bool {
+        self.width > 0
+            && self.height > 0
+            && col >= self.x
+            && col < self.x + self.width
+            && row >= self.y
+            && row < self.y + self.height
+    }
+}
+
+// ── Window drag state ─────────────────────────────────────────────────────────
+
+#[derive(Clone, Debug)]
+pub enum WindowDrag {
+    Map(u16, u16),
+    Panel(u16, u16),
+    Budget(u16, u16),
+    Inspect(u16, u16),
+}
+
 // ── UI Areas (written by ui::render each frame) ───────────────────────────────
 
 #[derive(Default)]

@@ -1,7 +1,7 @@
 use crate::{
     app::camera::Camera,
     core::{map::Map, map::Tile, map::TileOverlay, tool::Tool},
-    ui::theme,
+    ui::theme::{self, OverlayMode},
 };
 use ratatui::{buffer::Buffer, layout::Rect, style::Color, widgets::Widget};
 
@@ -20,6 +20,8 @@ pub struct MapView<'a> {
     pub line_preview: &'a [(usize, usize)],
     /// The kind of preview currently active.
     pub preview_kind: PreviewKind,
+    /// Current heat-map overlay mode.
+    pub overlay_mode: OverlayMode,
 }
 
 /// N/E/S/W connectivity flags for a committed map tile.
@@ -105,6 +107,16 @@ impl<'a> Widget for MapView<'a> {
                     ) {
                         let (n, e, s, w) = map_connectivity(self.map, tile, map_x, map_y);
                         theme::network_char(tile, n, e, s, w)
+                    } else if matches!(
+                        tile,
+                        Tile::PowerPlant | Tile::Park | Tile::Police | Tile::Fire
+                    ) {
+                        let same = |tx: usize, ty: usize| self.map.get(tx, ty) == tile;
+                        let n = map_y.checked_sub(1).map(|ny| same(map_x, ny)).unwrap_or(false);
+                        let s = if map_y + 1 < self.map.height { same(map_x, map_y + 1) } else { false };
+                        let e = if map_x + 1 < self.map.width  { same(map_x + 1, map_y) } else { false };
+                        let w = map_x.checked_sub(1).map(|wx| same(wx, map_y)).unwrap_or(false);
+                        theme::building_char(tile, n, e, s, w)
                     } else {
                         glyph.ch
                     };
@@ -163,7 +175,10 @@ impl<'a> Widget for MapView<'a> {
                             PreviewKind::None => (ch, glyph.fg, glyph.bg),
                         }
                     } else {
-                        (ch, glyph.fg, glyph.bg)
+                        // Apply heat-map tint (replaces bg, keeps ch and fg)
+                        let bg = theme::overlay_tint(self.overlay_mode, overlay)
+                            .unwrap_or(glyph.bg);
+                        (ch, glyph.fg, bg)
                     };
 
                     let cell = buf.cell_mut((buf_x, buf_y)).unwrap();
@@ -176,6 +191,56 @@ impl<'a> Widget for MapView<'a> {
                     cell.set_char(' ');
                     cell.set_bg(Color::Rgb(10, 10, 10));
                 }
+            }
+        }
+
+        // ── Scrollbar overlay ─────────────────────────────────────────────────
+        // Drawn after tiles so they always appear on top of map content.
+        let track_bg  = Color::Rgb(18, 18, 28);
+        let track_fg  = Color::Rgb(55, 55, 75);
+        let thumb_fg  = Color::Rgb(150, 150, 190);
+
+        // Vertical scrollbar — right-most column
+        if self.map.height > area.height as usize && area.width >= 1 {
+            let track_len = area.height as usize;
+            let map_h     = self.map.height;
+            let view_h    = area.height as usize;
+            let max_off   = map_h.saturating_sub(view_h);
+            let thumb_len = ((track_len * view_h) / map_h).max(1);
+            let thumb_pos = if max_off == 0 { 0 } else {
+                (track_len.saturating_sub(thumb_len))
+                    * (self.camera.offset_y as usize).min(max_off)
+                    / max_off
+            };
+            let sx = area.x + area.width - 1;
+            for row in 0..track_len {
+                let is_thumb = row >= thumb_pos && row < thumb_pos + thumb_len;
+                let cell = buf.cell_mut((sx, area.y + row as u16)).unwrap();
+                cell.set_char(if is_thumb { '█' } else { '░' });
+                cell.set_fg(if is_thumb { thumb_fg } else { track_fg });
+                cell.set_bg(track_bg);
+            }
+        }
+
+        // Horizontal scrollbar — bottom row
+        if self.map.width > area.width as usize && area.height >= 1 {
+            let track_len = area.width as usize;
+            let map_w     = self.map.width;
+            let view_w    = area.width as usize;
+            let max_off   = map_w.saturating_sub(view_w);
+            let thumb_len = ((track_len * view_w) / map_w).max(1);
+            let thumb_pos = if max_off == 0 { 0 } else {
+                (track_len.saturating_sub(thumb_len))
+                    * (self.camera.offset_x as usize).min(max_off)
+                    / max_off
+            };
+            let sy = area.y + area.height - 1;
+            for col in 0..track_len {
+                let is_thumb = col >= thumb_pos && col < thumb_pos + thumb_len;
+                let cell = buf.cell_mut((area.x + col as u16, sy)).unwrap();
+                cell.set_char(if is_thumb { '█' } else { '░' });
+                cell.set_fg(if is_thumb { thumb_fg } else { track_fg });
+                cell.set_bg(track_bg);
             }
         }
     }
@@ -192,16 +257,15 @@ impl<'a> Widget for MapPreview<'a> {
             return;
         }
 
-        let mw = self.map.width as f32;
-        let mh = self.map.height as f32;
+        let mw = self.map.width;
+        let mh = self.map.height;
+        let pw = area.width as usize;
+        let ph = area.height as usize;
 
         for row in 0..area.height {
             for col in 0..area.width {
-                let map_x = ((col as f32 / area.width as f32) * mw) as usize;
-                let map_y = ((row as f32 / area.height as f32) * mh) as usize;
-
-                let map_x = map_x.min(self.map.width.saturating_sub(1));
-                let map_y = map_y.min(self.map.height.saturating_sub(1));
+                let map_x = if pw <= 1 { 0 } else { (col as usize * (mw - 1)) / (pw - 1) };
+                let map_y = if ph <= 1 { 0 } else { (row as usize * (mh - 1)) / (ph - 1) };
 
                 let tile = self.map.get(map_x, map_y);
                 let overlay = self.map.get_overlay(map_x, map_y);

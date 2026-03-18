@@ -33,16 +33,16 @@ impl<'a> Widget for MiniMap<'a> {
             return;
         }
 
-        let mw = self.map.width as f32;
-        let mh = self.map.height as f32;
+        let mw = self.map.width;
+        let mh = self.map.height;
+        let rw = render_area.width as usize;
+        let rh = render_area.height as usize;
 
         for row in 0..render_area.height {
             for col in 0..render_area.width {
-                let map_x = ((col as f32 / render_area.width as f32) * mw) as usize;
-                let map_y = ((row as f32 / render_area.height as f32) * mh) as usize;
-
-                let map_x = map_x.min(self.map.width.saturating_sub(1));
-                let map_y = map_y.min(self.map.height.saturating_sub(1));
+                // Endpoint-interpolation: col 0 → tile 0, col (rw-1) → tile (mw-1)
+                let map_x = if rw <= 1 { 0 } else { (col as usize * (mw - 1)) / (rw - 1) };
+                let map_y = if rh <= 1 { 0 } else { (row as usize * (mh - 1)) / (rh - 1) };
 
                 let tile = self.map.get(map_x, map_y);
                 let overlay = self.map.get_overlay(map_x, map_y);
@@ -56,13 +56,22 @@ impl<'a> Widget for MiniMap<'a> {
             }
         }
 
-        // Draw viewport rectangle
-        let vx0 = ((self.camera.offset_x as f32 / mw) * render_area.width as f32) as u16;
-        let vy0 = ((self.camera.offset_y as f32 / mh) * render_area.height as f32) as u16;
-        let vx1 = (((self.camera.offset_x + self.camera.view_w as i32) as f32 / mw)
-            * render_area.width as f32) as u16;
-        let vy1 = (((self.camera.offset_y + self.camera.view_h as i32) as f32 / mh)
-            * render_area.height as f32) as u16;
+        // Draw viewport rectangle — use same endpoint-interpolation formula as tile sampling
+        // pixel = tile * (rw-1) / (mw-1)
+        let vx0 = if mw <= 1 { 0u16 } else {
+            ((self.camera.offset_x as usize * (rw - 1)) / (mw - 1)) as u16
+        };
+        let vy0 = if mh <= 1 { 0u16 } else {
+            ((self.camera.offset_y as usize * (rh - 1)) / (mh - 1)) as u16
+        };
+        let vx1 = if mw <= 1 { (rw - 1) as u16 } else {
+            (((self.camera.offset_x + self.camera.view_w as i32) as usize).min(mw - 1) * (rw - 1)
+                / (mw - 1)) as u16
+        };
+        let vy1 = if mh <= 1 { (rh - 1) as u16 } else {
+            (((self.camera.offset_y + self.camera.view_h as i32) as usize).min(mh - 1) * (rh - 1)
+                / (mh - 1)) as u16
+        };
 
         let vx0 = vx0.min(render_area.width.saturating_sub(1));
         let vy0 = vy0.min(render_area.height.saturating_sub(1));

@@ -24,21 +24,21 @@ This document tracks planned improvements and features following the major archi
 - [x] **Income in Status Bar**: Annualised net income (taxes − maintenance × 12) shown in green/red next to the treasury.
 
 ## 🎨 Visual Polish & UI
-- [ ] **City News Ticker**: Scrolling marquee in the status bar for events (e.g., "New power plant built", "High demand for housing").
+- [x] **City News Ticker**: Event queue in the status bar — "First residents!", budget deficit warnings, auto-save notifications.
 - [ ] **Themed UI**: Use `ratatui` styling to create different "skins" for the terminal (Classic SC2K, Modern Dark, High-Contrast).
-- [ ] **Data Overlays**: Toggleable map modes showing Power Grid, Crime, Pollution, Land Value heat-maps.
+- [x] **Data Overlays**: Tab cycles Power/Pollution/Land Value/Crime/Fire Risk heat-map overlays on the map.
 
 ## ⚙️ Simulation Depth
-- [ ] **Detailed Budget**: Break down income (taxes) vs. expenses (maintenance, services) in the Budget popup.
+- [x] **Detailed Budget**: Income vs. per-category annual maintenance breakdown in the Budget popup.
 
 ## 🖥️ Alternative Frontends
 - [ ] **Graphical Renderer**: Create a second implementation of the `Renderer` trait using `macroquad` or `pixels`.
 - [ ] **Web Backend**: Implement a renderer that pipes state to a Web-Socket for a browser-based canvas frontend.
 
 ## ⌨️ Interaction & QoL
-- [ ] **Advanced Query Tool**: Clicking a building with `?` shows a detailed popup with its population and "happiness".
-- [ ] **Auto-Save**: Background task to save the city every 5 minutes.
+- [x] **Advanced Query Tool**: Clicking a tile with `?` shows a detailed inspect popup (pop estimate, overlay values, powered/fire state).
+- [x] **Auto-Save**: Saves automatically every ~6 in-game months; notified via status bar.
 
 ## 🏗️ Refactoring & Technical Debt
-- [ ] **Asset Registry**: Move hardcoded tile characters and colors into a configuration file (YAML/TOML).
+- [x] **Asset Registry**: `Theme` struct in `ui/theme.rs` — `Theme::default_theme()` centralises all tile glyphs, network chars and cursor colors; swap struct to change visual style.
 - [ ] **Event-Driven Simulation**: Move from a fixed tick rate to an event-based system for certain simulation triggers.

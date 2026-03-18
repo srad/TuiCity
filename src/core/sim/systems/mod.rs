@@ -1,5 +1,5 @@
 use crate::core::map::{Map, Tile};
-use crate::core::sim::{SimState, growth};
+use crate::core::sim::{SimState, MaintenanceBreakdown, growth};
 use crate::core::sim::system::SimSystem;
 use rand::Rng;
 
@@ -271,12 +271,15 @@ impl SimSystem for FinanceSystem {
         let fire_tiles        = count_tiles(map, |t| t == Tile::Fire) as i64;
         let park_tiles        = count_tiles(map, |t| t == Tile::Park) as i64;
 
-        let maintenance = road_tiles        * 1   // $1/tile/month
-                        + power_line_tiles  * 1   // $1/tile/month
-                        + power_plant_tiles * 5   // $5/tile/month (4×4 = $80/plant/month)
-                        + police_tiles      * 10  // $10/tile/month (3×3 = $90/station/month)
-                        + fire_tiles        * 10  // $10/tile/month (3×3 = $90/station/month)
-                        + park_tiles        * 2;  // $2/tile/month (2×2 = $8/park/month)
+        let road_monthly        = road_tiles        * 1;
+        let power_line_monthly  = power_line_tiles  * 1;
+        let power_plant_monthly = power_plant_tiles * 5;
+        let police_monthly      = police_tiles      * 10;
+        let fire_monthly        = fire_tiles        * 10;
+        let park_monthly        = park_tiles        * 2;
+
+        let maintenance = road_monthly + power_line_monthly + power_plant_monthly
+                        + police_monthly + fire_monthly + park_monthly;
         sim.treasury -= maintenance;
 
         // Annual tax collection (month 1 = start of new year)
@@ -290,6 +293,18 @@ impl SimSystem for FinanceSystem {
 
         // Annualised net income: taxes collected per year minus yearly maintenance cost
         sim.last_income = annual_tax - maintenance * 12;
+
+        // Populate per-category breakdown for the budget popup
+        sim.last_breakdown = MaintenanceBreakdown {
+            roads:        road_monthly        * 12,
+            power_lines:  power_line_monthly  * 12,
+            power_plants: power_plant_monthly * 12,
+            police:       police_monthly      * 12,
+            fire:         fire_monthly        * 12,
+            parks:        park_monthly        * 12,
+            total:        maintenance         * 12,
+            annual_tax,
+        };
 
         // Recalculate demand
         let res  = count_tiles(map, |t| matches!(t, Tile::ZoneRes  | Tile::ResLow  | Tile::ResMed  | Tile::ResHigh)) as f32;
@@ -545,4 +560,49 @@ impl SimSystem for TornadoSystem {
 
 fn count_tiles(map: &Map, pred: impl Fn(Tile) -> bool) -> usize {
     map.tiles.iter().filter(|&&t| pred(t)).count()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::sim::system::SimSystem;
+    use crate::core::map::Map;
+    use crate::core::sim::SimState;
+
+    fn run_finance(map: &mut Map, sim: &mut SimState) {
+        FinanceSystem.tick(map, sim);
+    }
+
+    #[test]
+    fn finance_breakdown_roads_annual_is_12x_monthly() {
+        let mut map = Map::new(5, 5);
+        map.set(2, 2, Tile::Road);
+        map.set(2, 3, Tile::Road);
+        let mut sim = SimState::default();
+        run_finance(&mut map, &mut sim);
+        // 2 road tiles × $1/month × 12 months = $24
+        assert_eq!(sim.last_breakdown.roads, 24);
+    }
+
+    #[test]
+    fn finance_breakdown_total_equals_sum_of_parts() {
+        let mut map = Map::new(5, 5);
+        map.set(0, 0, Tile::Road);
+        map.set(1, 0, Tile::PowerLine);
+        let mut sim = SimState::default();
+        run_finance(&mut map, &mut sim);
+        let b = &sim.last_breakdown;
+        assert_eq!(b.total, b.roads + b.power_lines + b.power_plants + b.police + b.fire + b.parks);
+    }
+
+    #[test]
+    fn finance_breakdown_annual_tax_matches_last_income_at_zero_maintenance() {
+        let mut map = Map::new(5, 5); // empty map → no maintenance
+        let mut sim = SimState::default();
+        sim.population = 100;
+        sim.tax_rate = 9;
+        run_finance(&mut map, &mut sim);
+        // annual_tax should equal last_income when maintenance is 0
+        assert_eq!(sim.last_breakdown.annual_tax, sim.last_income);
+    }
 }

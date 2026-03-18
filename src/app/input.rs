@@ -78,6 +78,9 @@ fn translate_key(key: crossterm::event::KeyEvent) -> Action {
         KeyCode::Esc => Action::MenuBack,
         KeyCode::Backspace => Action::DeleteChar,
 
+        // Tab cycles overlays
+        KeyCode::Tab => Action::CharInput('\t'),
+
         // All printable characters — context decides meaning
         KeyCode::Char(c) => Action::CharInput(c),
 

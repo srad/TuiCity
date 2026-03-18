@@ -2,6 +2,21 @@ pub mod growth;
 pub mod system;
 pub mod systems;
 
+// ── MaintenanceBreakdown ──────────────────────────────────────────────────────
+
+/// Per-category annual maintenance costs, populated by `FinanceSystem` each month.
+#[derive(Default, Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct MaintenanceBreakdown {
+    pub roads:        i64,
+    pub power_lines:  i64,
+    pub power_plants: i64,
+    pub police:       i64,
+    pub fire:         i64,
+    pub parks:        i64,
+    pub total:        i64,
+    pub annual_tax:   i64,
+}
+
 // ── Disaster configuration ────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -42,6 +57,8 @@ pub struct SimState {
     pub disasters: DisasterConfig,
     #[serde(default)]
     pub last_income: i64,   // annualised net income (taxes - maintenance×12), updated each month
+    #[serde(default)]
+    pub last_breakdown: MaintenanceBreakdown,
 }
 
 impl Default for SimState {
@@ -62,6 +79,7 @@ impl Default for SimState {
             treasury_history: Vec::new(),
             disasters: DisasterConfig::default(),
             last_income: 0,
+            last_breakdown: MaintenanceBreakdown::default(),
         }
     }
 }
@@ -83,6 +101,26 @@ impl SimState {
             12 => "Dec",
             _ => "???",
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn maintenance_breakdown_defaults_to_zero() {
+        let b = MaintenanceBreakdown::default();
+        assert_eq!(b.roads, 0);
+        assert_eq!(b.total, 0);
+        assert_eq!(b.annual_tax, 0);
+    }
+
+    #[test]
+    fn sim_state_default_has_zero_breakdown() {
+        let s = SimState::default();
+        assert_eq!(s.last_breakdown.total, 0);
+        assert_eq!(s.last_breakdown.annual_tax, 0);
     }
 }
 

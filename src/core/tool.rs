@@ -128,7 +128,7 @@ impl Tool {
     /// Footprint size (width, height) in tiles.  1×1 for single-tile tools.
     pub fn footprint(&self) -> (usize, usize) {
         match self {
-            Tool::PowerPlant => (4, 4),
+            Tool::PowerPlant => (6, 5),
             Tool::Police | Tool::Fire => (3, 3),
             Tool::Park => (2, 2),
             _ => (1, 1),
