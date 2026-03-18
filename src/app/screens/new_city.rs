@@ -1,5 +1,5 @@
 use crate::{
-    app::input::Action,
+    app::{input::Action, ClickArea},
     core::{
         engine::EngineCommand,
         map::{gen, Map},
@@ -8,7 +8,7 @@ use crate::{
 
 use super::{AppContext, InGameScreen, Screen, ScreenTransition};
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum NewCityField {
     CityName,
     SeedInput,
@@ -43,13 +43,11 @@ pub struct NewCityState {
     pub seed: u64,
     pub preview_map: Map,
     pub focused_field: NewCityField,
-    pub city_name: rat_widget::text_input::TextInputState,
-    pub seed_input: rat_widget::text_input::TextInputState,
-    pub water_slider: rat_widget::slider::SliderState,
-    pub trees_slider: rat_widget::slider::SliderState,
-    pub regen_btn: rat_widget::button::ButtonState,
-    pub start_btn: rat_widget::button::ButtonState,
-    pub back_btn: rat_widget::button::ButtonState,
+    pub city_name: String,
+    pub seed_input: String,
+    pub water_pct: usize,
+    pub trees_pct: usize,
+    pub field_areas: [ClickArea; 7],
 }
 
 impl NewCityState {
@@ -76,58 +74,47 @@ impl NewCityState {
         let preview_map = gen::generate(&params);
         let seed = Self::pack_seed(params.water_pct, params.trees_pct, raw_seed);
 
-        let city_name = rat_widget::text_input::TextInputState::default();
-        let mut seed_input = rat_widget::text_input::TextInputState::default();
-        seed_input.set_text(format!("{seed:016X}"));
-
-        let mut water_slider = rat_widget::slider::SliderState::default();
-        water_slider.set_value(params.water_pct as usize);
-        let mut trees_slider = rat_widget::slider::SliderState::default();
-        trees_slider.set_value(params.trees_pct as usize);
-
         Self {
             seed,
             preview_map,
             focused_field: NewCityField::CityName,
-            city_name,
-            seed_input,
-            water_slider,
-            trees_slider,
-            regen_btn: rat_widget::button::ButtonState::default(),
-            start_btn: rat_widget::button::ButtonState::default(),
-            back_btn: rat_widget::button::ButtonState::default(),
+            city_name: String::new(),
+            seed_input: format!("{seed:016X}"),
+            water_pct: params.water_pct as usize,
+            trees_pct: params.trees_pct as usize,
+            field_areas: [ClickArea::default(); 7],
         }
     }
 
     pub fn regenerate(&mut self) {
         let raw_seed = rand::random::<u64>() & 0x0000_FFFF_FFFF_FFFF;
-        let w = self.water_slider.value() as u8;
-        let t = self.trees_slider.value() as u8;
+        let w = self.water_pct as u8;
+        let t = self.trees_pct as u8;
         self.seed = Self::pack_seed(w, t, raw_seed);
-        self.seed_input.set_text(format!("{:016X}", self.seed));
+        self.seed_input = format!("{:016X}", self.seed);
         self.rebuild_map();
     }
 
     pub fn apply_seed_input(&mut self) {
-        let text = self.seed_input.text();
+        let text = self.seed_input.clone();
         let raw = text.trim().trim_start_matches("0x").trim_start_matches("0X");
         let parsed = u64::from_str_radix(raw, 16).or_else(|_| text.trim().parse::<u64>());
         if let Ok(new_seed) = parsed {
             self.seed = new_seed;
             let (w, t, _) = Self::unpack_seed(self.seed);
-            self.water_slider.set_value(w as usize);
-            self.trees_slider.set_value(t as usize);
+            self.water_pct = w as usize;
+            self.trees_pct = t as usize;
         }
-        self.seed_input.set_text(format!("{:016X}", self.seed));
+        self.seed_input = format!("{:016X}", self.seed);
         self.rebuild_map();
     }
 
     pub fn sync_sliders_to_seed(&mut self) {
-        let w = self.water_slider.value() as u8;
-        let t = self.trees_slider.value() as u8;
+        let w = self.water_pct as u8;
+        let t = self.trees_pct as u8;
         let (_, _, raw) = Self::unpack_seed(self.seed);
         self.seed = Self::pack_seed(w, t, raw);
-        self.seed_input.set_text(format!("{:016X}", self.seed));
+        self.seed_input = format!("{:016X}", self.seed);
     }
 
     pub fn rebuild_map(&mut self) {
@@ -147,47 +134,8 @@ pub struct NewCityScreen {
 }
 
 impl Screen for NewCityScreen {
-    fn on_event(&mut self, event: &crossterm::event::Event, context: AppContext) -> Option<ScreenTransition> {
-        use rat_widget::event::{ButtonOutcome, SliderOutcome, TextOutcome};
-
-        let focus_city = self.state.focused_field == NewCityField::CityName;
-        let focus_seed = self.state.focused_field == NewCityField::SeedInput;
-        let focus_water = self.state.focused_field == NewCityField::WaterSlider;
-        let focus_trees = self.state.focused_field == NewCityField::TreesSlider;
-        let focus_regen = self.state.focused_field == NewCityField::RegenerateBtn;
-        let focus_start = self.state.focused_field == NewCityField::StartBtn;
-        let focus_back = self.state.focused_field == NewCityField::BackBtn;
-
-        let _out_city = rat_widget::text_input::handle_events(&mut self.state.city_name, focus_city, event);
-        let out_seed = rat_widget::text_input::handle_events(&mut self.state.seed_input, focus_seed, event);
-        let out_water = rat_widget::slider::handle_events(&mut self.state.water_slider, focus_water, event);
-        let out_trees = rat_widget::slider::handle_events(&mut self.state.trees_slider, focus_trees, event);
-        let out_regen = rat_widget::button::handle_events(&mut self.state.regen_btn, focus_regen, event);
-        let out_start = rat_widget::button::handle_events(&mut self.state.start_btn, focus_start, event);
-        let out_back = rat_widget::button::handle_events(&mut self.state.back_btn, focus_back, event);
-
-        if out_seed == TextOutcome::TextChanged {
-            self.state.apply_seed_input();
-        }
-
-        if out_water == SliderOutcome::Changed || out_trees == SliderOutcome::Changed {
-            self.state.sync_sliders_to_seed();
-            self.state.rebuild_map();
-        }
-
-        if out_regen == ButtonOutcome::Pressed {
-            self.state.regenerate();
-        }
-
-        if out_start == ButtonOutcome::Pressed {
-            return self.start_city(context);
-        }
-
-        if out_back == ButtonOutcome::Pressed {
-            return Some(ScreenTransition::Pop);
-        }
-
-        None
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
     }
 
     fn on_action(&mut self, action: Action, context: AppContext) -> Option<ScreenTransition> {
@@ -206,6 +154,90 @@ impl Screen for NewCityScreen {
                 }
                 None
             }
+            Action::MouseClick { col, row } => {
+                for (idx, area) in self.state.field_areas.iter().enumerate() {
+                    if area.contains(col, row) {
+                        let field = NewCityField::ALL[idx];
+                        self.state.focused_field = field;
+                        return match field {
+                            NewCityField::RegenerateBtn => {
+                                self.state.regenerate();
+                                None
+                            }
+                            NewCityField::StartBtn => self.start_city(context),
+                            NewCityField::BackBtn => Some(ScreenTransition::Pop),
+                            NewCityField::WaterSlider => {
+                                let relative = col.saturating_sub(area.x).min(area.width.saturating_sub(1));
+                                self.state.water_pct = ((relative as u32 * 100) / area.width.max(1) as u32) as usize;
+                                self.state.sync_sliders_to_seed();
+                                self.state.rebuild_map();
+                                None
+                            }
+                            NewCityField::TreesSlider => {
+                                let relative = col.saturating_sub(area.x).min(area.width.saturating_sub(1));
+                                self.state.trees_pct = ((relative as u32 * 100) / area.width.max(1) as u32) as usize;
+                                self.state.sync_sliders_to_seed();
+                                self.state.rebuild_map();
+                                None
+                            }
+                            _ => None,
+                        };
+                    }
+                }
+                None
+            }
+            Action::DeleteChar => {
+                match self.state.focused_field {
+                    NewCityField::CityName => {
+                        self.state.city_name.pop();
+                    }
+                    NewCityField::SeedInput => {
+                        self.state.seed_input.pop();
+                        self.state.apply_seed_input();
+                    }
+                    _ => {}
+                }
+                None
+            }
+            Action::CharInput(c) => {
+                match self.state.focused_field {
+                    NewCityField::CityName => {
+                        if !c.is_control() {
+                            self.state.city_name.push(c);
+                        }
+                    }
+                    NewCityField::SeedInput => {
+                        if c.is_ascii_hexdigit() {
+                            self.state.seed_input.push(c.to_ascii_uppercase());
+                            self.state.apply_seed_input();
+                        }
+                    }
+                    NewCityField::WaterSlider => {
+                        if c == '-' {
+                            self.state.water_pct = self.state.water_pct.saturating_sub(1);
+                            self.state.sync_sliders_to_seed();
+                            self.state.rebuild_map();
+                        } else if c == '+' {
+                            self.state.water_pct = (self.state.water_pct + 1).min(100);
+                            self.state.sync_sliders_to_seed();
+                            self.state.rebuild_map();
+                        }
+                    }
+                    NewCityField::TreesSlider => {
+                        if c == '-' {
+                            self.state.trees_pct = self.state.trees_pct.saturating_sub(1);
+                            self.state.sync_sliders_to_seed();
+                            self.state.rebuild_map();
+                        } else if c == '+' {
+                            self.state.trees_pct = (self.state.trees_pct + 1).min(100);
+                            self.state.sync_sliders_to_seed();
+                            self.state.rebuild_map();
+                        }
+                    }
+                    _ => {}
+                }
+                None
+            }
             Action::MenuSelect => match self.state.focused_field {
                 NewCityField::SeedInput => {
                     self.state.apply_seed_input();
@@ -219,53 +251,37 @@ impl Screen for NewCityScreen {
                 NewCityField::BackBtn => Some(ScreenTransition::Pop),
                 _ => None,
             },
-            Action::MouseClick { col, row } => {
-                if col >= 30 {
-                    self.state.focused_field = if row == 2 || row == 3 {
-                        NewCityField::CityName
-                    } else if row == 5 || row == 6 {
-                        NewCityField::SeedInput
-                    } else if row == 8 || row == 9 {
-                        NewCityField::WaterSlider
-                    } else if row == 11 || row == 12 {
-                        NewCityField::TreesSlider
-                    } else if row == 15 {
-                        NewCityField::RegenerateBtn
-                    } else if row == 17 {
-                        NewCityField::StartBtn
-                    } else if row == 19 {
-                        NewCityField::BackBtn
-                    } else {
-                        self.state.focused_field
-                    };
-                }
-                None
-            }
             _ => None,
         }
     }
 
-    fn render(&mut self, frame: &mut ratatui::Frame, _context: AppContext) {
-        let area = frame.area();
-        crate::ui::screens::new_city::render_new_city(frame, area, &mut self.state);
+    fn build_view(&self, _context: AppContext<'_>) -> crate::ui::view::ScreenView {
+        crate::ui::view::ScreenView::NewCity(crate::ui::view::NewCityViewModel {
+            preview_map: self.state.preview_map.clone(),
+            focused_field: self.state.focused_field,
+            city_name: self.state.city_name.clone(),
+            seed_text: self.state.seed_input.clone(),
+            water_pct: self.state.water_pct,
+            trees_pct: self.state.trees_pct,
+        })
     }
 }
 
 impl NewCityScreen {
     fn start_city(&mut self, context: AppContext) -> Option<ScreenTransition> {
+        let name = if self.state.city_name.trim().is_empty() {
+            "New City".to_string()
+        } else {
+            self.state.city_name.clone()
+        };
         if let Some(tx) = context.cmd_tx {
             let _ = tx.send(EngineCommand::ReplaceState {
                 map: self.state.preview_map.clone(),
                 sim: crate::core::sim::SimState::default(),
             });
-            let name = if self.state.city_name.text().is_empty() {
-                "New City".to_string()
-            } else {
-                self.state.city_name.text().to_string()
-            };
             let _ = tx.send(EngineCommand::SetCityName(name));
         }
-        if self.state.city_name.text().is_empty() {
+        if self.state.city_name.trim().is_empty() {
             None
         } else {
             Some(ScreenTransition::Replace(Box::new(InGameScreen::new())))
@@ -276,7 +292,6 @@ impl NewCityScreen {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
     use std::sync::{Arc, RwLock};
 
     #[test]
@@ -296,18 +311,12 @@ mod tests {
         };
 
         screen.state.focused_field = NewCityField::StartBtn;
-        let ev_enter = Event::Key(KeyEvent {
-            code: KeyCode::Enter,
-            modifiers: KeyModifiers::empty(),
-            kind: KeyEventKind::Press,
-            state: KeyEventState::empty(),
-        });
-        let transition = screen.on_event(&ev_enter, context);
+        let transition = screen.on_action(Action::MenuSelect, context);
         assert!(transition.is_none());
     }
 
     #[test]
-    fn test_new_city_screen_rat_widget() {
+    fn test_new_city_screen_fields_and_start_flow() {
         let mut screen = NewCityScreen { state: NewCityState::new() };
         let engine = Arc::new(RwLock::new(crate::core::engine::SimulationEngine::new(
             crate::core::map::Map::new(10, 10),
@@ -322,18 +331,12 @@ mod tests {
             running: &mut running,
         };
 
-        screen.state.city_name.set_text("Test City");
+        screen.state.city_name = "Test City".to_string();
         screen.state.focused_field = NewCityField::SeedInput;
-        screen.state.seed_input.set_text("");
+        screen.state.seed_input.clear();
 
-        let ev = Event::Key(KeyEvent {
-            code: KeyCode::Char('1'),
-            modifiers: KeyModifiers::empty(),
-            kind: KeyEventKind::Press,
-            state: KeyEventState::empty(),
-        });
-        screen.on_event(&ev, context);
-        assert_eq!(screen.state.seed_input.text(), "0000000000000001");
+        screen.on_action(Action::CharInput('1'), context);
+        assert_eq!(screen.state.seed_input, "0000000000000001");
 
         screen.state.apply_seed_input();
         assert_eq!(screen.state.seed, 1);
@@ -347,13 +350,7 @@ mod tests {
         assert!(transition.is_none());
 
         screen.state.focused_field = NewCityField::StartBtn;
-        let ev_enter = Event::Key(KeyEvent {
-            code: KeyCode::Enter,
-            modifiers: KeyModifiers::empty(),
-            kind: KeyEventKind::Press,
-            state: KeyEventState::empty(),
-        });
-        let transition_start = screen.on_event(&ev_enter, AppContext {
+        let transition_start = screen.on_action(Action::MenuSelect, AppContext {
             engine: &engine,
             cmd_tx: &cmd_tx,
             running: &mut running,

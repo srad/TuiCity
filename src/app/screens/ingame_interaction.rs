@@ -1,5 +1,5 @@
 use crate::{
-    app::{LineDrag, RectDrag, Tool, WindowDrag},
+    app::{LineDrag, RectDrag, Tool, WindowId},
     core::engine::EngineCommand,
 };
 
@@ -9,6 +9,39 @@ use super::{
 };
 
 impl InGameScreen {
+    fn title_close_hit(&self, id: WindowId, col: u16, row: u16) -> bool {
+        let win = self.desktop.window(id);
+        win.closable
+            && row == win.y
+            && col >= win.x + win.width.saturating_sub(5)
+            && col < win.x + win.width
+    }
+
+    fn power_picker_button_at(&self, col: u16, row: u16) -> Option<Tool> {
+        let win = self.desktop.window(WindowId::PowerPicker);
+        if !win.visible {
+            return None;
+        }
+        let inner_x = win.x.saturating_add(2);
+        let inner_y = win.y.saturating_add(2);
+        if row == inner_y + 3 && col >= inner_x && col < inner_x + 20 {
+            Some(Tool::PowerPlantCoal)
+        } else if row == inner_y + 8 && col >= inner_x && col < inner_x + 20 {
+            Some(Tool::PowerPlantGas)
+        } else {
+            None
+        }
+    }
+
+    fn toolbar_tool_at(&self, col: u16, row: u16) -> Option<Tool> {
+        let panel = self.desktop.window(WindowId::Panel);
+        if !panel.visible || col < panel.x + 1 || row < panel.y + 1 {
+            return None;
+        }
+        let toolbar_row = row.saturating_sub(panel.y + 1);
+        crate::ui::game::toolbar::tool_at_row(toolbar_row)
+    }
+
     pub fn place_current_tool(&mut self, context: &AppContext) {
         let x = self.camera.cursor_x;
         let y = self.camera.cursor_y;
@@ -241,9 +274,10 @@ impl InGameScreen {
             return;
         }
 
-        if self.panel_win.contains(col, row)
-            || (self.is_budget_open && self.budget_win.contains(col, row))
-            || (self.inspect_pos.is_some() && self.inspect_win.contains(col, row))
+        if self.desktop.contains(WindowId::Panel, col, row)
+            || self.desktop.contains(WindowId::Budget, col, row)
+            || self.desktop.contains(WindowId::Inspect, col, row)
+            || self.desktop.contains(WindowId::PowerPicker, col, row)
         {
             return;
         }
@@ -260,6 +294,7 @@ impl InGameScreen {
 
             if self.current_tool == Tool::Inspect {
                 self.inspect_pos = Some((mx, my));
+                self.desktop.open(WindowId::Inspect, false);
             } else {
                 drop(engine);
                 self.place_current_tool(context);
@@ -287,26 +322,54 @@ impl InGameScreen {
     }
 
     pub fn handle_mouse_click_action(&mut self, col: u16, row: u16, context: &AppContext) -> bool {
-        if self.is_budget_open {
-            if self.budget_win.title_bar_contains(col, row) {
-                self.window_drag = Some(WindowDrag::Budget(col - self.budget_win.x, row - self.budget_win.y));
+        if self.is_budget_open() {
+            if self.title_close_hit(WindowId::Budget, col, row) {
+                self.close_budget();
                 return true;
             }
-            if self.budget_win.contains(col, row) {
+            if self.desktop.begin_drag(WindowId::Budget, col, row) {
+                return true;
+            }
+            if self.desktop.contains(WindowId::Budget, col, row) {
                 self.focus_budget_control_at(col, row);
             }
             return true;
         }
-        if self.inspect_pos.is_some() && self.inspect_win.title_bar_contains(col, row) {
-            self.window_drag = Some(WindowDrag::Inspect(col - self.inspect_win.x, row - self.inspect_win.y));
+        if self.is_inspect_open() {
+            if self.title_close_hit(WindowId::Inspect, col, row) {
+                self.inspect_pos = None;
+                self.desktop.close(WindowId::Inspect);
+                return true;
+            }
+            if self.desktop.begin_drag(WindowId::Inspect, col, row) {
+                return true;
+            }
+        }
+        if self.is_power_picker_open() {
+            if self.title_close_hit(WindowId::PowerPicker, col, row) {
+                self.desktop.close(WindowId::PowerPicker);
+                return true;
+            }
+            if let Some(tool) = self.power_picker_button_at(col, row) {
+                self.select_tool(tool);
+                return true;
+            }
+        }
+        if let Some(tool) = self.toolbar_tool_at(col, row) {
+            if tool == Tool::PowerPlantPicker {
+                self.desktop.toggle(WindowId::PowerPicker, true);
+            } else {
+                self.select_tool(tool);
+            }
             return true;
         }
-        if self.panel_win.title_bar_contains(col, row) {
-            self.window_drag = Some(WindowDrag::Panel(col - self.panel_win.x, row - self.panel_win.y));
+        if self.desktop.begin_drag(WindowId::Panel, col, row) {
             return true;
         }
-        if self.map_win.title_bar_contains(col, row) {
-            self.window_drag = Some(WindowDrag::Map(col - self.map_win.x, row - self.map_win.y));
+        if self.desktop.begin_drag(WindowId::Map, col, row) {
+            return true;
+        }
+        if self.desktop.contains(WindowId::PowerPicker, col, row) {
             return true;
         }
         if self.handle_scrollbar_click(col, row, context) {
@@ -335,25 +398,7 @@ impl InGameScreen {
     }
 
     pub fn handle_mouse_drag_action(&mut self, col: u16, row: u16, context: &AppContext) -> bool {
-        if let Some(ref drag) = self.window_drag {
-            match drag {
-                WindowDrag::Map(ox, oy) => {
-                    self.map_win.x = col.saturating_sub(*ox);
-                    self.map_win.y = row.saturating_sub(*oy);
-                }
-                WindowDrag::Panel(ox, oy) => {
-                    self.panel_win.x = col.saturating_sub(*ox);
-                    self.panel_win.y = row.saturating_sub(*oy);
-                }
-                WindowDrag::Budget(ox, oy) => {
-                    self.budget_win.x = col.saturating_sub(*ox);
-                    self.budget_win.y = row.saturating_sub(*oy);
-                }
-                WindowDrag::Inspect(ox, oy) => {
-                    self.inspect_win.x = col.saturating_sub(*ox);
-                    self.inspect_win.y = row.saturating_sub(*oy);
-                }
-            }
+        if self.desktop.update_drag(col, row) {
             return true;
         }
         if self.scrollbar_drag.is_some() {
@@ -393,7 +438,7 @@ impl InGameScreen {
     }
 
     pub fn handle_mouse_up_action(&mut self, col: u16, row: u16, context: &AppContext) -> bool {
-        self.window_drag = None;
+        self.desktop.end_drag();
         if self.scrollbar_drag.take().is_some() {
             return true;
         }

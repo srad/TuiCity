@@ -1,3 +1,4 @@
+#[derive(Clone, Debug)]
 pub struct Camera {
     pub offset_x: i32,
     pub offset_y: i32,

@@ -1,5 +1,4 @@
-use crate::app::screens::LoadCityState;
-use crate::ui::theme;
+use crate::{app::screens::LoadCityState, ui::{theme, view::LoadCityViewModel}};
 use ratatui::{
     layout::Rect,
     style::{Modifier, Style},
@@ -7,7 +6,7 @@ use ratatui::{
     Frame,
 };
 
-pub fn render_load_city(frame: &mut Frame, area: Rect, state: &LoadCityState) {
+pub fn render_load_city(frame: &mut Frame, area: Rect, view: &LoadCityViewModel, state: &mut LoadCityState) {
     let ui = theme::ui_palette();
     let block = Block::default()
         .borders(Borders::ALL)
@@ -25,6 +24,7 @@ pub fn render_load_city(frame: &mut Frame, area: Rect, state: &LoadCityState) {
     let buf = frame.buffer_mut();
     let w = inner.width as usize;
     let mut row = inner.y;
+    state.row_areas.clear();
 
     // Header
     let header = format!(
@@ -42,7 +42,7 @@ pub fn render_load_city(frame: &mut Frame, area: Rect, state: &LoadCityState) {
     );
     row += 1;
 
-    if state.saves.is_empty() {
+    if view.saves.is_empty() {
         if row < inner.y + inner.height {
             buf.set_string(
                 inner.x,
@@ -54,11 +54,17 @@ pub fn render_load_city(frame: &mut Frame, area: Rect, state: &LoadCityState) {
             );
         }
     } else {
-        for (i, entry) in state.saves.iter().enumerate() {
+        for (i, entry) in view.saves.iter().enumerate() {
             if row >= inner.y + inner.height - 3 {
                 break;
             }
-            let is_sel = i == state.selected;
+            state.row_areas.push(crate::app::ClickArea {
+                x: inner.x,
+                y: row,
+                width: inner.width,
+                height: 1,
+            });
+            let is_sel = i == view.selected;
             let prefix = if is_sel { "▶ " } else { "  " };
             let line = format!(
                 "{}{:<22} {} {:>4}  {:>8}  ${:>8}",

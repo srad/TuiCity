@@ -68,16 +68,16 @@ Navigate with the **arrow keys** and confirm with **Enter**.
 
 ### Creating a New City
 
-Selecting **New City** opens an interactive form powered by `rat-widget`. You can use your mouse or keyboard (Tab/Arrows) to adjust the map generator:
+Selecting **New City** opens an interactive form with a live preview. You can use the keyboard to move between fields and adjust the generator:
 
 | Field | Description | Default |
 |-------|-------------|---------|
 | **City Name** | Used as the save file prefix | — |
 | **Seed (hex)** | A 16-character hex code that perfectly encodes the Water %, Trees %, and the random map noise seed. Pasting a code here will automatically snap the sliders to the exact percentages used. | random |
-| **Water %** | Interactive slider for the percentage of map tiles that are water | 20 |
-| **Trees %** | Interactive slider for the percentage of map tiles that are forest | 30 |
+| **Water %** | Percentage of map tiles that are water | 20 |
+| **Trees %** | Percentage of map tiles that are forest | 30 |
 
-As you drag the sliders, the preview map and the hex seed update in real-time. Press **Enter** on the Start button to generate and enter the city.
+As you adjust the values, the preview map and the hex seed update in real-time. Press **Enter** on the Start button to generate and enter the city.
 
 ### Controls
 
@@ -165,7 +165,7 @@ TuiCity2 is structured around three main pillars:
 pub trait Screen {
     fn on_action(&mut self, action: Action, context: AppContext) -> Option<ScreenTransition>;
     fn on_tick(&mut self, context: AppContext);
-    fn render(&mut self, frame: &mut Frame, context: AppContext);
+    fn build_view(&self, context: AppContext<'_>) -> ScreenView;
 }
 ```
 
@@ -175,16 +175,15 @@ pub trait Screen {
 
 The simulation runs in a dedicated OS thread managed by `core/engine.rs`. The main UI thread sends `SimCommand` messages over a `std::sync::mpsc` channel. The sim thread processes commands (step, pause, save, load, place tile) and writes results back into an `Arc<RwLock<Engine>>` that the UI reads for rendering.
 
-**3. Lightweight UI Runtime + Screen-Local Controllers**
+**3. Frontend-Neutral Screen Views + UI Runtime**
 
-Shared geometry and window helpers now live in `src/ui/runtime.rs` (`ClickArea`, `MapUiAreas`, `UiAreas`, centered/clamped window helpers). In-game UI elements (map, tools panel, budget, inspect) are independently movable `FloatingWindow` instances stored on `InGameScreen`. Each window can be dragged by its title bar to any position; windows may extend partially off-screen. The renderer clips each window rect to the terminal buffer boundary before rendering.
+Shared geometry and window helpers now live in `src/ui/runtime.rs` (`ClickArea`, `MapUiAreas`, `UiAreas`, centered/clamped window helpers). Each screen builds a frontend-neutral `ScreenView` in `src/ui/view.rs`, and the terminal renderer turns that view into `ratatui` output. In-game UI elements (map, tools panel, budget, inspect, power picker) are movable windows managed by `DesktopState`.
 
 `InGameScreen` is also split into focused feature modules rather than one large implementation file:
 - `ingame.rs` keeps the screen shell and top-level lifecycle
 - `ingame_interaction.rs` owns map interaction, dragging, panning, and scrollbar logic
 - `ingame_budget.rs` owns budget state, focus traversal, and tax editing
-- `ingame_menu.rs` owns menubar structure and menu action mapping
-- `ingame_widgets.rs` owns popup close buttons, toolbar routing, and budget widget event handling
+- `ingame_menu.rs` owns menu state and menu action mapping
 
 ### Module Tree
 
@@ -205,9 +204,8 @@ src/
 │       ├── load_city.rs           LoadCityScreen + save-list state/logic
 │       ├── ingame.rs              InGameScreen shell + top-level event lifecycle
 │       ├── ingame_interaction.rs  Map interaction, drag flows, scrollbars, panning
-│       ├── ingame_menu.rs         Menubar structure, menu actions, menu routing
+│       ├── ingame_menu.rs         Menu model, actions, menu routing
 │       ├── ingame_budget.rs       Budget window state, focus model, tax input logic
-│       └── ingame_widgets.rs      Popup close buttons, toolbar routing, widget events
 ├── core/
 │   ├── mod.rs                     Re-exports
 │   ├── engine.rs                  Engine struct; sim thread loop; SimCommand dispatch
@@ -228,7 +226,13 @@ src/
 │                                    FinanceSystem, HistorySystem,
 │                                    FireSpreadSystem, FloodSystem, TornadoSystem
 └── ui/
-    ├── mod.rs                     TerminalRenderer; render_game_v2 compositor
+    ├── mod.rs                     Renderer selection + `ScreenView` dispatch
+    ├── view.rs                    Frontend-neutral screen and in-game view models
+    ├── frontends/
+    │   ├── mod.rs                 Frontend entry points
+    │   └── terminal/
+    │       ├── mod.rs             Terminal frontend exports
+    │       └── ingame.rs          Terminal renderer for the in-game desktop
     ├── runtime.rs                 Shared UI runtime helpers (hit areas, window clamp/center, focus cycling)
     ├── theme.rs                   Colour palette; tile glyphs; overlay tinting
     ├── game/
@@ -245,7 +249,7 @@ src/
     └── screens/
         ├── mod.rs                 Re-exports for screen renderers
         ├── start.rs               Start menu rendering
-        ├── new_city.rs            New-city form rendering (name, seed, sliders, preview map)
+        ├── new_city.rs            New-city form rendering (name, seed, generator controls, preview map)
         └── load_city.rs           Load-city file list rendering
 ```
 
@@ -259,9 +263,10 @@ src/
 | `Map` | `core/map/mod.rs` | Grid of tiles + overlays; width/height; BFS power-grid flood-fill |
 | `SimState` | `core/sim/mod.rs` | Full simulation snapshot: treasury, date, population, demand, history, last_breakdown |
 | `Camera` | `app/camera.rs` | Viewport offset; clamping; mouse-pan delta |
-| `FloatingWindow` | `ui/runtime.rs` via `app/mod.rs` | Position + size of a movable window; title-bar hit-test |
-| `WindowDrag` | `app/mod.rs` | Tracks which window is being dragged and the grab offset |
+| `DesktopState` | `ui/runtime.rs` | Managed in-game windows, focus order, dragging, centering, clamping |
+| `WindowState` | `ui/runtime.rs` | Position, size, visibility, modal/closable metadata for one window |
 | `Screen` | `app/screens/mod.rs` | Trait implemented by every game state |
+| `ScreenView` | `ui/view.rs` | Frontend-neutral view model returned by a screen |
 | `ScreenTransition` | `app/screens/mod.rs` | Navigation result returned by `on_action` (Push, Replace, Pop) |
 
 ### Simulation Pipeline
@@ -284,16 +289,13 @@ src/
 
 ### Rendering Pipeline
 
-1. The `ratatui` event loop calls `TerminalRenderer::render(frame, &app_state)`.
-2. `TerminalRenderer` peeks at the top of the screen stack and calls `screen.render(frame, context)`.
-3. For `InGameScreen`, rendering is delegated to `render_game_v2` in `src/ui/mod.rs`, while interaction and widget behavior are split across `src/app/screens/ingame_interaction.rs`, `src/app/screens/ingame_menu.rs`, `src/app/screens/ingame_budget.rs`, and `src/app/screens/ingame_widgets.rs`.
-4. `render_game_v2` manages four `FloatingWindow` instances (map, panel, budget, inspect):
-   - Each window is clamped so its title bar stays on-screen and neither dimension writes outside the buffer.
-   - Windows are rendered in back-to-front order: background → map → panel → budget → inspect → menu bar.
-   - `Clear` is rendered before each window to erase whatever is behind it.
-5. `MapView` iterates visible tiles (camera offset + viewport size), picks a glyph and colour from `theme.rs`, and writes `Cell` values into the buffer. To fix terminal font aspect ratios, **the map is rendered using "Double-Width Tiles"** (each map tile is mapped to two horizontal terminal cells), which ensures the game grid looks perfectly square without relying on specialized fonts. When the map is larger than the viewport, dedicated DOS-style horizontal and vertical scrollbars are rendered beside it.
-6. The panel window renders toolbar buttons, a minimap, and a tile-info section. Layout is computed from the window's nominal height (not its clipped height), so sub-widget proportions stay constant when the window is dragged toward the screen edge.
-7. Popup windows such as the power-plant picker and budget widget render through dedicated `ui/game/*` modules, and the menu bar (`rat-widget` menubar) is rendered last so it always appears on top.
+1. The `ratatui` event loop calls `TerminalRenderer::render(&mut app_state)`.
+2. The active screen builds a frontend-neutral `ScreenView`.
+3. `TerminalRenderer` matches that `ScreenView` and dispatches to the matching terminal renderer in `src/ui/screens/*` or `src/ui/frontends/terminal/ingame.rs`.
+4. `DesktopState` computes the in-game window layout (menu bar, status bar, map, panel, budget, inspect, power picker), including centering, clamping, title bars, and close-button geometry.
+5. `MapView` iterates visible tiles (camera offset + viewport size), picks a glyph and colour from `theme.rs`, and writes `Cell` values into the buffer. To fix terminal font aspect ratios, **the map is rendered using double-width tiles** (each map tile maps to two horizontal terminal cells). When the map is larger than the viewport, dedicated DOS-style horizontal and vertical scrollbars are rendered beside it.
+6. The panel window renders the toolbar, minimap, and tile-info section. Layout is computed from the managed panel window rect so it stays stable while dragging.
+7. Popup windows such as the power-plant picker, budget window, and inspect window render through dedicated `ui/game/*` modules. The menu bar is rendered last so it always appears on top.
 
 ### Adding a New Tool
 
@@ -317,9 +319,6 @@ src/
 |-------|---------|---------|
 | `ratatui` | 0.30 | Terminal UI framework — layout, widgets, rendering buffer |
 | `crossterm` | 0.29 | Raw mode, mouse capture, cross-platform terminal control |
-| `rat-widget` | 3.2 | Advanced interactive stateful widgets (sliders, buttons, text inputs, menu bar) |
-| `rat-focus` | 2.1 | Focus management for interactive UI components |
-| `rat-event` | 2.1 | Trait implementations mapping crossterm events to widgets |
 | `serde` | 1.0 | Serialisation traits |
 | `serde_json` | 1.0 | JSON save file format |
 | `rand` | 0.8 | Map generation RNG, disaster probability rolls |

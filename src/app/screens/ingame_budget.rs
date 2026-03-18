@@ -1,8 +1,8 @@
-use crate::{app::input::Action, core::{engine::EngineCommand, sim::TaxSector}};
+use crate::{app::{input::Action, WindowId}, core::{engine::EngineCommand, sim::TaxSector}};
 
 use super::{AppContext, InGameScreen};
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BudgetFocus {
     ResidentialTax,
     CommercialTax,
@@ -33,39 +33,26 @@ impl BudgetFocus {
     }
 }
 
-pub struct BudgetUiState {
+pub struct BudgetState {
     pub focused: BudgetFocus,
-    pub residential_tax: rat_widget::slider::SliderState<usize>,
-    pub commercial_tax: rat_widget::slider::SliderState<usize>,
-    pub industrial_tax: rat_widget::slider::SliderState<usize>,
-    pub residential_tax_input: rat_widget::text_input::TextInputState,
-    pub commercial_tax_input: rat_widget::text_input::TextInputState,
-    pub industrial_tax_input: rat_widget::text_input::TextInputState,
+    pub residential_tax: usize,
+    pub commercial_tax: usize,
+    pub industrial_tax: usize,
+    pub residential_tax_input: String,
+    pub commercial_tax_input: String,
+    pub industrial_tax_input: String,
 }
 
-impl BudgetUiState {
+impl BudgetState {
     pub fn new() -> Self {
-        let mut residential_tax = rat_widget::slider::SliderState::new_range((0, 100), 1);
-        residential_tax.set_value(9);
-        let mut commercial_tax = rat_widget::slider::SliderState::new_range((0, 100), 1);
-        commercial_tax.set_value(9);
-        let mut industrial_tax = rat_widget::slider::SliderState::new_range((0, 100), 1);
-        industrial_tax.set_value(9);
-        let mut residential_tax_input = rat_widget::text_input::TextInputState::default();
-        residential_tax_input.set_text("9");
-        let mut commercial_tax_input = rat_widget::text_input::TextInputState::default();
-        commercial_tax_input.set_text("9");
-        let mut industrial_tax_input = rat_widget::text_input::TextInputState::default();
-        industrial_tax_input.set_text("9");
-
         Self {
             focused: BudgetFocus::ResidentialTax,
-            residential_tax,
-            commercial_tax,
-            industrial_tax,
-            residential_tax_input,
-            commercial_tax_input,
-            industrial_tax_input,
+            residential_tax: 9,
+            commercial_tax: 9,
+            industrial_tax: 9,
+            residential_tax_input: "9".to_string(),
+            commercial_tax_input: "9".to_string(),
+            industrial_tax_input: "9".to_string(),
         }
     }
 }
@@ -79,8 +66,7 @@ impl InGameScreen {
     }
 
     pub fn open_budget(&mut self, context: &AppContext) {
-        self.is_budget_open = true;
-        self.budget_needs_center = true;
+        self.desktop.open(WindowId::Budget, true);
         self.budget_ui.focused = BudgetFocus::ResidentialTax;
         self.sync_budget_tax_from_sim(context);
     }
@@ -89,17 +75,13 @@ impl InGameScreen {
         self.restore_budget_tax_input_if_empty(TaxSector::Residential);
         self.restore_budget_tax_input_if_empty(TaxSector::Commercial);
         self.restore_budget_tax_input_if_empty(TaxSector::Industrial);
-        self.is_budget_open = false;
-        self.budget_needs_center = false;
-        if matches!(self.window_drag, Some(crate::app::WindowDrag::Budget(_, _))) {
-            self.window_drag = None;
-        }
+        self.desktop.close(WindowId::Budget);
     }
 
     pub fn budget_tax_input_mut(
         &mut self,
         sector: TaxSector,
-    ) -> &mut rat_widget::text_input::TextInputState {
+    ) -> &mut String {
         match sector {
             TaxSector::Residential => &mut self.budget_ui.residential_tax_input,
             TaxSector::Commercial => &mut self.budget_ui.commercial_tax_input,
@@ -111,23 +93,21 @@ impl InGameScreen {
         let rate = rate.min(100);
         match sector {
             TaxSector::Residential => {
-                self.budget_ui.residential_tax.set_value(rate);
+                self.budget_ui.residential_tax = rate;
             }
             TaxSector::Commercial => {
-                self.budget_ui.commercial_tax.set_value(rate);
+                self.budget_ui.commercial_tax = rate;
             }
             TaxSector::Industrial => {
-                self.budget_ui.industrial_tax.set_value(rate);
+                self.budget_ui.industrial_tax = rate;
             }
         }
 
         let state = self.budget_tax_input_mut(sector);
         let text = rate.to_string();
-        if state.text() != text {
-            state.set_text(text);
+        if *state != text {
+            *state = text;
         }
-        state.set_cursor(state.len(), false);
-        state.set_invalid(false);
     }
 
     pub fn set_budget_tax_rate(&mut self, sector: TaxSector, rate: usize, context: &AppContext) {
@@ -140,9 +120,9 @@ impl InGameScreen {
 
     pub fn budget_slider_value(&self, sector: TaxSector) -> usize {
         match sector {
-            TaxSector::Residential => self.budget_ui.residential_tax.value(),
-            TaxSector::Commercial => self.budget_ui.commercial_tax.value(),
-            TaxSector::Industrial => self.budget_ui.industrial_tax.value(),
+            TaxSector::Residential => self.budget_ui.residential_tax,
+            TaxSector::Commercial => self.budget_ui.commercial_tax,
+            TaxSector::Industrial => self.budget_ui.industrial_tax,
         }
     }
 
@@ -155,7 +135,7 @@ impl InGameScreen {
     pub fn apply_budget_tax_input(&mut self, sector: TaxSector, context: &AppContext) {
         let state = self.budget_tax_input_mut(sector);
         let mut digits = state
-            .text()
+            .as_str()
             .chars()
             .filter(|ch| ch.is_ascii_digit())
             .collect::<String>();
@@ -165,11 +145,9 @@ impl InGameScreen {
         }
 
         if digits.is_empty() {
-            if state.text() != digits {
-                state.set_text(digits);
+            if *state != digits {
+                *state = digits;
             }
-            state.set_invalid(false);
-            state.set_cursor(state.len(), false);
             return;
         }
 
@@ -179,45 +157,42 @@ impl InGameScreen {
             digits = normalized;
         }
 
-        if state.text() != digits {
-            state.set_text(digits);
+        if *state != digits {
+            *state = digits;
         }
-        state.set_invalid(false);
-        state.set_cursor(state.len(), false);
         self.set_budget_tax_rate(sector, rate, context);
     }
 
     pub fn restore_budget_tax_input_if_empty(&mut self, sector: TaxSector) {
-        if self.budget_tax_input_mut(sector).text().is_empty() {
+        if self.budget_tax_input_mut(sector).is_empty() {
             let value = self.budget_slider_value(sector);
             self.set_budget_tax_ui_value(sector, value);
         }
     }
 
-    pub fn focus_budget_control_at(&mut self, col: u16, row: u16) {
-        if Self::rect_contains(self.budget_ui.residential_tax_input.area, col, row)
-            || Self::rect_contains(self.budget_ui.residential_tax.area, col, row)
-        {
-            self.budget_ui.focused = BudgetFocus::ResidentialTax;
-        } else if Self::rect_contains(self.budget_ui.commercial_tax_input.area, col, row)
-            || Self::rect_contains(self.budget_ui.commercial_tax.area, col, row)
-        {
-            self.budget_ui.focused = BudgetFocus::CommercialTax;
-        } else if Self::rect_contains(self.budget_ui.industrial_tax_input.area, col, row)
-            || Self::rect_contains(self.budget_ui.industrial_tax.area, col, row)
-        {
-            self.budget_ui.focused = BudgetFocus::IndustrialTax;
-        }
-    }
-
     pub fn handle_budget_action(&mut self, action: &Action, context: &AppContext) -> bool {
-        if !self.is_budget_open {
+        if !self.is_budget_open() {
             return false;
         }
 
         match action {
             Action::MenuBack | Action::CharInput('b') | Action::CharInput('B') => {
                 self.close_budget();
+                true
+            }
+            Action::DeleteChar => {
+                let sector = self.budget_ui.focused.tax_sector();
+                self.budget_tax_input_mut(sector).pop();
+                self.apply_budget_tax_input(sector, context);
+                true
+            }
+            Action::CharInput(c) if c.is_ascii_digit() => {
+                let sector = self.budget_ui.focused.tax_sector();
+                let state = self.budget_tax_input_mut(sector);
+                if state.len() < 3 {
+                    state.push(*c);
+                }
+                self.apply_budget_tax_input(sector, context);
                 true
             }
             Action::MoveCursor(dx, dy) => {
@@ -245,19 +220,28 @@ impl InGameScreen {
                 true
             }
             Action::MouseDrag { col, row } => {
-                if let Some(crate::app::WindowDrag::Budget(ox, oy)) = self.window_drag.as_ref() {
-                    self.budget_win.x = col.saturating_sub(*ox);
-                    self.budget_win.y = row.saturating_sub(*oy);
-                }
+                self.desktop.update_drag(*col, *row);
                 true
             }
             Action::MouseUp { .. } => {
-                if matches!(self.window_drag, Some(crate::app::WindowDrag::Budget(_, _))) {
-                    self.window_drag = None;
-                }
+                self.desktop.end_drag();
                 true
             }
             _ => true,
         }
+    }
+
+    pub fn focus_budget_control_at(&mut self, col: u16, row: u16) {
+        let Some(focus) = crate::ui::game::budget::focus_at_position(
+            self.desktop.window(WindowId::Budget).x,
+            self.desktop.window(WindowId::Budget).y,
+            self.desktop.window(WindowId::Budget).width,
+            self.desktop.window(WindowId::Budget).height,
+            col,
+            row,
+        ) else {
+            return;
+        };
+        self.budget_ui.focused = focus;
     }
 }

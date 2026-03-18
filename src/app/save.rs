@@ -17,7 +17,7 @@ pub struct SaveFile {
     pub overlays: Vec<(u8, bool, u8)>, // changed from (bool, bool, u8)
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct SaveEntry {
     pub path: PathBuf,
     pub city_name: String,

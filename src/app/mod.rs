@@ -20,15 +20,9 @@ use crate::core::{
     tool::Tool,
 };
 use crate::app::screens::{AppContext, Screen, ScreenTransition, StartScreen};
-pub use crate::ui::runtime::{ClickArea, MapUiAreas, UiAreas, WindowState as FloatingWindow};
-
-#[derive(Clone, Debug)]
-pub enum WindowDrag {
-    Map(u16, u16),
-    Panel(u16, u16),
-    Budget(u16, u16),
-    Inspect(u16, u16),
-}
+pub use crate::ui::runtime::{
+    ClickArea, DesktopState, MapUiAreas, UiAreas, UiRect, WindowId,
+};
 
 pub struct AppState {
     pub screens: Vec<Box<dyn Screen>>,

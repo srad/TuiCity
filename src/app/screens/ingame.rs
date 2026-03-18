@@ -1,15 +1,13 @@
 use std::collections::VecDeque;
 
 use crate::{
-    app::{input::Action, save, Camera, FloatingWindow, LineDrag, RectDrag, Tool, UiAreas, WindowDrag},
+    app::{input::Action, save, Camera, DesktopState, LineDrag, RectDrag, Tool, UiAreas, WindowId},
     core::engine::EngineCommand,
-    ui::theme::OverlayMode,
+    ui::{theme::OverlayMode, view::{BudgetViewModel, InGameDesktopView}},
 };
-use ratatui::Frame;
-use rat_widget::menu::MenubarState;
 
 use super::{
-    ingame_budget::BudgetUiState,
+    ingame_budget::BudgetState,
     AppContext, Screen, ScreenTransition,
 };
 
@@ -40,13 +38,9 @@ pub struct InGameScreen {
     pub current_tool: Tool,
     pub ui_areas: UiAreas,
     pub paused: bool,
-    pub is_budget_open: bool,
-    pub budget_needs_center: bool,
-    pub menu: MenubarState,
     pub menu_active: bool,
-    pub menu_consumed_input: bool,
-    pub budget_input_consumed: bool,
-    pub popup_input_consumed: bool,
+    pub menu_selected: usize,
+    pub menu_item_selected: usize,
     pub message: Option<String>,
     pub event_messages: VecDeque<(String, u32)>,
     pub ticks_since_month: u32,
@@ -59,42 +53,22 @@ pub struct InGameScreen {
     pub auto_save_interval_ticks: u32,
     pub first_building_notified: bool,
     pub deficit_warned: bool,
-    pub map_win: FloatingWindow,
-    pub panel_win: FloatingWindow,
-    pub budget_win: FloatingWindow,
-    pub inspect_win: FloatingWindow,
-    pub window_drag: Option<WindowDrag>,
+    pub desktop: DesktopState,
     pub(super) map_pan_drag: Option<MiddlePanDrag>,
     pub(super) scrollbar_drag: Option<ScrollbarDrag>,
-    pub budget_ui: BudgetUiState,
-    pub toolbar_btn_states: std::collections::HashMap<Tool, rat_widget::button::ButtonState>,
-    pub show_plant_info: bool,
-    pub plant_close_btn: rat_widget::button::ButtonState,
-    pub budget_close_btn: rat_widget::button::ButtonState,
-    pub inspect_close_btn: rat_widget::button::ButtonState,
-    pub coal_picker_btn: rat_widget::button::ButtonState,
-    pub gas_picker_btn: rat_widget::button::ButtonState,
+    pub budget_ui: BudgetState,
 }
 
 impl InGameScreen {
     pub fn new() -> Self {
-        let mut toolbar_btn_states = std::collections::HashMap::new();
-        for &tool in Tool::ALL.iter() {
-            toolbar_btn_states.insert(tool, rat_widget::button::ButtonState::default());
-        }
-
         Self {
             camera: Camera::default(),
             current_tool: Tool::Inspect,
             ui_areas: UiAreas::default(),
             paused: false,
-            is_budget_open: false,
-            budget_needs_center: false,
-            menu: Self::new_menu_state(),
             menu_active: false,
-            menu_consumed_input: false,
-            budget_input_consumed: false,
-            popup_input_consumed: false,
+            menu_selected: 0,
+            menu_item_selected: 0,
             message: None,
             event_messages: VecDeque::new(),
             ticks_since_month: 0,
@@ -107,28 +81,18 @@ impl InGameScreen {
             auto_save_interval_ticks: AUTO_SAVE_INTERVAL,
             first_building_notified: false,
             deficit_warned: false,
-            map_win: FloatingWindow::new(0, 2, 999, 999),
-            panel_win: FloatingWindow::new(u16::MAX, 4, 24, 35),
-            budget_win: FloatingWindow::new(8, 4, 74, 29),
-            inspect_win: FloatingWindow::new(15, 5, 34, 16),
-            window_drag: None,
+            desktop: DesktopState::new_ingame(),
             map_pan_drag: None,
             scrollbar_drag: None,
-            budget_ui: BudgetUiState::new(),
-            toolbar_btn_states,
-            show_plant_info: false,
-            plant_close_btn: rat_widget::button::ButtonState::default(),
-            budget_close_btn: rat_widget::button::ButtonState::default(),
-            inspect_close_btn: rat_widget::button::ButtonState::default(),
-            coal_picker_btn: rat_widget::button::ButtonState::default(),
-            gas_picker_btn: rat_widget::button::ButtonState::default(),
+            budget_ui: BudgetState::new(),
         }
     }
 
     pub fn is_over_window(&self, col: u16, row: u16) -> bool {
-        self.panel_win.contains(col, row)
-            || (self.is_budget_open && self.budget_win.contains(col, row))
-            || (self.inspect_pos.is_some() && self.inspect_win.contains(col, row))
+        self.desktop.contains(WindowId::Panel, col, row)
+            || self.desktop.contains(WindowId::Budget, col, row)
+            || self.desktop.contains(WindowId::Inspect, col, row)
+            || self.desktop.contains(WindowId::PowerPicker, col, row)
     }
 
     pub fn push_message(&mut self, text: String) {
@@ -156,82 +120,64 @@ impl InGameScreen {
         self.rect_drag.as_ref().map(|drag| drag.tiles_cache.as_slice()).unwrap_or(&[])
     }
 
-    fn take_budget_consumed_input(&mut self) -> bool {
-        std::mem::take(&mut self.budget_input_consumed)
+    pub fn is_budget_open(&self) -> bool {
+        self.desktop.is_open(WindowId::Budget)
     }
 
-    fn take_popup_consumed_input(&mut self) -> bool {
-        std::mem::take(&mut self.popup_input_consumed)
+    pub fn is_power_picker_open(&self) -> bool {
+        self.desktop.is_open(WindowId::PowerPicker)
     }
 
-    pub fn rect_contains(area: ratatui::layout::Rect, col: u16, row: u16) -> bool {
-        area.width > 0
-            && area.height > 0
-            && col >= area.x
-            && col < area.x + area.width
-            && row >= area.y
-            && row < area.y + area.height
+    pub fn is_inspect_open(&self) -> bool {
+        self.desktop.is_open(WindowId::Inspect)
+    }
+
+    pub fn build_view(
+        &self,
+        sim: &crate::core::sim::SimState,
+        map: &crate::core::map::Map,
+    ) -> InGameDesktopView {
+        let tax_rates = crate::core::sim::TaxRates {
+            residential: self.budget_ui.residential_tax as u8,
+            commercial: self.budget_ui.commercial_tax as u8,
+            industrial: self.budget_ui.industrial_tax as u8,
+        };
+        InGameDesktopView {
+            map: map.clone(),
+            sim: sim.clone(),
+            camera: self.camera.clone(),
+            current_tool: self.current_tool,
+            paused: self.paused,
+            overlay_mode: self.overlay_mode,
+            menu_active: self.menu_active,
+            menu_selected: self.menu_selected,
+            menu_item_selected: self.menu_item_selected,
+            status_message: self.status_message().map(str::to_string),
+            line_preview: self.line_preview().to_vec(),
+            rect_preview: self.rect_preview().to_vec(),
+            inspect_pos: self.inspect_pos,
+            budget: BudgetViewModel::from_sim(
+                sim,
+                self.budget_ui.focused,
+                tax_rates,
+                self.budget_ui.residential_tax_input.clone(),
+                self.budget_ui.commercial_tax_input.clone(),
+                self.budget_ui.industrial_tax_input.clone(),
+            ),
+        }
+    }
+
+    pub fn select_tool(&mut self, tool: Tool) {
+        self.current_tool = tool;
+        self.line_drag = None;
+        self.rect_drag = None;
+        self.desktop.close(WindowId::PowerPicker);
     }
 }
 
 impl Screen for InGameScreen {
-    fn on_event(&mut self, event: &crossterm::event::Event, context: AppContext) -> Option<ScreenTransition> {
-        use rat_widget::event::MenuOutcome;
-
-        let menu_was_active = self.menu_active;
-        let menu_outcome = rat_widget::menu::menubar::handle_popup_events(&mut self.menu, self.menu_active, event);
-        if Self::menu_outcome_consumed(menu_outcome) || menu_was_active {
-            self.menu_consumed_input = true;
-        }
-
-        match menu_outcome {
-            MenuOutcome::MenuActivated(menu_idx, item_idx) => {
-                let action = Self::menu_action_for(menu_idx, item_idx);
-                self.close_menu();
-                return self.handle_menu_action(action, &context);
-            }
-            MenuOutcome::Selected(menu_idx) if !menu_was_active => {
-                self.open_menu(menu_idx);
-                return None;
-            }
-            MenuOutcome::Selected(_) | MenuOutcome::Activated(_) | MenuOutcome::MenuSelected(_, _) => {
-                self.menu_active = self.menu.popup_active() || self.menu.bar.selected().is_some();
-                self.menu.bar.focus.set(self.menu_active);
-                return None;
-            }
-            MenuOutcome::Hide => {
-                self.close_menu();
-                return None;
-            }
-            MenuOutcome::Changed | MenuOutcome::Unchanged => {
-                self.menu_active = self.menu.popup_active() || menu_was_active;
-                self.menu.bar.focus.set(self.menu_active);
-                return None;
-            }
-            MenuOutcome::Continue => {}
-        }
-
-        if self.menu_active {
-            return None;
-        }
-
-        if self.handle_popup_close_event(event) {
-            return None;
-        }
-
-        if self.handle_budget_widget_event(event, &context) {
-            return None;
-        }
-
-        if self.handle_power_popup_event(event) {
-            return None;
-        }
-
-        if self.handle_toolbar_event(event) {
-            return None;
-        }
-
-        None
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
     }
 
     fn on_tick(&mut self, context: AppContext) {
@@ -281,24 +227,58 @@ impl Screen for InGameScreen {
     }
 
     fn on_action(&mut self, action: Action, context: AppContext) -> Option<ScreenTransition> {
-        if self.take_menu_consumed_input() || self.take_budget_consumed_input() || self.take_popup_consumed_input() {
-            return None;
+        if let Action::MouseClick { col, row } = action {
+            let (consumed, transition) = self.handle_menu_click(col, row, &context);
+            if consumed {
+                return transition;
+            }
         }
 
         if matches!(action, Action::MenuActivate) {
             if self.menu_active {
                 self.close_menu();
             } else {
-                self.open_menu(self.menu.bar.selected().unwrap_or(0));
+                self.open_menu(self.menu_selected);
             }
             return None;
         }
 
         if self.should_block_for_menu(&action) {
-            if matches!(action, Action::MenuBack) {
-                self.close_menu();
+            match action {
+                Action::MenuBack => {
+                    self.close_menu();
+                    return None;
+                }
+                Action::MoveCursor(dx, dy) => {
+                    if dx < 0 {
+                        self.menu_selected = self.menu_selected.saturating_sub(1);
+                        self.menu_item_selected = self
+                            .menu_item_selected
+                            .min(self.menu_item_count(self.menu_selected).saturating_sub(1));
+                    } else if dx > 0 {
+                        self.menu_selected = (self.menu_selected + 1).min(4);
+                        self.menu_item_selected = self
+                            .menu_item_selected
+                            .min(self.menu_item_count(self.menu_selected).saturating_sub(1));
+                    } else if dy < 0 {
+                        self.menu_item_selected = self.menu_item_selected.saturating_sub(1);
+                    } else if dy > 0 {
+                        self.menu_item_selected = (self.menu_item_selected + 1)
+                            .min(self.menu_item_count(self.menu_selected).saturating_sub(1));
+                    }
+                    return None;
+                }
+                Action::MenuSelect => {
+                    let action = self.current_menu_action();
+                    self.close_menu();
+                    return self.handle_menu_action(action, &context);
+                }
+                Action::MouseClick { .. } => {
+                    self.close_menu();
+                    return None;
+                }
+                _ => return None,
             }
-            return None;
         }
 
         if let Action::MouseClick { col, row } = action {
@@ -311,8 +291,14 @@ impl Screen for InGameScreen {
             return None;
         }
 
-        if self.inspect_pos.is_some() && matches!(action, Action::MenuBack) {
+        if self.is_power_picker_open() && matches!(action, Action::MenuBack) {
+            self.desktop.close(WindowId::PowerPicker);
+            return None;
+        }
+
+        if self.is_inspect_open() && matches!(action, Action::MenuBack) {
             self.inspect_pos = None;
+            self.desktop.close(WindowId::Inspect);
             return None;
         }
 
@@ -381,7 +367,7 @@ impl Screen for InGameScreen {
                     'l' => Some(Tool::Rail),
                     'p' => Some(Tool::PowerLine),
                     'e' => {
-                        self.show_plant_info = !self.show_plant_info;
+                        self.desktop.toggle(WindowId::PowerPicker, true);
                         Some(Tool::PowerPlantCoal)
                     }
                     'g' => Some(Tool::PowerPlantGas),
@@ -433,15 +419,9 @@ impl Screen for InGameScreen {
         None
     }
 
-    fn render(&mut self, frame: &mut Frame, context: AppContext) {
-        let area = frame.area();
-        let mut mock_app = crate::app::AppState {
-            screens: Vec::new(),
-            engine: context.engine.clone(),
-            cmd_tx: context.cmd_tx.clone(),
-            running: *context.running,
-        };
-        crate::ui::render_game_v2(frame, area, &mut mock_app, self);
+    fn build_view(&self, context: AppContext<'_>) -> crate::ui::view::ScreenView {
+        let engine = context.engine.read().unwrap();
+        crate::ui::view::ScreenView::InGame(self.build_view(&engine.sim, &engine.map))
     }
 }
 
@@ -536,8 +516,7 @@ mod tests {
         let transition = screen.on_action(Action::MenuActivate, open_context);
         assert!(transition.is_none());
         assert!(screen.menu_active);
-        assert!(screen.menu.popup_active());
-        assert_eq!(screen.menu.bar.selected(), Some(0));
+        assert_eq!(screen.menu_selected, 0);
 
         let close_context = AppContext {
             engine: &engine,
@@ -547,7 +526,6 @@ mod tests {
         let transition = screen.on_action(Action::MenuActivate, close_context);
         assert!(transition.is_none());
         assert!(!screen.menu_active);
-        assert!(!screen.menu.popup_active());
     }
 
     #[test]
@@ -619,14 +597,14 @@ mod tests {
 
         let transition = screen.on_action(Action::CharInput('b'), context);
         assert!(transition.is_none());
-        assert!(screen.is_budget_open);
-        assert!(screen.budget_needs_center);
-        assert_eq!(screen.budget_ui.residential_tax.value(), 13);
-        assert_eq!(screen.budget_ui.commercial_tax.value(), 11);
-        assert_eq!(screen.budget_ui.industrial_tax.value(), 7);
-        assert_eq!(screen.budget_ui.residential_tax_input.text(), "13");
-        assert_eq!(screen.budget_ui.commercial_tax_input.text(), "11");
-        assert_eq!(screen.budget_ui.industrial_tax_input.text(), "7");
+        assert!(screen.is_budget_open());
+        assert!(screen.desktop.window(WindowId::Budget).center_on_open);
+        assert_eq!(screen.budget_ui.residential_tax, 13);
+        assert_eq!(screen.budget_ui.commercial_tax, 11);
+        assert_eq!(screen.budget_ui.industrial_tax, 7);
+        assert_eq!(screen.budget_ui.residential_tax_input, "13");
+        assert_eq!(screen.budget_ui.commercial_tax_input, "11");
+        assert_eq!(screen.budget_ui.industrial_tax_input, "7");
     }
 
     #[test]
@@ -646,8 +624,8 @@ mod tests {
         };
         screen.on_action(Action::CharInput('b'), open_context);
 
-        let start_x = screen.budget_win.x;
-        let start_y = screen.budget_win.y;
+        let start_x = screen.desktop.window(WindowId::Budget).x;
+        let start_y = screen.desktop.window(WindowId::Budget).y;
         let click_context = AppContext {
             engine: &engine,
             cmd_tx: &cmd_tx,
@@ -661,8 +639,8 @@ mod tests {
         };
         screen.on_action(Action::MouseDrag { col: start_x + 6, row: start_y + 3 }, drag_context);
 
-        assert_eq!(screen.budget_win.x, start_x + 4);
-        assert_eq!(screen.budget_win.y, start_y + 3);
+        assert_eq!(screen.desktop.window(WindowId::Budget).x, start_x + 4);
+        assert_eq!(screen.desktop.window(WindowId::Budget).y, start_y + 3);
     }
 
     #[test]
@@ -683,18 +661,14 @@ mod tests {
         };
         screen.on_action(Action::CharInput('b'), open_context);
         screen.budget_ui.focused = BudgetFocus::CommercialTax;
-        screen.budget_ui.commercial_tax_input.set_text("");
+        screen.budget_ui.commercial_tax_input.clear();
 
         let event_context = AppContext {
             engine: &engine,
             cmd_tx: &cmd_tx,
             running: &mut running,
         };
-        let type_four = crossterm::event::Event::Key(crossterm::event::KeyEvent::new(
-            crossterm::event::KeyCode::Char('4'),
-            crossterm::event::KeyModifiers::empty(),
-        ));
-        screen.on_event(&type_four, event_context);
+        screen.on_action(Action::CharInput('4'), event_context);
         let cmd = rx.try_recv().expect("budget text input should emit a tax update command");
         engine.write().unwrap().execute_command(cmd).unwrap();
 
@@ -703,16 +677,12 @@ mod tests {
             cmd_tx: &cmd_tx,
             running: &mut running,
         };
-        let type_two = crossterm::event::Event::Key(crossterm::event::KeyEvent::new(
-            crossterm::event::KeyCode::Char('2'),
-            crossterm::event::KeyModifiers::empty(),
-        ));
-        screen.on_event(&type_two, event_context);
+        screen.on_action(Action::CharInput('2'), event_context);
         let cmd = rx.try_recv().expect("budget text input should emit a second tax update command");
         engine.write().unwrap().execute_command(cmd).unwrap();
 
-        assert_eq!(screen.budget_ui.commercial_tax_input.text(), "42");
-        assert_eq!(screen.budget_ui.commercial_tax.value(), 42);
+        assert_eq!(screen.budget_ui.commercial_tax_input, "42");
+        assert_eq!(screen.budget_ui.commercial_tax, 42);
         assert_eq!(engine.read().unwrap().sim.tax_rates.commercial, 42);
     }
 
@@ -734,7 +704,7 @@ mod tests {
         };
         screen.on_action(Action::CharInput('b'), open_context);
         screen.budget_ui.focused = BudgetFocus::ResidentialTax;
-        screen.budget_ui.residential_tax_input.set_text("");
+        screen.budget_ui.residential_tax_input.clear();
 
         for key in ['1', '2', '3'] {
             let event_context = AppContext {
@@ -742,17 +712,13 @@ mod tests {
                 cmd_tx: &cmd_tx,
                 running: &mut running,
             };
-            let event = crossterm::event::Event::Key(crossterm::event::KeyEvent::new(
-                crossterm::event::KeyCode::Char(key),
-                crossterm::event::KeyModifiers::empty(),
-            ));
-            screen.on_event(&event, event_context);
+            screen.on_action(Action::CharInput(key), event_context);
             let cmd = rx.try_recv().expect("typed tax input should emit a tax update command");
             engine.write().unwrap().execute_command(cmd).unwrap();
         }
 
-        assert_eq!(screen.budget_ui.residential_tax_input.text(), "100");
-        assert_eq!(screen.budget_ui.residential_tax.value(), 100);
+        assert_eq!(screen.budget_ui.residential_tax_input, "100");
+        assert_eq!(screen.budget_ui.residential_tax, 100);
         assert_eq!(engine.read().unwrap().sim.tax_rates.residential, 100);
     }
 
@@ -774,32 +740,20 @@ mod tests {
         };
         screen.on_action(Action::CharInput('b'), open_context);
         screen.budget_ui.focused = BudgetFocus::CommercialTax;
-        let start_value = screen.budget_ui.commercial_tax.value();
+        let start_value = screen.budget_ui.commercial_tax;
 
-        let left_event = crossterm::event::Event::Key(crossterm::event::KeyEvent::new(
-            crossterm::event::KeyCode::Left,
-            crossterm::event::KeyModifiers::empty(),
-        ));
         let event_context = AppContext {
             engine: &engine,
             cmd_tx: &cmd_tx,
             running: &mut running,
         };
-        let transition = screen.on_event(&left_event, event_context);
-        assert!(transition.is_none());
-
-        let action_context = AppContext {
-            engine: &engine,
-            cmd_tx: &cmd_tx,
-            running: &mut running,
-        };
-        let transition = screen.on_action(Action::MoveCursor(-1, 0), action_context);
+        let transition = screen.on_action(Action::MoveCursor(-1, 0), event_context);
         assert!(transition.is_none());
         let cmd = rx.try_recv().expect("left key adjustment should emit a tax update command");
         engine.write().unwrap().execute_command(cmd).unwrap();
 
-        assert_eq!(screen.budget_ui.commercial_tax.value(), start_value.saturating_sub(1));
-        assert_eq!(screen.budget_ui.commercial_tax_input.text(), (start_value.saturating_sub(1)).to_string());
+        assert_eq!(screen.budget_ui.commercial_tax, start_value.saturating_sub(1));
+        assert_eq!(screen.budget_ui.commercial_tax_input, (start_value.saturating_sub(1)).to_string());
         assert_eq!(engine.read().unwrap().sim.tax_rates.commercial as usize, start_value.saturating_sub(1));
     }
 }

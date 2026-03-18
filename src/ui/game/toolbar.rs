@@ -3,18 +3,13 @@ use ratatui::{
     buffer::Buffer,
     layout::Rect,
     style::{Modifier, Style},
-    widgets::StatefulWidget,
 };
-use rat_widget::button::Button;
 
 pub const TOOL_GROUPS: &[(&str, &[Tool])] = &[
     ("", &[Tool::Inspect, Tool::Bulldoze]),
     ("Zones", &[Tool::ZoneRes, Tool::ZoneComm, Tool::ZoneInd]),
     ("Roads/Power", &[Tool::Road, Tool::Rail, Tool::PowerLine]),
-    (
-        "Buildings",
-        &[Tool::PowerPlantPicker, Tool::Park, Tool::Police, Tool::Fire],
-    ),
+    ("Buildings", &[Tool::PowerPlantPicker, Tool::Park, Tool::Police, Tool::Fire]),
 ];
 
 fn tool_sector(tool: Tool) -> Option<TaxSector> {
@@ -26,19 +21,12 @@ fn tool_sector(tool: Tool) -> Option<TaxSector> {
     }
 }
 
-pub fn render_toolbar(
-    area: Rect,
-    buf: &mut Buffer,
-    current_tool: Tool,
-    btn_states: &mut std::collections::HashMap<Tool, rat_widget::button::ButtonState>,
-) {
+pub fn render_toolbar(area: Rect, buf: &mut Buffer, current_tool: Tool) {
     if area.width < 3 || area.height < 2 {
         return;
     }
 
     let ui = theme::ui_palette();
-
-    // Fill background
     for y in area.y..area.y + area.height {
         for x in area.x..area.x + area.width {
             let cell = buf.cell_mut((x, y)).unwrap();
@@ -48,33 +36,21 @@ pub fn render_toolbar(
     }
 
     let mut row = area.y;
-
     for &(group_name, tools) in TOOL_GROUPS {
         if row >= area.y + area.height {
             break;
         }
 
-        // Group header — omitted for unnamed groups
         if !group_name.is_empty() {
             let header = format!("┌ {}", group_name);
             let header_trimmed = truncate(&header, area.width as usize);
-            buf.set_string(
-                area.x,
-                row,
-                &header_trimmed,
-                Style::default().fg(ui.toolbar_header).bg(ui.toolbar_bg),
-            );
+            buf.set_string(area.x, row, &header_trimmed, Style::default().fg(ui.toolbar_header).bg(ui.toolbar_bg));
             let header_char_count = header_trimmed.chars().count() as u16;
             let start_x = area.x + header_char_count;
             if start_x < area.x + area.width {
                 let remaining = (area.x + area.width - start_x) as usize;
                 let rest: String = std::iter::repeat_n('─', remaining).collect();
-                buf.set_string(
-                    start_x,
-                    row,
-                    &rest,
-                    Style::default().fg(ui.toolbar_rule).bg(ui.toolbar_bg),
-                );
+                buf.set_string(start_x, row, &rest, Style::default().fg(ui.toolbar_rule).bg(ui.toolbar_bg));
             }
             row += 1;
         }
@@ -87,74 +63,64 @@ pub fn render_toolbar(
             let hint = tool.key_hint();
             let label = tool.label();
             let cost = tool.cost();
-            let cost_str = if cost == 0 {
-                String::new()
-            } else {
-                format!(" (${cost})")
-            };
-            let btn_text = format!("[{}] {}{}", hint, label, cost_str);
-            let btn_text = truncate(&btn_text, (area.width as usize).saturating_sub(1));
-
-            let (base_style, active_style) = if let Some(sector) = tool_sector(tool) {
-                (
-                    Style::default().fg(theme::sector_color(sector)).bg(ui.toolbar_button_bg),
+            let cost_str = if cost == 0 { String::new() } else { format!(" (${cost})") };
+            let text = truncate(&format!("[{}] {}{}", hint, label, cost_str), area.width as usize);
+            let style = if let Some(sector) = tool_sector(tool) {
+                if is_active {
                     Style::default()
                         .fg(ui.selection_fg)
                         .bg(theme::sector_bg(sector))
-                        .add_modifier(Modifier::BOLD),
-                )
+                        .add_modifier(Modifier::BOLD)
+                } else {
+                    Style::default().fg(theme::sector_color(sector)).bg(ui.toolbar_button_bg)
+                }
+            } else if is_active {
+                Style::default()
+                    .fg(ui.toolbar_active_fg)
+                    .bg(ui.toolbar_active_bg)
+                    .add_modifier(Modifier::BOLD)
             } else {
-                (
-                    Style::default().fg(ui.toolbar_button_fg).bg(ui.toolbar_button_bg),
-                    Style::default()
-                        .fg(ui.toolbar_active_fg)
-                        .bg(ui.toolbar_active_bg)
-                        .add_modifier(Modifier::BOLD),
-                )
+                Style::default().fg(ui.toolbar_button_fg).bg(ui.toolbar_button_bg)
             };
 
-            // Use rat_widget::button::Button for standardized event handling & styling
-            let mut button = Button::new(btn_text.clone())
-                .styles(rat_widget::button::ButtonStyle {
-                    style: if is_active { active_style } else { base_style },
-                    armed: Some(Style::default().bg(ui.toolbar_armed_bg)),
-                    ..Default::default()
-                });
-            
-            // If active, we want it to look "selected" even if not focused
-            if is_active {
-                button = button.style(active_style);
-            }
-
-            let btn_area = Rect::new(area.x, row, area.width, 1);
-            if let Some(state) = btn_states.get_mut(&tool) {
-                button.render(btn_area, buf, state);
-            }
-
+            let padded = format!("{:<width$}", text, width = area.width as usize);
+            buf.set_string(area.x, row, padded, style);
             row += 1;
         }
 
-        // Group footer
         if row < area.y + area.height {
             let footer: String = std::iter::repeat_n('─', area.width as usize).collect();
-            buf.set_string(
-                area.x,
-                row,
-                &footer,
-                Style::default().fg(ui.toolbar_rule).bg(ui.toolbar_bg),
-            );
+            buf.set_string(area.x, row, &footer, Style::default().fg(ui.toolbar_rule).bg(ui.toolbar_bg));
             row += 1;
         }
     }
 }
 
-/// Exact number of rows the toolbar content occupies.
+pub fn tool_at_row(relative_row: u16) -> Option<Tool> {
+    let mut row = 0u16;
+    for &(group_name, tools) in TOOL_GROUPS {
+        if !group_name.is_empty() {
+            row += 1;
+        }
+        for &tool in tools {
+            if relative_row == row {
+                return Some(tool);
+            }
+            row += 1;
+        }
+        row += 1;
+    }
+    None
+}
+
 pub fn toolbar_height() -> u16 {
     let mut h = 0u16;
     for &(group_name, tools) in TOOL_GROUPS {
-        if !group_name.is_empty() { h += 1; } // header
+        if !group_name.is_empty() {
+            h += 1;
+        }
         h += tools.len() as u16;
-        h += 1; // footer separator
+        h += 1;
     }
     h
 }

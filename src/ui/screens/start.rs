@@ -1,5 +1,4 @@
-use crate::app::screens::StartState;
-use crate::ui::theme;
+use crate::{app::screens::StartState, ui::{theme, view::StartViewModel}};
 use ratatui::{
     layout::Rect,
     style::{Modifier, Style},
@@ -7,7 +6,7 @@ use ratatui::{
     Frame,
 };
 
-pub fn render_start(frame: &mut Frame, area: Rect, state: &mut StartState) {
+pub fn render_start(frame: &mut Frame, area: Rect, view: &StartViewModel, state: &mut StartState) {
     let ui = theme::ui_palette();
 
     frame.render_widget(
@@ -74,14 +73,11 @@ pub fn render_start(frame: &mut Frame, area: Rect, state: &mut StartState) {
         );
 
         let buf = frame.buffer_mut();
-        let options = ["Load Existing City", "Create New City", "Quit"];
-        for (i, opt) in options.iter().enumerate() {
+        for (i, opt) in view.options.iter().enumerate() {
             let y = menu_y + 1 + i as u16 * 2;
             if y >= menu_y + menu_h - 1 {
                 break;
             }
-            
-            // Record click area
             state.menu_areas[i] = crate::app::ClickArea {
                 x: menu_x + 1,
                 y,
@@ -89,7 +85,7 @@ pub fn render_start(frame: &mut Frame, area: Rect, state: &mut StartState) {
                 height: 1,
             };
 
-            let is_sel = i == state.selected;
+            let is_sel = i == view.selected;
             let prefix = if is_sel { "▶ " } else { "  " };
             let text = format!("{}{}", prefix, opt);
             let style = if is_sel {

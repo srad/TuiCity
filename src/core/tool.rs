@@ -19,6 +19,7 @@ pub enum Tool {
 }
 
 impl Tool {
+    #[allow(dead_code)]
     pub const ALL: [Tool; 14] = [
         Tool::Inspect,
         Tool::ZoneRes,
