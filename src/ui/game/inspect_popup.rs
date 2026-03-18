@@ -1,23 +1,24 @@
-use crate::core::map::{Map, Tile};
+use crate::{core::{map::Map, sim::economy::{tile_sector_capacity, TaxSector}}, ui::theme};
+
+#[cfg(test)]
+use crate::core::map::Tile;
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
-    style::{Color, Style},
+    style::Style,
     widgets::Widget,
 };
 
+#[cfg(test)]
 /// Population / job estimate displayed for a tile (display-only approximation).
 fn pop_estimate(tile: Tile) -> Option<(i32, &'static str)> {
-    match tile {
-        Tile::ResLow  => Some((20,  "Pop")),
-        Tile::ResMed  => Some((50,  "Pop")),
-        Tile::ResHigh => Some((150, "Pop")),
-        Tile::CommLow  => Some((10, "Jobs")),
-        Tile::CommHigh => Some((30, "Jobs")),
-        Tile::IndLight => Some((10, "Jobs")),
-        Tile::IndHeavy => Some((30, "Jobs")),
-        _ => None,
-    }
+    tile_sector_capacity(tile).map(|(sector, amount)| {
+        let label = match sector {
+            TaxSector::Residential => "Pop",
+            TaxSector::Commercial | TaxSector::Industrial => "Jobs",
+        };
+        (amount as i32, label)
+    })
 }
 
 fn pct(val: u8) -> u8 {
@@ -41,6 +42,7 @@ struct InspectContent<'a> {
 
 impl<'a> Widget for InspectContent<'a> {
     fn render(self, area: Rect, buf: &mut Buffer) {
+        let ui = theme::ui_palette();
         let (x, y) = self.pos;
         if x >= self.map.width || y >= self.map.height {
             return;
@@ -64,51 +66,55 @@ impl<'a> Widget for InspectContent<'a> {
 
         put!(
             format!("Tile:       {}", tile.name()),
-            Style::default().fg(Color::White).bold()
+            Style::default().fg(ui.text_primary).bold()
         );
 
-        if let Some((est, label)) = pop_estimate(tile) {
+        if let Some((sector, amount)) = tile_sector_capacity(tile) {
+            let label = match sector {
+                TaxSector::Residential => "Pop",
+                TaxSector::Commercial | TaxSector::Industrial => "Jobs",
+            };
             put!(
-                format!("{:<11} ~{}", format!("{}:", label), est),
-                Style::default().fg(Color::Rgb(180, 220, 255))
+                format!("{:<11} ~{}", format!("{}:", label), amount),
+                Style::default().fg(theme::sector_color(sector))
             );
         }
 
         row += 1; // blank separator
 
-        let (powered_text, powered_color) = if overlay.powered {
-            ("Powered:    Yes", Color::Rgb(80, 220, 80))
+        let (powered_text, powered_color) = if overlay.is_powered() {
+            (format!("Power:      {}%", pct(overlay.power_level)), ui.success)
         } else {
-            ("Powered:    No", Color::Rgb(200, 60, 60))
+            ("Power:      None".to_string(), ui.danger)
         };
         put!(powered_text, Style::default().fg(powered_color));
 
         if overlay.on_fire {
-            put!("ON FIRE!", Style::default().fg(Color::Rgb(255, 60, 0)).bold());
+            put!("ON FIRE!", Style::default().fg(ui.danger).bold());
         }
 
         row += 1; // blank separator
 
         put!(
             format!("Land Value: {} ({}%)", lv_label(overlay.land_value), pct(overlay.land_value)),
-            Style::default().fg(Color::Rgb(200, 200, 100))
+            Style::default().fg(ui.warning)
         );
         put!(
             format!("Pollution:  {}%", pct(overlay.pollution)),
-            Style::default().fg(Color::Rgb(180, 160, 80))
+            Style::default().fg(ui.accent)
         );
         put!(
             format!("Crime:      {}%", pct(overlay.crime)),
-            Style::default().fg(Color::Rgb(200, 100, 100))
+            Style::default().fg(ui.danger)
         );
         put!(
             format!("Fire Risk:  {}%", pct(overlay.fire_risk)),
-            Style::default().fg(Color::Rgb(220, 130, 50))
+            Style::default().fg(ui.warning)
         );
 
         let _ = row;
         let hint_row = area.y + area.height.saturating_sub(1);
-        buf.set_string(ix, hint_row, "ESC: close", Style::default().fg(Color::DarkGray));
+        buf.set_string(ix, hint_row, "ESC: close", Style::default().fg(ui.text_dim));
     }
 }
 
@@ -125,9 +131,9 @@ mod tests {
 
     #[test]
     fn pop_estimate_residential_buildings() {
-        assert_eq!(pop_estimate(Tile::ResLow),  Some((20,  "Pop")));
+        assert_eq!(pop_estimate(Tile::ResLow),  Some((10,  "Pop")));
         assert_eq!(pop_estimate(Tile::ResMed),  Some((50,  "Pop")));
-        assert_eq!(pop_estimate(Tile::ResHigh), Some((150, "Pop")));
+        assert_eq!(pop_estimate(Tile::ResHigh), Some((200, "Pop")));
     }
 
     #[test]

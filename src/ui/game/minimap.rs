@@ -3,7 +3,7 @@ use crate::{
     core::map::Map,
     ui::theme::{self, OverlayMode},
 };
-use ratatui::{buffer::Buffer, layout::Rect, style::Color, widgets::Widget};
+use ratatui::{buffer::Buffer, layout::Rect, style::Style, widgets::Widget};
 
 pub struct MiniMap<'a> {
     pub map: &'a Map,
@@ -17,15 +17,15 @@ impl<'a> Widget for MiniMap<'a> {
             return;
         }
 
+        let ui = theme::ui_palette();
+
         // Title row
         let title = "── MINI-MAP ──";
         buf.set_string(
             area.x,
             area.y,
             title,
-            ratatui::style::Style::default()
-                .fg(Color::Rgb(140, 140, 180))
-                .bg(Color::Rgb(10, 10, 20)),
+            Style::default().fg(ui.text_muted).bg(ui.panel_window_bg),
         );
 
         let win_area = Rect {
@@ -132,7 +132,7 @@ impl<'a> Widget for MiniMap<'a> {
 fn set_viewport_cell(buf: &mut Buffer, x: u16, y: u16) {
     if x < buf.area.x + buf.area.width && y < buf.area.y + buf.area.height {
         let cell = buf.cell_mut((x, y)).unwrap();
-        cell.set_fg(Color::Rgb(255, 255, 100));
+        cell.set_fg(theme::ui_palette().viewport_outline);
         // Also darken the background slightly so the viewport rectangle is more visible
         // Actually, let's keep it simple and just set the character if it's a corner?
         // Let's just use the foreground color.

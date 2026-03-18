@@ -1,4 +1,5 @@
 pub mod game;
+pub mod runtime;
 pub mod screens;
 pub mod theme;
 
@@ -11,7 +12,8 @@ use ratatui::{
 };
 use std::io;
 
-use crate::app::{AppState, ClickArea, screens::AppContext};
+use crate::app::{AppState, ClickArea, MapUiAreas, screens::AppContext};
+use crate::ui::runtime::{centered_fit_rect, clamp_window_to_desktop};
 
 pub trait Renderer {
     fn render(&mut self, app: &mut AppState) -> io::Result<()>;
@@ -50,8 +52,29 @@ impl Renderer for TerminalRenderer {
 }
 
 pub fn render_game_v2(frame: &mut Frame, area: Rect, app: &AppState, screen: &mut crate::app::screens::InGameScreen) {
-    use ratatui::style::{Color, Style};
+    use ratatui::style::Style;
     use ratatui::widgets::{Block, Borders, Clear};
+
+    let ui = crate::ui::theme::ui_palette();
+
+    let render_close_button = |
+        frame: &mut Frame,
+        rect: Rect,
+        state: &mut rat_widget::button::ButtonState,
+    | {
+        if rect.width < 5 || rect.height == 0 {
+            return;
+        }
+        let button_area = Rect::new(rect.x + rect.width.saturating_sub(5), rect.y, 5, 1);
+        let button = rat_widget::button::Button::new("[X]")
+            .styles(rat_widget::button::ButtonStyle {
+                style: Style::default().fg(ui.selection_fg).bg(ui.danger),
+                focus: Some(Style::default().fg(ui.selection_fg).bg(ui.danger)),
+                armed: Some(Style::default().fg(ui.selection_fg).bg(ui.selection_bg)),
+                ..Default::default()
+            });
+        button.render(button_area, frame.buffer_mut(), state);
+    };
 
     // ── Fixed bars: menu (row 0) + status bar (row 1) ────────────────────────
     let menu_area   = Rect::new(area.x, area.y,     area.width, 1);
@@ -59,33 +82,22 @@ pub fn render_game_v2(frame: &mut Frame, area: Rect, app: &AppState, screen: &mu
     // Desktop: everything below the two fixed bars
     let desktop = Rect::new(area.x, area.y + 2, area.width, area.height.saturating_sub(2));
 
+    if screen.is_budget_open && screen.budget_needs_center {
+        let fitted = centered_fit_rect(desktop, 74, 29);
+        screen.budget_win.width = fitted.width;
+        screen.budget_win.height = fitted.height;
+        screen.budget_win.x = fitted.x;
+        screen.budget_win.y = fitted.y;
+        screen.budget_needs_center = false;
+    }
+
     // ── Clamp a FloatingWindow, return its outer Rect ────────────────────────
     // Windows may be dragged partially off-screen. The only hard rules are:
     //   • Title bar row must stay within the desktop (so it can be grabbed).
     //   • At least 4 columns of the title bar must remain visible on screen.
     //   • The rendered rect is clipped to the buffer boundary so nothing panics.
     let clamp_win = |win: &mut crate::app::FloatingWindow| -> Rect {
-        let h = win.height.max(4);
-        let w = win.width.max(6);
-        // Sentinel: u16::MAX means "not yet placed" → right-align fully visible.
-        if win.x == u16::MAX {
-            win.x = desktop.x + desktop.width.saturating_sub(w);
-        }
-        // x: keep at least 4 columns of the title bar visible; window stays within
-        // desktop width so it never writes past the buffer's right edge.
-        let min_x = (desktop.x + 4).saturating_sub(w);
-        let max_x = desktop.x + desktop.width.saturating_sub(4).min(desktop.width.saturating_sub(w));
-        let x = win.x.clamp(min_x, max_x);
-        // y: only the title bar row needs to be on screen (free vertical movement).
-        let y = win.y.clamp(desktop.y, desktop.y + desktop.height.saturating_sub(1));
-        win.x = x; win.y = y;
-        // Clip both dimensions to the buffer boundary so nothing writes outside.
-        // Content layout uses win.width/win.height (fixed), not these clipped values.
-        let right   = (x + w).min(desktop.x + desktop.width);
-        let actual_w = right.saturating_sub(x).max(1);
-        let bottom  = (y + h).min(desktop.y + desktop.height);
-        let actual_h = bottom.saturating_sub(y).max(1);
-        Rect::new(x, y, actual_w, actual_h)
+        clamp_window_to_desktop(win, desktop)
     };
 
     let map_rect     = clamp_win(&mut screen.map_win);
@@ -104,27 +116,50 @@ pub fn render_game_v2(frame: &mut Frame, area: Rect, app: &AppState, screen: &mu
     let budget_inner  = inner(budget_rect);
     let inspect_inner = inner(inspect_rect);
 
+    let map_layout = {
+        let engine = app.engine.read().unwrap();
+        game::map_view::layout_map_chrome(
+            map_inner,
+            engine.map.width,
+            engine.map.height,
+            screen.camera.offset_x.max(0) as usize,
+            screen.camera.offset_y.max(0) as usize,
+        )
+    };
+
     // ── Update camera viewport ───────────────────────────────────────────────
-    // Use the *exposed* (panel-free) portion of the map window so that
-    // scroll_to_cursor keeps the cursor in the actually visible area.
-    let exposed_map_w = if panel_rect.x > map_inner.x {
-        (panel_rect.x - map_inner.x) as usize
+    // Use the *exposed* portion of the tile viewport so scroll_to_cursor keeps
+    // the cursor in the area not hidden behind the tools window.
+    let exposed_map_w = if panel_rect.x > map_layout.viewport.x {
+        (panel_rect.x - map_layout.viewport.x) as usize
     } else {
-        map_inner.width as usize
+        map_layout.viewport.width as usize
     }
-    .min(map_inner.width as usize)
+    .min(map_layout.viewport.width as usize)
     .max(1);
-    screen.camera.view_w = exposed_map_w / 2;
-    screen.camera.view_h = map_inner.height as usize;
+    screen.camera.view_w = (exposed_map_w / 2).max(1);
+    screen.camera.view_h = map_layout.view_tiles_h.max(1);
 
     // ── Update click areas ────────────────────────────────────────────────────
-    screen.ui_areas.menu_bar_y = menu_area.y;
-    screen.ui_areas.map        = to_click_area(map_inner);
+    screen.ui_areas.map = MapUiAreas {
+        viewport: to_click_area(map_layout.viewport),
+        vertical_bar: to_click_area(map_layout.vertical_bar),
+        vertical_dec: to_click_area(map_layout.vertical_dec),
+        vertical_track: to_click_area(map_layout.vertical_track),
+        vertical_thumb: to_click_area(map_layout.vertical_thumb),
+        vertical_inc: to_click_area(map_layout.vertical_inc),
+        horizontal_bar: to_click_area(map_layout.horizontal_bar),
+        horizontal_dec: to_click_area(map_layout.horizontal_dec),
+        horizontal_track: to_click_area(map_layout.horizontal_track),
+        horizontal_thumb: to_click_area(map_layout.horizontal_thumb),
+        horizontal_inc: to_click_area(map_layout.horizontal_inc),
+        corner: to_click_area(map_layout.corner),
+    };
     // minimap updated when panel content is rendered below; toolbar uses rat-widget states.
 
     // ── Background ────────────────────────────────────────────────────────────
     frame.render_widget(
-        Block::default().style(Style::default().bg(Color::Rgb(6, 6, 14))),
+        Block::default().style(Style::default().bg(ui.desktop_bg)),
         area,
     );
 
@@ -147,13 +182,13 @@ pub fn render_game_v2(frame: &mut Frame, area: Rect, app: &AppState, screen: &mu
         Block::default()
             .borders(Borders::ALL)
             .title(" MAP ")
-            .title_style(Style::default().fg(Color::Rgb(150, 180, 255)))
-            .border_style(Style::default().fg(Color::Rgb(50, 70, 110)))
-            .style(Style::default().bg(Color::Rgb(8, 12, 8))),
+            .title_style(Style::default().fg(ui.window_title))
+            .border_style(Style::default().fg(ui.window_border))
+            .style(Style::default().bg(ui.map_window_bg)),
         map_rect,
     );
 
-    if map_inner.width > 0 && map_inner.height > 0 {
+    if map_layout.viewport.width > 0 && map_layout.viewport.height > 0 {
         use crate::core::tool::Tool;
         use crate::ui::game::map_view::PreviewKind;
         let engine = app.engine.read().unwrap();
@@ -196,8 +231,9 @@ pub fn render_game_v2(frame: &mut Frame, area: Rect, app: &AppState, screen: &mu
                 preview_kind,
                 overlay_mode: screen.overlay_mode,
             },
-            map_inner,
+            map_layout.viewport,
         );
+        game::map_view::render_scrollbars(&map_layout, frame.buffer_mut());
     }
 
     // ── Panel window ──────────────────────────────────────────────────────────
@@ -206,9 +242,9 @@ pub fn render_game_v2(frame: &mut Frame, area: Rect, app: &AppState, screen: &mu
         Block::default()
             .borders(Borders::ALL)
             .title(" TOOLS ")
-            .title_style(Style::default().fg(Color::Rgb(150, 180, 255)))
-            .border_style(Style::default().fg(Color::Rgb(50, 70, 110)))
-            .style(Style::default().bg(Color::Rgb(12, 12, 28))),
+            .title_style(Style::default().fg(ui.window_title))
+            .border_style(Style::default().fg(ui.window_border))
+            .style(Style::default().bg(ui.panel_window_bg)),
         panel_rect,
     );
 
@@ -284,11 +320,16 @@ pub fn render_game_v2(frame: &mut Frame, area: Rect, app: &AppState, screen: &mu
                     demand_history_res:  &engine.sim.demand_history_res,
                     demand_history_comm: &engine.sim.demand_history_comm,
                     demand_history_ind:  &engine.sim.demand_history_ind,
-                },
-                info_area,
-            );
-        }
+                    power_produced: engine.sim.power_produced_mw,
+                    power_consumed: engine.sim.power_consumed_mw,
+                    },
+                    info_area,
+                    );        }
         // engine lock released here
+    }
+
+    if screen.show_plant_info {
+        game::power_popup::render_power_popup(frame, area, screen);
     }
 
     // ── Budget window (when open) ─────────────────────────────────────────────
@@ -303,13 +344,14 @@ pub fn render_game_v2(frame: &mut Frame, area: Rect, app: &AppState, screen: &mu
         frame.render_widget(
             Block::default()
                 .borders(Borders::ALL)
-                .title(" Budget & Taxes ")
-                .title_style(Style::default().fg(Color::Yellow))
-                .border_style(Style::default().fg(Color::Rgb(180, 160, 40)))
-                .style(Style::default().bg(Color::Rgb(20, 20, 30))),
+                .title(" Budget Control Center ")
+                .title_style(Style::default().fg(ui.window_title))
+                .border_style(Style::default().fg(ui.window_border))
+                .style(Style::default().bg(ui.budget_window_bg)),
             budget_rect,
         );
-        game::budget::render_budget_content(frame.buffer_mut(), budget_inner, &mock_app);
+        render_close_button(frame, budget_rect, &mut screen.budget_close_btn);
+        game::budget::render_budget_content(frame.buffer_mut(), budget_inner, &mock_app, &mut screen.budget_ui);
     }
 
     // ── Inspect window (when open) ────────────────────────────────────────────
@@ -322,11 +364,12 @@ pub fn render_game_v2(frame: &mut Frame, area: Rect, app: &AppState, screen: &mu
                 Block::default()
                     .borders(Borders::ALL)
                     .title(title.as_str())
-                    .title_style(Style::default().fg(Color::Cyan))
-                    .border_style(Style::default().fg(Color::Rgb(30, 140, 160)))
-                    .style(Style::default().bg(Color::Rgb(10, 18, 28))),
+                    .title_style(Style::default().fg(ui.window_title))
+                    .border_style(Style::default().fg(ui.window_border))
+                    .style(Style::default().bg(ui.inspect_window_bg)),
                 inspect_rect,
             );
+            render_close_button(frame, inspect_rect, &mut screen.inspect_close_btn);
             game::inspect_popup::render_inspect_content(
                 frame.buffer_mut(), inspect_inner, inspect_pos, &engine.map,
             );
@@ -335,20 +378,48 @@ pub fn render_game_v2(frame: &mut Frame, area: Rect, app: &AppState, screen: &mu
 
     // ── Menu bar — always on top ──────────────────────────────────────────────
     {
-        use tui_menu::Menu;
-        use ratatui::style::{Color, Style};
+        use rat_widget::menu::{MenuStyle, Menubar};
+        use ratatui::style::Style;
+        use ratatui::widgets::Borders;
+
+        let menu_model = {
+            let engine = app.engine.read().unwrap();
+            crate::app::screens::InGameMenu::from_screen(screen, &engine.sim)
+        };
+        let menu_style = MenuStyle {
+            style: Style::default().fg(ui.menu_fg).bg(ui.menu_bg),
+            focus: Some(Style::default().fg(ui.menu_focus_fg).bg(ui.menu_focus_bg)),
+            right: Some(Style::default().fg(ui.menu_right).bg(ui.menu_bg)),
+            highlight: Some(Style::default().fg(ui.menu_hotkey).bg(ui.menu_bg)),
+            popup_style: Some(Style::default().fg(ui.menu_fg).bg(ui.menu_bg)),
+            popup_focus: Some(Style::default().fg(ui.menu_focus_fg).bg(ui.menu_focus_bg)),
+            popup_right: Some(Style::default().fg(ui.menu_right).bg(ui.menu_bg)),
+            popup_highlight: Some(Style::default().fg(ui.menu_hotkey).bg(ui.menu_bg)),
+            popup_separator: Some(Style::default().fg(ui.menu_right).bg(ui.menu_bg)),
+            popup_block: Some(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(ui.menu_fg).bg(ui.menu_bg))
+                    .style(Style::default().bg(ui.menu_bg)),
+            ),
+            ..Default::default()
+        };
+        let (menu_bar, menu_popup) = Menubar::new(&menu_model)
+            .title(" TuiCity2 ")
+            .title_style(Style::default().fg(ui.menu_title).bg(ui.menu_bg))
+            .popup_width(24)
+            .styles(menu_style)
+            .into_widgets();
         let buf = frame.buffer_mut();
         for x in menu_area.x..menu_area.x + menu_area.width {
             if let Some(cell) = buf.cell_mut((x, menu_area.y)) {
-                cell.set_bg(Color::Rgb(55, 55, 120));
+                cell.set_bg(ui.menu_bg);
+                cell.set_fg(ui.menu_fg);
+                cell.set_char(' ');
             }
         }
-        Menu::<crate::app::screens::MenuAction>::new()
-            .default_style(Style::default().fg(Color::White).bg(Color::Rgb(55, 55, 120)))
-            .highlight(Style::default().fg(Color::Black).bg(Color::Rgb(160, 160, 255)))
-            .dropdown_width(24)
-            .dropdown_style(Style::default().bg(Color::Rgb(55, 55, 120)))
-            .render(menu_area, buf, &mut screen.menu);
+        menu_bar.render(menu_area, buf, &mut screen.menu);
+        menu_popup.render(menu_area, buf, &mut screen.menu);
     }
 }
 

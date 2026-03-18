@@ -1,8 +1,8 @@
-use crate::core::tool::Tool;
+use crate::{core::{sim::TaxSector, tool::Tool}, ui::theme};
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     widgets::StatefulWidget,
 };
 use rat_widget::button::Button;
@@ -13,9 +13,18 @@ pub const TOOL_GROUPS: &[(&str, &[Tool])] = &[
     ("Roads/Power", &[Tool::Road, Tool::Rail, Tool::PowerLine]),
     (
         "Buildings",
-        &[Tool::PowerPlant, Tool::Park, Tool::Police, Tool::Fire],
+        &[Tool::PowerPlantPicker, Tool::Park, Tool::Police, Tool::Fire],
     ),
 ];
+
+fn tool_sector(tool: Tool) -> Option<TaxSector> {
+    match tool {
+        Tool::ZoneRes => Some(TaxSector::Residential),
+        Tool::ZoneComm => Some(TaxSector::Commercial),
+        Tool::ZoneInd => Some(TaxSector::Industrial),
+        _ => None,
+    }
+}
 
 pub fn render_toolbar(
     area: Rect,
@@ -27,12 +36,14 @@ pub fn render_toolbar(
         return;
     }
 
+    let ui = theme::ui_palette();
+
     // Fill background
     for y in area.y..area.y + area.height {
         for x in area.x..area.x + area.width {
             let cell = buf.cell_mut((x, y)).unwrap();
             cell.set_char(' ');
-            cell.set_bg(Color::Rgb(20, 20, 35));
+            cell.set_bg(ui.toolbar_bg);
         }
     }
 
@@ -51,9 +62,7 @@ pub fn render_toolbar(
                 area.x,
                 row,
                 &header_trimmed,
-                Style::default()
-                    .fg(Color::Rgb(150, 150, 200))
-                    .bg(Color::Rgb(20, 20, 35)),
+                Style::default().fg(ui.toolbar_header).bg(ui.toolbar_bg),
             );
             let header_char_count = header_trimmed.chars().count() as u16;
             let start_x = area.x + header_char_count;
@@ -64,9 +73,7 @@ pub fn render_toolbar(
                     start_x,
                     row,
                     &rest,
-                    Style::default()
-                        .fg(Color::Rgb(60, 60, 80))
-                        .bg(Color::Rgb(20, 20, 35)),
+                    Style::default().fg(ui.toolbar_rule).bg(ui.toolbar_bg),
                 );
             }
             row += 1;
@@ -88,14 +95,29 @@ pub fn render_toolbar(
             let btn_text = format!("[{}] {}{}", hint, label, cost_str);
             let btn_text = truncate(&btn_text, (area.width as usize).saturating_sub(1));
 
-            let base_style = Style::default().fg(Color::Rgb(200, 200, 220)).bg(Color::Rgb(30, 30, 50));
-            let active_style = Style::default().fg(Color::Black).bg(Color::Rgb(220, 200, 60)).add_modifier(Modifier::BOLD);
+            let (base_style, active_style) = if let Some(sector) = tool_sector(tool) {
+                (
+                    Style::default().fg(theme::sector_color(sector)).bg(ui.toolbar_button_bg),
+                    Style::default()
+                        .fg(ui.selection_fg)
+                        .bg(theme::sector_bg(sector))
+                        .add_modifier(Modifier::BOLD),
+                )
+            } else {
+                (
+                    Style::default().fg(ui.toolbar_button_fg).bg(ui.toolbar_button_bg),
+                    Style::default()
+                        .fg(ui.toolbar_active_fg)
+                        .bg(ui.toolbar_active_bg)
+                        .add_modifier(Modifier::BOLD),
+                )
+            };
 
             // Use rat_widget::button::Button for standardized event handling & styling
             let mut button = Button::new(btn_text.clone())
                 .styles(rat_widget::button::ButtonStyle {
                     style: if is_active { active_style } else { base_style },
-                    armed: Some(Style::default().bg(Color::Rgb(255, 100, 0))),
+                    armed: Some(Style::default().bg(ui.toolbar_armed_bg)),
                     ..Default::default()
                 });
             
@@ -119,9 +141,7 @@ pub fn render_toolbar(
                 area.x,
                 row,
                 &footer,
-                Style::default()
-                    .fg(Color::Rgb(60, 60, 80))
-                    .bg(Color::Rgb(20, 20, 35)),
+                Style::default().fg(ui.toolbar_rule).bg(ui.toolbar_bg),
             );
             row += 1;
         }

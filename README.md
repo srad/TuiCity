@@ -87,7 +87,9 @@ As you drag the sliders, the preview map and the hex seed update in real-time. P
 | Mouse move | Move cursor |
 | Left click | Place / confirm action |
 | Left click + drag on window title | Move that window |
-| Mouse scroll | Pan camera vertically |
+| Mouse scroll / horizontal wheel | Pan camera vertically or horizontally |
+| Middle click + drag on map | Grab-pan the map |
+| Left click on map scrollbars | Step, page, or drag the viewport |
 | Space | Pause / resume simulation |
 | `q` / `Ctrl+C` | Quit |
 | `Ctrl+S` | Save city |
@@ -157,25 +159,32 @@ TuiCity2 is structured around three main pillars:
 
 **1. Screen Stack**
 
-`AppState` manages a `Vec<Box<dyn Screen>>`. Every game state (start menu, new-city form, load-city list, in-game view) is an independent struct implementing the `Screen` trait defined in `src/app/screens/mod.rs`:
+`AppState` manages a `Vec<Box<dyn Screen>>`. The shared screen contract (`Screen`, `ScreenTransition`, `AppContext`) lives in `src/app/screens/mod.rs`, while each concrete screen is implemented in its own module under `src/app/screens/`:
 
 ```rust
 pub trait Screen {
-    fn on_action(&mut self, action: Action, context: AppContext) -> Option<Transition>;
+    fn on_action(&mut self, action: Action, context: AppContext) -> Option<ScreenTransition>;
     fn on_tick(&mut self, context: AppContext);
     fn render(&mut self, frame: &mut Frame, context: AppContext);
 }
 ```
 
-`Transition` variants (`Push`, `Replace`, `Pop`) drive navigation without coupling screens to each other.
+`ScreenTransition` variants (`Push`, `Replace`, `Pop`) drive navigation without coupling screens to each other.
 
 **2. Background Simulation Thread**
 
 The simulation runs in a dedicated OS thread managed by `core/engine.rs`. The main UI thread sends `SimCommand` messages over a `std::sync::mpsc` channel. The sim thread processes commands (step, pause, save, load, place tile) and writes results back into an `Arc<RwLock<Engine>>` that the UI reads for rendering.
 
-**3. Floating Window UI**
+**3. Lightweight UI Runtime + Screen-Local Controllers**
 
-In-game UI elements (map, tools panel, budget, inspect) are independently movable `FloatingWindow` instances stored on `InGameScreen`. Each window can be dragged by its title bar to any position; windows may extend partially off-screen. The renderer clips each window rect to the terminal buffer boundary before rendering.
+Shared geometry and window helpers now live in `src/ui/runtime.rs` (`ClickArea`, `MapUiAreas`, `UiAreas`, centered/clamped window helpers). In-game UI elements (map, tools panel, budget, inspect) are independently movable `FloatingWindow` instances stored on `InGameScreen`. Each window can be dragged by its title bar to any position; windows may extend partially off-screen. The renderer clips each window rect to the terminal buffer boundary before rendering.
+
+`InGameScreen` is also split into focused feature modules rather than one large implementation file:
+- `ingame.rs` keeps the screen shell and top-level lifecycle
+- `ingame_interaction.rs` owns map interaction, dragging, panning, and scrollbar logic
+- `ingame_budget.rs` owns budget state, focus traversal, and tax editing
+- `ingame_menu.rs` owns menubar structure and menu action mapping
+- `ingame_widgets.rs` owns popup close buttons, toolbar routing, and budget widget event handling
 
 ### Module Tree
 
@@ -183,15 +192,22 @@ In-game UI elements (map, tools panel, budget, inspect) are independently movabl
 src/
 ├── main.rs                        Entry point; sets up terminal, spawns sim thread, runs event loop
 ├── app/
-│   ├── mod.rs                     AppState, ClickArea, FloatingWindow, WindowDrag
+│   ├── mod.rs                     AppState and shared app shell
 │   ├── camera.rs                  Camera (viewport offset, clamping, pan)
 │   ├── input.rs                   Action enum; crossterm Event → Action translation
 │   ├── line_drag.rs               LineDrag state (road/rail/power line placement)
 │   ├── rect_drag.rs               RectDrag state (zone/bulldoze area placement)
 │   ├── save.rs                    Save/load helpers (JSON ↔ file)
 │   └── screens/
-│       └── mod.rs                 Screen trait + all screen structs:
-│                                    StartScreen, NewCityScreen, LoadCityScreen, InGameScreen
+│       ├── mod.rs                 Screen trait, AppContext, ScreenTransition, re-exports
+│       ├── start.rs               StartScreen + start-menu state/logic
+│       ├── new_city.rs            NewCityScreen + generator form state/logic
+│       ├── load_city.rs           LoadCityScreen + save-list state/logic
+│       ├── ingame.rs              InGameScreen shell + top-level event lifecycle
+│       ├── ingame_interaction.rs  Map interaction, drag flows, scrollbars, panning
+│       ├── ingame_menu.rs         Menubar structure, menu actions, menu routing
+│       ├── ingame_budget.rs       Budget window state, focus model, tax input logic
+│       └── ingame_widgets.rs      Popup close buttons, toolbar routing, widget events
 ├── core/
 │   ├── mod.rs                     Re-exports
 │   ├── engine.rs                  Engine struct; sim thread loop; SimCommand dispatch
@@ -212,17 +228,19 @@ src/
 │                                    FinanceSystem, HistorySystem,
 │                                    FireSpreadSystem, FloodSystem, TornadoSystem
 └── ui/
-    ├── mod.rs                     TerminalRenderer; render_game_v2 (floating window layout)
+    ├── mod.rs                     TerminalRenderer; render_game_v2 compositor
+    ├── runtime.rs                 Shared UI runtime helpers (hit areas, window clamp/center, focus cycling)
     ├── theme.rs                   Colour palette; tile glyphs; overlay tinting
     ├── game/
     │   ├── mod.rs                 Re-exports for game sub-widgets
     │   ├── map_view.rs            MapView widget (tile glyphs, overlays, scrollbars)
     │   ├── minimap.rs             MiniMap widget (scaled overview)
-    │   ├── toolbar.rs             Tool button list with hotkey hints and costs
+    │   ├── toolbar.rs             Tool palette widget with hotkey hints and costs
     │   ├── infopanel.rs           Tile info + demand bars
     │   ├── statusbar.rs           Status bar (tool, funds, date, population, pause)
-    │   ├── budget.rs              Budget window content (treasury, tax, maintenance, sparkline)
+    │   ├── budget.rs              Budget window widget (summary cards, sector taxes, forecast)
     │   ├── inspect_popup.rs       Inspect window content (tile stats, overlay values)
+    │   ├── power_popup.rs         Power-plant picker popup widget
     │   └── disasters.rs           Disaster event notification rendering
     └── screens/
         ├── mod.rs                 Re-exports for screen renderers
@@ -241,10 +259,10 @@ src/
 | `Map` | `core/map/mod.rs` | Grid of tiles + overlays; width/height; BFS power-grid flood-fill |
 | `SimState` | `core/sim/mod.rs` | Full simulation snapshot: treasury, date, population, demand, history, last_breakdown |
 | `Camera` | `app/camera.rs` | Viewport offset; clamping; mouse-pan delta |
-| `FloatingWindow` | `app/mod.rs` | Position + size of a movable window; title-bar hit-test |
+| `FloatingWindow` | `ui/runtime.rs` via `app/mod.rs` | Position + size of a movable window; title-bar hit-test |
 | `WindowDrag` | `app/mod.rs` | Tracks which window is being dragged and the grab offset |
 | `Screen` | `app/screens/mod.rs` | Trait implemented by every game state |
-| `Transition` | `app/screens/mod.rs` | Navigation result returned by `on_action` (Push, Replace, Pop) |
+| `ScreenTransition` | `app/screens/mod.rs` | Navigation result returned by `on_action` (Push, Replace, Pop) |
 
 ### Simulation Pipeline
 
@@ -268,14 +286,14 @@ src/
 
 1. The `ratatui` event loop calls `TerminalRenderer::render(frame, &app_state)`.
 2. `TerminalRenderer` peeks at the top of the screen stack and calls `screen.render(frame, context)`.
-3. For `InGameScreen`, rendering is delegated to `render_game_v2` in `src/ui/mod.rs`.
+3. For `InGameScreen`, rendering is delegated to `render_game_v2` in `src/ui/mod.rs`, while interaction and widget behavior are split across `src/app/screens/ingame_interaction.rs`, `src/app/screens/ingame_menu.rs`, `src/app/screens/ingame_budget.rs`, and `src/app/screens/ingame_widgets.rs`.
 4. `render_game_v2` manages four `FloatingWindow` instances (map, panel, budget, inspect):
    - Each window is clamped so its title bar stays on-screen and neither dimension writes outside the buffer.
    - Windows are rendered in back-to-front order: background → map → panel → budget → inspect → menu bar.
    - `Clear` is rendered before each window to erase whatever is behind it.
-5. `MapView` iterates visible tiles (camera offset + viewport size), picks a glyph and colour from `theme.rs`, and writes `Cell` values into the buffer. To fix terminal font aspect ratios, **the map is rendered using "Double-Width Tiles"** (each map tile is mapped to two horizontal terminal cells), which ensures the game grid looks perfectly square without relying on specialized fonts. Scrollbar overlays are drawn on the last column and row if the map is larger than the viewport.
+5. `MapView` iterates visible tiles (camera offset + viewport size), picks a glyph and colour from `theme.rs`, and writes `Cell` values into the buffer. To fix terminal font aspect ratios, **the map is rendered using "Double-Width Tiles"** (each map tile is mapped to two horizontal terminal cells), which ensures the game grid looks perfectly square without relying on specialized fonts. When the map is larger than the viewport, dedicated DOS-style horizontal and vertical scrollbars are rendered beside it.
 6. The panel window renders toolbar buttons, a minimap, and a tile-info section. Layout is computed from the window's nominal height (not its clipped height), so sub-widget proportions stay constant when the window is dragged toward the screen edge.
-7. The menu bar (`tui-menu`) is rendered last so it always appears on top.
+7. Popup windows such as the power-plant picker and budget widget render through dedicated `ui/game/*` modules, and the menu bar (`rat-widget` menubar) is rendered last so it always appears on top.
 
 ### Adding a New Tool
 
@@ -283,7 +301,7 @@ src/
 2. **Implement placement** in the `Tool::place` match arm — return the cost and any `SimCommand`s needed.
 3. **Set the cost** in `Tool::cost`.
 4. **Set the footprint** in `Tool::footprint` (`Point`, `Rect`, `Line`, or `Centered(w, h)`).
-5. **Set the key hint** in `Tool::key_hint` and **bind the hotkey** in `InGameScreen::on_action` inside `src/app/screens/mod.rs`.
+5. **Set the key hint** in `Tool::key_hint` and **bind the hotkey** in `InGameScreen::on_action` inside `src/app/screens/ingame.rs`.
 6. **Add the tool to a group** in `TOOL_GROUPS` in `src/ui/game/toolbar.rs` so it appears in the panel.
 
 ### Adding a New Sim System
@@ -299,13 +317,12 @@ src/
 |-------|---------|---------|
 | `ratatui` | 0.30 | Terminal UI framework — layout, widgets, rendering buffer |
 | `crossterm` | 0.29 | Raw mode, mouse capture, cross-platform terminal control |
-| `rat-widget` | 3.2 | Advanced interactive stateful widgets (Sliders, Buttons, Inputs) |
+| `rat-widget` | 3.2 | Advanced interactive stateful widgets (sliders, buttons, text inputs, menu bar) |
 | `rat-focus` | 2.1 | Focus management for interactive UI components |
 | `rat-event` | 2.1 | Trait implementations mapping crossterm events to widgets |
 | `serde` | 1.0 | Serialisation traits |
 | `serde_json` | 1.0 | JSON save file format |
 | `rand` | 0.8 | Map generation RNG, disaster probability rolls |
-| `tui-menu` | 0.3 | Dropdown menu bar widget (F1 menu) |
 
 ---
 

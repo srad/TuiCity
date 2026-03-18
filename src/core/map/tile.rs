@@ -21,11 +21,13 @@ pub enum Tile {
     CommHigh = 41,
     IndLight = 50,
     IndHeavy = 51,
-    PowerPlant = 60,
-    Park = 61,
-    Police = 62,
-    Fire = 63,
-    Hospital = 64,
+    PowerPlantCoal = 60,
+    PowerPlantGas = 61,
+    Park = 62,
+    Police = 63,
+    Fire = 64,
+    Hospital = 65,
+    Rubble = 70,
 }
 
 impl Tile {
@@ -49,11 +51,13 @@ impl Tile {
             41 => Tile::CommHigh,
             50 => Tile::IndLight,
             51 => Tile::IndHeavy,
-            60 => Tile::PowerPlant,
-            61 => Tile::Park,
-            62 => Tile::Police,
-            63 => Tile::Fire,
-            64 => Tile::Hospital,
+            60 => Tile::PowerPlantCoal,
+            61 => Tile::PowerPlantGas,
+            62 => Tile::Park,
+            63 => Tile::Police,
+            64 => Tile::Fire,
+            65 => Tile::Hospital,
+            70 => Tile::Rubble,
             _ => Tile::Grass,
         }
     }
@@ -84,7 +88,7 @@ impl Tile {
             || self.is_zone()
             || matches!(
                 self,
-                Tile::Park | Tile::Police | Tile::Fire | Tile::Hospital
+                Tile::Police | Tile::Fire | Tile::Hospital
             )
     }
 
@@ -116,18 +120,21 @@ impl Tile {
             Tile::CommHigh => "Comm High-Density",
             Tile::IndLight => "Light Industry",
             Tile::IndHeavy => "Heavy Industry",
-            Tile::PowerPlant => "Power Plant",
+            Tile::PowerPlantCoal => "Coal Power Plant",
+            Tile::PowerPlantGas => "Gas Power Plant",
             Tile::Park => "Park",
             Tile::Police => "Police Dept",
             Tile::Fire => "Fire Dept",
             Tile::Hospital => "Hospital",
+            Tile::Rubble => "Rubble",
         }
     }
 }
 
 #[derive(Clone, Copy, Default, Debug, serde::Serialize, serde::Deserialize)]
 pub struct TileOverlay {
-    pub powered: bool,
+    /// Power level delivered to this tile. 0 = none, 255 = maximum strength.
+    pub power_level: u8,
     pub on_fire: bool,
     pub crime: u8,
     /// 0 = clean air, 255 = heavily polluted (computed each tick)
@@ -139,4 +146,10 @@ pub struct TileOverlay {
     /// 0 = safe, 255 = extreme risk (computed each tick, reduced by fire stations)
     #[serde(default)]
     pub fire_risk: u8,
+}
+
+impl TileOverlay {
+    pub fn is_powered(&self) -> bool {
+        self.power_level > 0
+    }
 }

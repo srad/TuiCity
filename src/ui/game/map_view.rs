@@ -24,6 +24,269 @@ pub struct MapView<'a> {
     pub overlay_mode: OverlayMode,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ScrollbarMetrics {
+    pub thumb_start: u16,
+    pub thumb_len: u16,
+    pub max_offset: usize,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct MapChromeLayout {
+    pub viewport: Rect,
+    pub view_tiles_w: usize,
+    pub view_tiles_h: usize,
+    pub vertical_bar: Rect,
+    pub vertical_dec: Rect,
+    pub vertical_track: Rect,
+    pub vertical_thumb: Rect,
+    pub vertical_inc: Rect,
+    pub vertical_page_step: usize,
+    pub horizontal_bar: Rect,
+    pub horizontal_dec: Rect,
+    pub horizontal_track: Rect,
+    pub horizontal_thumb: Rect,
+    pub horizontal_inc: Rect,
+    pub horizontal_page_step: usize,
+    pub corner: Rect,
+}
+
+pub fn scrollbar_metrics(
+    track_len: u16,
+    view_items: usize,
+    total_items: usize,
+    offset: usize,
+) -> Option<ScrollbarMetrics> {
+    if track_len == 0 || view_items == 0 || total_items <= view_items {
+        return None;
+    }
+
+    let max_offset = total_items.saturating_sub(view_items);
+    let thumb_len = ((track_len as usize * view_items) / total_items).max(1) as u16;
+    let thumb_start = if max_offset == 0 || thumb_len >= track_len {
+        0
+    } else {
+        ((track_len - thumb_len) as usize * offset.min(max_offset) / max_offset) as u16
+    };
+
+    Some(ScrollbarMetrics {
+        thumb_start,
+        thumb_len: thumb_len.min(track_len),
+        max_offset,
+    })
+}
+
+pub fn scrollbar_offset_from_pointer(
+    track_len: u16,
+    thumb_len: u16,
+    max_offset: usize,
+    pointer: u16,
+    grab_offset: u16,
+) -> usize {
+    if track_len == 0 || thumb_len >= track_len || max_offset == 0 {
+        return 0;
+    }
+
+    let max_thumb_pos = track_len - thumb_len;
+    let thumb_pos = pointer.saturating_sub(grab_offset).min(max_thumb_pos);
+    (thumb_pos as usize * max_offset) / max_thumb_pos as usize
+}
+
+fn split_vertical_bar(bar: Rect) -> (Rect, Rect, Rect) {
+    if bar.width == 0 || bar.height == 0 {
+        return (Rect::default(), Rect::default(), Rect::default());
+    }
+    let dec = Rect::new(bar.x, bar.y, bar.width, 1);
+    if bar.height == 1 {
+        return (dec, Rect::default(), Rect::default());
+    }
+    let inc = Rect::new(bar.x, bar.y + bar.height - 1, bar.width, 1);
+    let track = if bar.height > 2 {
+        Rect::new(bar.x, bar.y + 1, bar.width, bar.height - 2)
+    } else {
+        Rect::default()
+    };
+    (dec, track, inc)
+}
+
+fn split_horizontal_bar(bar: Rect) -> (Rect, Rect, Rect) {
+    if bar.width == 0 || bar.height == 0 {
+        return (Rect::default(), Rect::default(), Rect::default());
+    }
+    let dec = Rect::new(bar.x, bar.y, 1, bar.height);
+    if bar.width == 1 {
+        return (dec, Rect::default(), Rect::default());
+    }
+    let inc = Rect::new(bar.x + bar.width - 1, bar.y, 1, bar.height);
+    let track = if bar.width > 2 {
+        Rect::new(bar.x + 1, bar.y, bar.width - 2, bar.height)
+    } else {
+        Rect::default()
+    };
+    (dec, track, inc)
+}
+
+pub fn layout_map_chrome(
+    area: Rect,
+    map_w: usize,
+    map_h: usize,
+    offset_x: usize,
+    offset_y: usize,
+) -> MapChromeLayout {
+    if area.width == 0 || area.height == 0 {
+        return MapChromeLayout::default();
+    }
+
+    let mut viewport_w = area.width;
+    let mut viewport_h = area.height;
+
+    let (need_h, need_v) = loop {
+        let view_tiles_w = (viewport_w as usize / 2).max(1);
+        let next_need_h = map_w > view_tiles_w;
+        let next_need_v = map_h > viewport_h as usize;
+
+        let next_viewport_w = area.width.saturating_sub(u16::from(next_need_v));
+        let next_viewport_h = area.height.saturating_sub(u16::from(next_need_h));
+
+        if next_viewport_w == viewport_w && next_viewport_h == viewport_h {
+            break (next_need_h, next_need_v);
+        }
+
+        viewport_w = next_viewport_w;
+        viewport_h = next_viewport_h;
+    };
+
+    let viewport = Rect::new(area.x, area.y, viewport_w, viewport_h);
+    let view_tiles_w = (viewport.width as usize / 2).max(1);
+    let view_tiles_h = viewport.height as usize;
+
+    let vertical_bar = if need_v {
+        let h = if need_h { viewport.height } else { area.height };
+        Rect::new(viewport.x + viewport.width, area.y, 1, h)
+    } else {
+        Rect::default()
+    };
+    let horizontal_bar = if need_h {
+        let w = if need_v { viewport.width } else { area.width };
+        Rect::new(area.x, viewport.y + viewport.height, w, 1)
+    } else {
+        Rect::default()
+    };
+    let corner = if need_h && need_v {
+        Rect::new(viewport.x + viewport.width, viewport.y + viewport.height, 1, 1)
+    } else {
+        Rect::default()
+    };
+
+    let (vertical_dec, vertical_track, vertical_inc) = split_vertical_bar(vertical_bar);
+    let vertical_thumb = if let Some(metrics) =
+        scrollbar_metrics(vertical_track.height, view_tiles_h, map_h, offset_y)
+    {
+        Rect::new(
+            vertical_track.x,
+            vertical_track.y + metrics.thumb_start,
+            vertical_track.width,
+            metrics.thumb_len,
+        )
+    } else {
+        Rect::default()
+    };
+
+    let (horizontal_dec, horizontal_track, horizontal_inc) = split_horizontal_bar(horizontal_bar);
+    let horizontal_thumb = if let Some(metrics) =
+        scrollbar_metrics(horizontal_track.width, view_tiles_w, map_w, offset_x)
+    {
+        Rect::new(
+            horizontal_track.x + metrics.thumb_start,
+            horizontal_track.y,
+            metrics.thumb_len,
+            horizontal_track.height,
+        )
+    } else {
+        Rect::default()
+    };
+
+    MapChromeLayout {
+        viewport,
+        view_tiles_w,
+        view_tiles_h,
+        vertical_bar,
+        vertical_dec,
+        vertical_track,
+        vertical_thumb,
+        vertical_inc,
+        vertical_page_step: view_tiles_h.saturating_sub(2).max(1),
+        horizontal_bar,
+        horizontal_dec,
+        horizontal_track,
+        horizontal_thumb,
+        horizontal_inc,
+        horizontal_page_step: view_tiles_w.saturating_sub(2).max(1),
+        corner,
+    }
+}
+
+pub fn render_scrollbars(layout: &MapChromeLayout, buf: &mut Buffer) {
+    let ui = theme::ui_palette();
+    let button_fg = ui.scrollbar_button_fg;
+    let button_bg = ui.scrollbar_button_bg;
+    let track_fg = ui.scrollbar_track_fg;
+    let track_bg = ui.scrollbar_track_bg;
+    let thumb_fg = ui.scrollbar_thumb_fg;
+    let thumb_bg = ui.scrollbar_thumb_bg;
+    let corner_fg = ui.scrollbar_corner_fg;
+    let corner_bg = ui.scrollbar_corner_bg;
+
+    let fill = |buf: &mut Buffer, area: Rect, ch: char, fg: Color, bg: Color| {
+        for y in area.y..area.y + area.height {
+            for x in area.x..area.x + area.width {
+                let cell = buf.cell_mut((x, y)).unwrap();
+                cell.set_char(ch);
+                cell.set_fg(fg);
+                cell.set_bg(bg);
+            }
+        }
+    };
+
+    if layout.vertical_bar.width > 0 {
+        fill(buf, layout.vertical_bar, '▒', track_fg, track_bg);
+        fill(buf, layout.vertical_thumb, '█', thumb_fg, thumb_bg);
+        if layout.vertical_dec.width > 0 {
+            let cell = buf.cell_mut((layout.vertical_dec.x, layout.vertical_dec.y)).unwrap();
+            cell.set_char('▲');
+            cell.set_fg(button_fg);
+            cell.set_bg(button_bg);
+        }
+        if layout.vertical_inc.width > 0 {
+            let cell = buf.cell_mut((layout.vertical_inc.x, layout.vertical_inc.y)).unwrap();
+            cell.set_char('▼');
+            cell.set_fg(button_fg);
+            cell.set_bg(button_bg);
+        }
+    }
+
+    if layout.horizontal_bar.width > 0 {
+        fill(buf, layout.horizontal_bar, '▒', track_fg, track_bg);
+        fill(buf, layout.horizontal_thumb, '█', thumb_fg, thumb_bg);
+        if layout.horizontal_dec.width > 0 {
+            let cell = buf.cell_mut((layout.horizontal_dec.x, layout.horizontal_dec.y)).unwrap();
+            cell.set_char('◄');
+            cell.set_fg(button_fg);
+            cell.set_bg(button_bg);
+        }
+        if layout.horizontal_inc.width > 0 {
+            let cell = buf.cell_mut((layout.horizontal_inc.x, layout.horizontal_inc.y)).unwrap();
+            cell.set_char('►');
+            cell.set_fg(button_fg);
+            cell.set_bg(button_bg);
+        }
+    }
+
+    if layout.corner.width > 0 {
+        fill(buf, layout.corner, '▒', corner_fg, corner_bg);
+    }
+}
+
 /// N/E/S/W connectivity flags for a committed map tile.
 fn map_connectivity(map: &Map, tile: Tile, x: usize, y: usize) -> (bool, bool, bool, bool) {
     let matches_tile = |t: Tile| match tile {
@@ -80,6 +343,7 @@ impl<'a> Widget for MapView<'a> {
             return;
         }
 
+        let ui = theme::ui_palette();
         let (cursor_fg, cursor_bg) = theme::cursor_style();
 
         let preview_set: std::collections::HashSet<(usize, usize)> =
@@ -109,7 +373,7 @@ impl<'a> Widget for MapView<'a> {
                         theme::network_char(tile, n, e, s, w)
                     } else if matches!(
                         tile,
-                        Tile::PowerPlant | Tile::Park | Tile::Police | Tile::Fire
+                        Tile::PowerPlantCoal | Tile::PowerPlantGas | Tile::Park | Tile::Police | Tile::Fire
                     ) {
                         let same = |tx: usize, ty: usize| self.map.get(tx, ty) == tile;
                         let n = map_y.checked_sub(1).map(|ny| same(map_x, ny)).unwrap_or(false);
@@ -140,13 +404,9 @@ impl<'a> Widget for MapView<'a> {
                                     '╬'
                                 };
                                 if can_place {
-                                    (
-                                        preview_ch,
-                                        Color::Rgb(100, 200, 255),
-                                        Color::Rgb(20, 50, 80),
-                                    )
+                                    (preview_ch, ui.preview_line_fg, ui.preview_line_bg)
                                 } else {
-                                    (preview_ch, Color::Rgb(255, 80, 80), Color::Rgb(80, 10, 10))
+                                    (preview_ch, ui.preview_invalid_fg, ui.preview_invalid_bg)
                                 }
                             }
                             PreviewKind::Rect(tool) => {
@@ -156,9 +416,9 @@ impl<'a> Widget for MapView<'a> {
                                     .map(|t| theme::tile_glyph(t, TileOverlay::default()).ch)
                                     .unwrap_or('?');
                                 if can_place {
-                                    (preview_ch, Color::Rgb(80, 255, 120), Color::Rgb(10, 60, 20))
+                                    (preview_ch, ui.preview_valid_fg, ui.preview_valid_bg)
                                 } else {
-                                    (preview_ch, Color::Rgb(255, 80, 80), Color::Rgb(80, 10, 10))
+                                    (preview_ch, ui.preview_invalid_fg, ui.preview_invalid_bg)
                                 }
                             }
                             PreviewKind::Footprint(tool, all_valid) => {
@@ -167,9 +427,9 @@ impl<'a> Widget for MapView<'a> {
                                     .map(|t| theme::tile_glyph(t, TileOverlay::default()).ch)
                                     .unwrap_or('?');
                                 if *all_valid {
-                                    (preview_ch, Color::Rgb(80, 255, 120), Color::Rgb(10, 60, 20))
+                                    (preview_ch, ui.preview_valid_fg, ui.preview_valid_bg)
                                 } else {
-                                    (preview_ch, Color::Rgb(255, 80, 80), Color::Rgb(80, 10, 10))
+                                    (preview_ch, ui.preview_invalid_fg, ui.preview_invalid_bg)
                                 }
                             }
                             PreviewKind::None => (ch, glyph.fg, glyph.bg),
@@ -178,7 +438,18 @@ impl<'a> Widget for MapView<'a> {
                         // Apply heat-map tint (replaces bg, keeps ch and fg)
                         let bg = theme::overlay_tint(self.overlay_mode, overlay)
                             .unwrap_or(glyph.bg);
-                        (ch, glyph.fg, bg)
+                        
+                        // Blinking unpowered icon
+                        let mut final_ch = ch;
+                        let mut final_fg = glyph.fg;
+                        if tile.receives_power() && !overlay.is_powered() {
+                            let ms = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis();
+                            if (ms / 500) % 2 == 0 {
+                                final_ch = '⚡';
+                                final_fg = ui.warning;
+                            }
+                        }
+                        (final_ch, final_fg, bg)
                     };
 
                     let cell = buf.cell_mut((buf_x, buf_y)).unwrap();
@@ -189,60 +460,11 @@ impl<'a> Widget for MapView<'a> {
                     // Out-of-bounds: render dark void
                     let cell = buf.cell_mut((buf_x, buf_y)).unwrap();
                     cell.set_char(' ');
-                    cell.set_bg(Color::Rgb(10, 10, 10));
+                    cell.set_bg(ui.desktop_bg);
                 }
             }
         }
 
-        // ── Scrollbar overlay ─────────────────────────────────────────────────
-        // Drawn after tiles so they always appear on top of map content.
-        let track_bg  = Color::Rgb(18, 18, 28);
-        let track_fg  = Color::Rgb(55, 55, 75);
-        let thumb_fg  = Color::Rgb(150, 150, 190);
-
-        // Vertical scrollbar — right-most column
-        if self.map.height > area.height as usize && area.width >= 1 {
-            let track_len = area.height as usize;
-            let map_h     = self.map.height;
-            let view_h    = area.height as usize;
-            let max_off   = map_h.saturating_sub(view_h);
-            let thumb_len = ((track_len * view_h) / map_h).max(1);
-            let thumb_pos = if max_off == 0 { 0 } else {
-                (track_len.saturating_sub(thumb_len))
-                    * (self.camera.offset_y as usize).min(max_off)
-                    / max_off
-            };
-            let sx = area.x + area.width - 1;
-            for row in 0..track_len {
-                let is_thumb = row >= thumb_pos && row < thumb_pos + thumb_len;
-                let cell = buf.cell_mut((sx, area.y + row as u16)).unwrap();
-                cell.set_char(if is_thumb { '█' } else { '░' });
-                cell.set_fg(if is_thumb { thumb_fg } else { track_fg });
-                cell.set_bg(track_bg);
-            }
-        }
-
-        // --- Horizontal Scrollbar ---
-        if self.map.width > (area.width as usize / 2) && area.height >= 1 {
-            let track_len = area.width as usize;
-            let map_w     = self.map.width;
-            let view_w    = area.width as usize / 2;
-            let max_off   = map_w.saturating_sub(view_w);
-            let thumb_len = ((track_len * view_w) / map_w).max(1);
-            let thumb_pos = if max_off == 0 { 0 } else {
-                (track_len.saturating_sub(thumb_len))
-                    * (self.camera.offset_x as usize).min(max_off)
-                    / max_off
-            };
-            let sy = area.y + area.height - 1;
-            for col in 0..track_len {
-                let is_thumb = col >= thumb_pos && col < thumb_pos + thumb_len;
-                let cell = buf.cell_mut((area.x + col as u16, sy)).unwrap();
-                cell.set_char(if is_thumb { '█' } else { '░' });
-                cell.set_fg(if is_thumb { thumb_fg } else { track_fg });
-                cell.set_bg(track_bg);
-            }
-        }
     }
 }
 
@@ -257,6 +479,7 @@ impl<'a> Widget for MapPreview<'a> {
             return;
         }
 
+        let ui = theme::ui_palette();
         let mw = self.map.width as f32;
         let mh = self.map.height as f32;
         // Main map is rendered with 2:1 tiles (double-width).
@@ -288,7 +511,7 @@ impl<'a> Widget for MapPreview<'a> {
             for x in area.x..area.x + area.width {
                 let cell = buf.cell_mut((x, y)).unwrap();
                 cell.set_char(' ');
-                cell.set_bg(Color::Rgb(8, 12, 8));
+                cell.set_bg(ui.map_window_bg);
             }
         }
 
@@ -320,5 +543,25 @@ impl<'a> Widget for MapPreview<'a> {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn layout_reserves_both_scrollbars_when_needed() {
+        let layout = layout_map_chrome(Rect::new(0, 0, 20, 10), 40, 20, 0, 0);
+        assert_eq!(layout.viewport, Rect::new(0, 0, 19, 9));
+        assert_eq!(layout.vertical_bar, Rect::new(19, 0, 1, 9));
+        assert_eq!(layout.horizontal_bar, Rect::new(0, 9, 19, 1));
+        assert_eq!(layout.corner, Rect::new(19, 9, 1, 1));
+    }
+
+    #[test]
+    fn scrollbar_offset_from_pointer_clamps_to_max() {
+        let offset = scrollbar_offset_from_pointer(10, 3, 20, 99, 1);
+        assert_eq!(offset, 20);
     }
 }

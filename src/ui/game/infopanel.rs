@@ -1,7 +1,9 @@
 use crate::core::{
     map::{Tile, TileOverlay},
+    sim::TaxSector,
     tool::Tool,
 };
+use crate::ui::theme;
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
@@ -21,6 +23,8 @@ pub struct InfoPanel<'a> {
     pub demand_history_res: &'a [f32],
     pub demand_history_comm: &'a [f32],
     pub demand_history_ind: &'a [f32],
+    pub power_produced: u32,
+    pub power_consumed: u32,
 }
 
 /// Map a demand value in [-1, 1] to a block character.
@@ -51,19 +55,21 @@ impl<'a> Widget for InfoPanel<'a> {
             return;
         }
 
+        let ui = theme::ui_palette();
+
         // Background
         for y in area.y..area.y + area.height {
             for x in area.x..area.x + area.width {
                 let cell = buf.cell_mut((x, y)).unwrap();
                 cell.set_char(' ');
-                cell.set_bg(Color::Rgb(10, 10, 20));
+                cell.set_bg(ui.panel_window_bg);
             }
         }
 
         #[allow(unused_assignments)]
         let mut row = area.y;
         let w = area.width as usize;
-        let bg = Color::Rgb(10, 10, 20);
+        let bg = ui.panel_window_bg;
 
         macro_rules! print_row {
             ($text:expr, $fg:expr) => {
@@ -76,47 +82,47 @@ impl<'a> Widget for InfoPanel<'a> {
         }
 
         // Title
-        print_row!("── INFO ────────", Color::Rgb(140, 140, 180));
+        print_row!("── INFO ────────", ui.text_muted);
 
         // ── RCI demand bars ───────────────────────────────────────────────────
         let bar_w = (w.saturating_sub(4)).min(10);
 
         let render_demand_row = |buf: &mut Buffer, row: u16, label: &str, val: f32, color: Color| {
             if row >= area.y + area.height { return; }
-            buf.set_string(area.x, row, label, Style::default().fg(Color::White).bg(bg));
+            buf.set_string(area.x, row, label, Style::default().fg(ui.text_primary).bg(bg));
             let bar = bar_str(val, bar_w);
             buf.set_string(area.x + 3, row, truncate(&bar, w.saturating_sub(3)),
                 Style::default().fg(color).bg(bg));
         };
 
         if area.height >= 4 {
-            render_demand_row(buf, row, "R:", self.demand_res,  Color::Green);  row += 1;
-            render_demand_row(buf, row, "C:", self.demand_comm, Color::Blue);   row += 1;
-            render_demand_row(buf, row, "I:", self.demand_ind,  Color::Yellow); row += 1;
+            render_demand_row(buf, row, "R:", self.demand_res, theme::sector_color(TaxSector::Residential)); row += 1;
+            render_demand_row(buf, row, "C:", self.demand_comm, theme::sector_color(TaxSector::Commercial)); row += 1;
+            render_demand_row(buf, row, "I:", self.demand_ind, theme::sector_color(TaxSector::Industrial)); row += 1;
         }
 
         // ── Demand history sparklines (shown when panel is tall enough) ───────
         let has_history = !self.demand_history_res.is_empty();
         if has_history && area.height >= 10 && row < area.y + area.height {
             let spark_cols = w.saturating_sub(2);
-            print_row!("Trend (24m):", Color::Rgb(100, 100, 140));
+            print_row!("Trend (24m):", ui.text_dim);
 
             if row < area.y + area.height {
                 let spark_r = sparkline_str(self.demand_history_res,  spark_cols);
                 buf.set_string(area.x, row, truncate(&spark_r, w),
-                    Style::default().fg(Color::Rgb(80, 200, 80)).bg(bg));
+                    Style::default().fg(theme::sector_color(TaxSector::Residential)).bg(bg));
                 row += 1;
             }
             if row < area.y + area.height {
                 let spark_c = sparkline_str(self.demand_history_comm, spark_cols);
                 buf.set_string(area.x, row, truncate(&spark_c, w),
-                    Style::default().fg(Color::Rgb(80, 120, 220)).bg(bg));
+                    Style::default().fg(theme::sector_color(TaxSector::Commercial)).bg(bg));
                 row += 1;
             }
             if row < area.y + area.height {
                 let spark_i = sparkline_str(self.demand_history_ind,  spark_cols);
                 buf.set_string(area.x, row, truncate(&spark_i, w),
-                    Style::default().fg(Color::Rgb(200, 180, 60)).bg(bg));
+                    Style::default().fg(theme::sector_color(TaxSector::Industrial)).bg(bg));
                 row += 1;
             }
         }
@@ -126,12 +132,20 @@ impl<'a> Widget for InfoPanel<'a> {
 
         // ── Tile info ─────────────────────────────────────────────────────────
         let pos = format!("({},{})", self.x, self.y);
-        print_row!(&pos, Color::Rgb(130, 130, 130));
+        print_row!(&pos, ui.text_muted);
 
-        print_row!(self.tile.name(), Color::Rgb(220, 220, 100));
+        print_row!(self.tile.name(), ui.accent);
 
-        if self.overlay.powered {
-            print_row!("⚡ Powered", Color::Rgb(255, 230, 0));
+        // Power info
+        let surplus = self.power_produced as i32 - self.power_consumed as i32;
+        let p_color = if surplus >= 0 { ui.success } else { ui.danger };
+        print_row!(&format!("⚡ Pwr: {}/{} MW", self.power_produced, self.power_consumed), p_color);
+
+        if self.overlay.is_powered() {
+            let level = self.overlay.power_level as u16 * 100 / 255;
+            print_row!(&format!("⚡ Signal: {}%", level), ui.warning);
+        } else if self.tile.receives_power() {
+            print_row!("⚡ NO POWER", ui.danger);
         }
 
         // Pollution indicator
@@ -145,10 +159,10 @@ impl<'a> Widget for InfoPanel<'a> {
             };
             let text = format!("💨 Pollut {}%{}", pct, level);
             let color = match self.overlay.pollution {
-                0..=50   => Color::Rgb(160, 200, 160),
-                51..=120 => Color::Rgb(210, 180, 80),
-                121..=180 => Color::Rgb(220, 120, 60),
-                _        => Color::Rgb(220, 60, 60),
+                0..=50 => ui.text_secondary,
+                51..=120 => ui.warning,
+                121..=180 => ui.accent,
+                _ => ui.danger,
             };
             print_row!(&text, color);
         }
@@ -157,9 +171,13 @@ impl<'a> Widget for InfoPanel<'a> {
         if self.overlay.land_value > 0 {
             let pct = self.overlay.land_value as u16 * 100 / 255;
             let text = format!("🏡 LV {}%", pct);
-            let color = if pct >= 60 { Color::Rgb(100, 220, 100) }
-                        else if pct >= 30 { Color::Rgb(180, 180, 100) }
-                        else { Color::Rgb(160, 100, 100) };
+            let color = if pct >= 60 {
+                ui.success
+            } else if pct >= 30 {
+                ui.warning
+            } else {
+                ui.text_muted
+            };
             print_row!(&text, color);
         }
 
@@ -167,9 +185,13 @@ impl<'a> Widget for InfoPanel<'a> {
         if self.overlay.crime > 5 {
             let pct = self.overlay.crime as u16 * 100 / 255;
             let text = format!("🚨 Crime {}%", pct);
-            let color = if pct >= 60 { Color::Rgb(220, 80, 80) }
-                        else if pct >= 30 { Color::Rgb(210, 160, 60) }
-                        else { Color::Rgb(160, 200, 160) };
+            let color = if pct >= 60 {
+                ui.danger
+            } else if pct >= 30 {
+                ui.warning
+            } else {
+                ui.text_secondary
+            };
             print_row!(&text, color);
         }
 
@@ -178,7 +200,7 @@ impl<'a> Widget for InfoPanel<'a> {
             let cost = self.current_tool.cost();
             if cost > 0 {
                 let text = format!("Cost: ${}", cost);
-                print_row!(&text, Color::Rgb(180, 220, 180));
+                print_row!(&text, ui.text_secondary);
             }
         }
         

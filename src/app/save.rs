@@ -14,7 +14,7 @@ pub struct SaveFile {
     pub width: usize,
     pub height: usize,
     pub tiles: Vec<u8>,
-    pub overlays: Vec<(bool, bool, u8)>,
+    pub overlays: Vec<(u8, bool, u8)>, // changed from (bool, bool, u8)
 }
 
 #[derive(Clone)]
@@ -54,10 +54,10 @@ pub fn save_city(sim: &SimState, map: &Map) -> io::Result<()> {
     let path = dir.join(&filename);
 
     let tiles: Vec<u8> = map.tiles.iter().map(|t| *t as u8).collect();
-    let overlays: Vec<(bool, bool, u8)> = map
+    let overlays: Vec<(u8, bool, u8)> = map
         .overlays
         .iter()
-        .map(|o| (o.powered, o.on_fire, o.crime))
+        .map(|o| (o.power_level, o.on_fire, o.crime))
         .collect();
 
     let save = SaveFile {
@@ -86,10 +86,10 @@ pub fn load_city(path: &Path) -> io::Result<(Map, SimState)> {
             map.tiles[i] = Tile::from_u8(v);
         }
     }
-    for (i, &(powered, on_fire, crime)) in save.overlays.iter().enumerate() {
+    for (i, &(power_level, on_fire, crime)) in save.overlays.iter().enumerate() {
         if i < map.overlays.len() {
             map.overlays[i] = TileOverlay {
-                powered,
+                power_level,
                 on_fire,
                 crime,
                 ..TileOverlay::default()

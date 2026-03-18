@@ -10,6 +10,9 @@ pub enum Action {
     MouseClick { col: u16, row: u16 },
     MouseDrag { col: u16, row: u16 },
     MouseUp { col: u16, row: u16 },
+    MouseMiddleDown { col: u16, row: u16 },
+    MouseMiddleDrag { col: u16, row: u16 },
+    MouseMiddleUp,
     MouseMove { col: u16, row: u16 },
     MenuSelect,
     MenuBack,
@@ -34,15 +37,57 @@ pub fn translate_event(event: Event) -> Action {
                 col: mouse.column,
                 row: mouse.row,
             },
+            MouseEventKind::Down(MouseButton::Middle) => Action::MouseMiddleDown {
+                col: mouse.column,
+                row: mouse.row,
+            },
+            MouseEventKind::Drag(MouseButton::Middle) => Action::MouseMiddleDrag {
+                col: mouse.column,
+                row: mouse.row,
+            },
+            MouseEventKind::Up(MouseButton::Middle) => Action::MouseMiddleUp,
             MouseEventKind::Moved => Action::MouseMove {
                 col: mouse.column,
                 row: mouse.row,
             },
             MouseEventKind::ScrollUp => Action::PanCamera(0, -3),
             MouseEventKind::ScrollDown => Action::PanCamera(0, 3),
+            MouseEventKind::ScrollLeft => Action::PanCamera(-3, 0),
+            MouseEventKind::ScrollRight => Action::PanCamera(3, 0),
             _ => Action::None,
         },
         _ => Action::None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crossterm::event::{KeyModifiers, MouseEvent, MouseEventKind};
+
+    #[test]
+    fn translate_middle_drag_event() {
+        let event = Event::Mouse(MouseEvent {
+            kind: MouseEventKind::Drag(MouseButton::Middle),
+            column: 12,
+            row: 7,
+            modifiers: KeyModifiers::empty(),
+        });
+        assert!(matches!(
+            translate_event(event),
+            Action::MouseMiddleDrag { col: 12, row: 7 }
+        ));
+    }
+
+    #[test]
+    fn translate_horizontal_scroll_event() {
+        let event = Event::Mouse(MouseEvent {
+            kind: MouseEventKind::ScrollRight,
+            column: 0,
+            row: 0,
+            modifiers: KeyModifiers::empty(),
+        });
+        assert!(matches!(translate_event(event), Action::PanCamera(3, 0)));
     }
 }
 

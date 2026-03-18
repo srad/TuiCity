@@ -10,7 +10,7 @@ mod tests {
     fn setup_engine() -> SimulationEngine {
         let map = Map::new(10, 10);
         let mut sim = SimState::default();
-        sim.treasury = 10000; // Give enough money for tests
+        sim.treasury = 100000; // Give enough money for tests
         SimulationEngine::new(map, sim)
     }
 
@@ -45,12 +45,12 @@ mod tests {
     #[test]
     fn test_insufficient_funds() {
         let mut engine = setup_engine();
-        // Set treasury lower than a power plant's cost
+        // Set treasury lower than a coal plant's cost
         engine.sim.treasury = 10;
-        let cost = Tool::PowerPlant.cost();
+        let cost = Tool::PowerPlantCoal.cost();
         assert!(cost > 10, "PowerPlant cost must be > 10 for this test");
 
-        let cmd = EngineCommand::PlaceTool { tool: Tool::PowerPlant, x: 5, y: 5 };
+        let cmd = EngineCommand::PlaceTool { tool: Tool::PowerPlantCoal, x: 5, y: 5 };
         let result = engine.execute_command(cmd);
 
         assert!(result.is_err(), "Tool placement should fail due to insufficient funds");
@@ -126,6 +126,14 @@ mod tests {
         engine.execute_command(cmd2).unwrap();
 
         assert_eq!(engine.map.get(5, 5), Tile::RoadPowerLine, "Intersection should become RoadPowerLine");
+    }
+
+    #[test]
+    fn test_power_plant_picker_not_placeable() {
+        let mut engine = setup_engine();
+        let cmd = EngineCommand::PlaceTool { tool: Tool::PowerPlantPicker, x: 5, y: 5 };
+        let result = engine.execute_command(cmd);
+        assert!(result.is_err(), "PowerPlantPicker is a UI trigger and should not be placeable on the map");
     }
 
     #[test]

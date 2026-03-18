@@ -1,9 +1,9 @@
-use crate::app::AppState;
+use crate::{app::AppState, ui::theme};
 use crate::core::sim::DisasterConfig;
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
-    style::{Color, Modifier, Style, Stylize},
+    style::{Modifier, Style, Stylize},
     widgets::{Block, Borders, Clear, Widget},
 };
 
@@ -55,6 +55,7 @@ pub fn render_disasters(
     app: &AppState,
     selected: usize,
 ) {
+    let ui = theme::ui_palette();
     let popup_w = 48_u16;
     let popup_h = (DISASTER_COUNT as u16) * 3 + 7;
     let x = area.x + area.width.saturating_sub(popup_w) / 2;
@@ -66,8 +67,8 @@ pub fn render_disasters(
     Block::default()
         .title(" ☠ Disasters ")
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Red))
-        .bg(Color::Rgb(15, 5, 5))
+        .border_style(Style::default().fg(ui.disaster_border))
+        .bg(ui.disaster_bg)
         .render(popup_area, buf);
 
     let inner_x = popup_area.x + 2;
@@ -87,34 +88,34 @@ pub fn render_disasters(
         if is_sel {
             for bx in inner_x..max_x.saturating_sub(2) {
                 let cell = buf.cell_mut((bx, row)).unwrap();
-                cell.set_bg(Color::Rgb(40, 10, 10));
+                cell.set_bg(ui.disaster_select_bg);
             }
             for bx in inner_x..max_x.saturating_sub(2) {
                 let cell = buf.cell_mut((bx, row + 1)).unwrap();
-                cell.set_bg(Color::Rgb(40, 10, 10));
+                cell.set_bg(ui.disaster_select_bg);
             }
         }
 
         // Checkbox
         let checkbox = if enabled { "[✓]" } else { "[ ]" };
-        let cb_color = if enabled { Color::Rgb(100, 220, 100) } else { Color::Rgb(120, 120, 120) };
+        let cb_color = if enabled { ui.success } else { ui.text_muted };
         buf.set_string(inner_x, row, checkbox,
-            Style::default().fg(cb_color).bg(if is_sel { Color::Rgb(40, 10, 10) } else { Color::Rgb(15, 5, 5) }));
+            Style::default().fg(cb_color).bg(if is_sel { ui.disaster_select_bg } else { ui.disaster_bg }));
 
         // Name
         let name = disaster_name(i);
         let name_style = if is_sel {
-            Style::default().fg(Color::White).bg(Color::Rgb(40, 10, 10)).add_modifier(Modifier::BOLD)
+            Style::default().fg(ui.selection_fg).bg(ui.disaster_select_bg).add_modifier(Modifier::BOLD)
         } else {
-            Style::default().fg(Color::Rgb(200, 180, 180)).bg(Color::Rgb(15, 5, 5))
+            Style::default().fg(ui.text_primary).bg(ui.disaster_bg)
         };
         buf.set_string(inner_x + 4, row, name, name_style);
 
         // Description
         let desc = disaster_desc(i);
         buf.set_string(inner_x + 4, row + 1, desc,
-            Style::default().fg(Color::Rgb(100, 80, 80))
-                .bg(if is_sel { Color::Rgb(40, 10, 10) } else { Color::Rgb(15, 5, 5) }));
+            Style::default().fg(ui.text_muted)
+                .bg(if is_sel { ui.disaster_select_bg } else { ui.disaster_bg }));
 
         row += 3;
     }
@@ -123,5 +124,5 @@ pub fn render_disasters(
     let footer_row = popup_area.y + popup_area.height.saturating_sub(2);
     buf.set_string(inner_x, footer_row,
         "↑↓: navigate   SPACE/ENTER: toggle   ESC/D: close",
-        Style::default().fg(Color::Rgb(100, 80, 80)).bg(Color::Rgb(15, 5, 5)));
+        Style::default().fg(ui.text_muted).bg(ui.disaster_bg));
 }

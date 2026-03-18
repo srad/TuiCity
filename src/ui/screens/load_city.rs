@@ -1,18 +1,20 @@
-use crate::app::LoadCityState;
+use crate::app::screens::LoadCityState;
+use crate::ui::theme;
 use ratatui::{
     layout::Rect,
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     widgets::{Block, Borders},
     Frame,
 };
 
 pub fn render_load_city(frame: &mut Frame, area: Rect, state: &LoadCityState) {
+    let ui = theme::ui_palette();
     let block = Block::default()
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Rgb(60, 80, 120)))
+        .border_style(Style::default().fg(ui.window_border))
         .title(" LOAD CITY ")
-        .title_style(Style::default().fg(Color::Rgb(150, 180, 255)))
-        .style(Style::default().bg(Color::Rgb(8, 8, 18)));
+        .title_style(Style::default().fg(ui.window_title))
+        .style(Style::default().bg(ui.window_bg));
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
@@ -34,8 +36,8 @@ pub fn render_load_city(frame: &mut Frame, area: Rect, state: &LoadCityState) {
         row,
         truncate(&header, w),
         Style::default()
-            .fg(Color::Rgb(140, 140, 180))
-            .bg(Color::Rgb(8, 8, 18))
+            .fg(ui.text_muted)
+            .bg(ui.window_bg)
             .add_modifier(Modifier::UNDERLINED),
     );
     row += 1;
@@ -47,8 +49,8 @@ pub fn render_load_city(frame: &mut Frame, area: Rect, state: &LoadCityState) {
                 row + 1,
                 "  No saved cities found.",
                 Style::default()
-                    .fg(Color::Rgb(120, 120, 140))
-                    .bg(Color::Rgb(8, 8, 18)),
+                    .fg(ui.text_muted)
+                    .bg(ui.window_bg),
             );
         }
     } else {
@@ -69,13 +71,11 @@ pub fn render_load_city(frame: &mut Frame, area: Rect, state: &LoadCityState) {
             );
             let style = if is_sel {
                 Style::default()
-                    .fg(Color::Black)
-                    .bg(Color::Rgb(200, 180, 60))
+                    .fg(ui.selection_fg)
+                    .bg(ui.selection_bg)
                     .add_modifier(Modifier::BOLD)
             } else {
-                Style::default()
-                    .fg(Color::Rgb(200, 200, 220))
-                    .bg(Color::Rgb(8, 8, 18))
+                Style::default().fg(ui.text_primary).bg(ui.window_bg)
             };
             buf.set_string(inner.x, row, truncate(&line, w), style);
             row += 1;
@@ -89,9 +89,7 @@ pub fn render_load_city(frame: &mut Frame, area: Rect, state: &LoadCityState) {
         inner.x,
         hint_y,
         truncate(hint, w),
-        Style::default()
-            .fg(Color::Rgb(80, 80, 100))
-            .bg(Color::Rgb(8, 8, 18)),
+        Style::default().fg(ui.text_dim).bg(ui.window_bg),
     );
 }
 

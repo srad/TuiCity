@@ -57,53 +57,8 @@ impl Map {
     }
 
     pub fn update_power_grid(&mut self) {
-        // Clear power grid
-        for overlay in self.overlays.iter_mut() {
-            overlay.powered = false;
-        }
-
-        let mut queue = std::collections::VecDeque::new();
-
-        // Find all power plants
-        for y in 0..self.height {
-            for x in 0..self.width {
-                if self.get(x, y) == Tile::PowerPlant {
-                    queue.push_back((x, y));
-                    let idx = y * self.width + x;
-                    self.overlays[idx].powered = true;
-                }
-            }
-        }
-
-        // BFS to spread power
-        while let Some((x, y)) = queue.pop_front() {
-            for (nx, ny, tile) in self.neighbors4(x, y) {
-                let n_idx = ny * self.width + nx;
-                if !self.overlays[n_idx].powered && tile.power_connects() {
-                    self.overlays[n_idx].powered = true;
-                    queue.push_back((nx, ny));
-                }
-            }
-        }
-        
-        // Spread power to adjacent buildings/zones (receivers do not transmit)
-        let mut receiver_idxs = Vec::new();
-        for y in 0..self.height {
-            for x in 0..self.width {
-                let idx = y * self.width + x;
-                if self.overlays[idx].powered {
-                    for (nx, ny, tile) in self.neighbors4(x, y) {
-                        let n_idx = ny * self.width + nx;
-                        if !self.overlays[n_idx].powered && tile.receives_power() {
-                            receiver_idxs.push(n_idx);
-                        }
-                    }
-                }
-            }
-        }
-        for idx in receiver_idxs {
-             self.overlays[idx].powered = true;
-        }
+        // This is now handled by PowerSystem in sim/systems/mod.rs
+        // We'll keep this as a no-op or proxy if needed, but it's redundant.
     }
 }
 
@@ -114,14 +69,26 @@ mod tests {
     #[test]
     fn test_power_spread_to_zones() {
         let mut map = Map::new(5, 5);
-        map.set(0, 0, Tile::PowerPlant);
+        map.set(0, 0, Tile::PowerPlantCoal);
         map.set(1, 0, Tile::PowerLine);
         map.set(2, 0, Tile::ZoneRes);
         
-        map.update_power_grid();
+        // Use the new PowerSystem for testing
+        use crate::core::sim::systems::PowerSystem;
+        use crate::core::sim::system::SimSystem;
+        use crate::core::sim::{SimState, PlantState};
         
-        assert!(map.get_overlay(0, 0).powered, "Power plant should be powered");
-        assert!(map.get_overlay(1, 0).powered, "Power line should be powered");
-        assert!(map.get_overlay(2, 0).powered, "Zone adjacent to power line should be powered");
+        let mut sim = SimState::default();
+        sim.plants.insert((0, 0), PlantState {
+            age_months: 0,
+            max_life_months: 600,
+            capacity_mw: 500,
+        });
+        
+        PowerSystem.tick(&mut map, &mut sim);
+        
+        assert!(map.get_overlay(0, 0).is_powered(), "Power plant should be powered");
+        assert!(map.get_overlay(1, 0).is_powered(), "Power line should be powered");
+        assert!(map.get_overlay(2, 0).is_powered(), "Zone adjacent to power line should be powered");
     }
 }

@@ -9,7 +9,9 @@ pub enum Tool {
     Road,
     Rail,
     PowerLine,
-    PowerPlant,
+    PowerPlantCoal,
+    PowerPlantGas,
+    PowerPlantPicker,
     Park,
     Police,
     Fire,
@@ -17,7 +19,7 @@ pub enum Tool {
 }
 
 impl Tool {
-    pub const ALL: [Tool; 12] = [
+    pub const ALL: [Tool; 14] = [
         Tool::Inspect,
         Tool::ZoneRes,
         Tool::ZoneComm,
@@ -25,7 +27,9 @@ impl Tool {
         Tool::Road,
         Tool::Rail,
         Tool::PowerLine,
-        Tool::PowerPlant,
+        Tool::PowerPlantCoal,
+        Tool::PowerPlantGas,
+        Tool::PowerPlantPicker,
         Tool::Park,
         Tool::Police,
         Tool::Fire,
@@ -41,7 +45,9 @@ impl Tool {
             Tool::Road => 10,
             Tool::Rail => 20,
             Tool::PowerLine => 5,
-            Tool::PowerPlant => 3_000,
+            Tool::PowerPlantCoal => 3_000,
+            Tool::PowerPlantGas => 6_000,
+            Tool::PowerPlantPicker => 0,
             Tool::Park => 80,
             Tool::Police => 500,
             Tool::Fire => 500,
@@ -58,7 +64,9 @@ impl Tool {
             Tool::Road => Some(Tile::Road),
             Tool::Rail => Some(Tile::Rail),
             Tool::PowerLine => Some(Tile::PowerLine),
-            Tool::PowerPlant => Some(Tile::PowerPlant),
+            Tool::PowerPlantCoal => Some(Tile::PowerPlantCoal),
+            Tool::PowerPlantGas => Some(Tile::PowerPlantGas),
+            Tool::PowerPlantPicker => None,
             Tool::Park => Some(Tile::Park),
             Tool::Police => Some(Tile::Police),
             Tool::Fire => Some(Tile::Fire),
@@ -75,7 +83,9 @@ impl Tool {
             Tool::Road => "Road",
             Tool::Rail => "Rail",
             Tool::PowerLine => "Power Line",
-            Tool::PowerPlant => "Pwr Plant",
+            Tool::PowerPlantCoal => "Coal Plant",
+            Tool::PowerPlantGas => "Gas Plant",
+            Tool::PowerPlantPicker => "Power Plant...",
             Tool::Park => "Park",
             Tool::Police => "Police",
             Tool::Fire => "Fire Dept",
@@ -92,7 +102,9 @@ impl Tool {
             Tool::Road => 'r',
             Tool::Rail => 'l',
             Tool::PowerLine => 'p',
-            Tool::PowerPlant => 'e',
+            Tool::PowerPlantCoal => 'e',
+            Tool::PowerPlantGas => 'g',
+            Tool::PowerPlantPicker => 'E',
             Tool::Park => 'k',
             Tool::Police => 's',
             Tool::Fire => 'f',
@@ -103,7 +115,7 @@ impl Tool {
     pub fn can_place(&self, tile: Tile) -> bool {
         match self {
             Tool::Bulldoze => !matches!(tile, Tile::Water),
-            Tool::Inspect => false,
+            Tool::Inspect | Tool::PowerPlantPicker => false,
             Tool::Road => matches!(
                 tile,
                 Tile::Grass | Tile::Trees | Tile::Dirt | Tile::PowerLine
@@ -118,7 +130,7 @@ impl Tool {
                     | Tile::ZoneComm
                     | Tile::ZoneInd
             ),
-            _ => matches!(tile, Tile::Grass | Tile::Trees | Tile::Dirt),
+            _ => matches!(tile, Tile::Grass | Tile::Trees | Tile::Dirt | Tile::Rubble),
         }
     }
 
@@ -143,7 +155,8 @@ impl Tool {
     /// Footprint size (width, height) in tiles.  1×1 for single-tile tools.
     pub fn footprint(&self) -> (usize, usize) {
         match self {
-            Tool::PowerPlant => (6, 5),
+            Tool::PowerPlantCoal => (4, 4),
+            Tool::PowerPlantGas => (4, 4),
             Tool::Police | Tool::Fire => (3, 3),
             Tool::Park => (2, 2),
             _ => (1, 1),

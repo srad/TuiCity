@@ -1745,16 +1745,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7694e1cfe791f8d31026952abf09c69ca6f6fa4e1a1229e18988f06a04a12dca"
 
 [[package]]
-name = "tui-menu"
-version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d6d7f10ff29b3543148afcaba50642850082840adc4e8169c7f2c9d2bcdba3b6"
-dependencies = [
- "ratatui-core",
- "ratatui-widgets",
-]
-
-[[package]]
 name = "tui-popup"
 version = "0.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1779,7 +1769,6 @@ dependencies = [
  "ratatui",
  "serde",
  "serde_json",
- "tui-menu",
  "tui-popup",
 ]
 

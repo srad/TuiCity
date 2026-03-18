@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 use super::map::{Map, Tile};
-use super::sim::SimState;
+use super::sim::{SimState, TaxSector};
 use super::tool::Tool;
 
 #[derive(Debug, Clone)]
@@ -20,7 +20,10 @@ pub enum EngineCommand {
     },
     AdvanceMonth,
     SetCityName(String),
-    SetTaxRate(u8),
+    SetTaxRate {
+        sector: TaxSector,
+        rate: u8,
+    },
     ReplaceState {
         map: Map,
         sim: SimState,
@@ -41,7 +44,7 @@ pub struct SimulationEngine {
 
 impl SimulationEngine {
     pub fn new(map: Map, sim: SimState) -> Self {
-        Self {
+        let mut engine = Self {
             map,
             sim,
             is_paused: false,
@@ -58,7 +61,9 @@ impl SimulationEngine {
                 Box::new(FinanceSystem),      // 10. taxes & maintenance
                 Box::new(HistorySystem),      // 11. record history
             ],
-        }
+        };
+        engine.refresh_sector_stats();
+        engine
     }
 
     pub fn execute_command(&mut self, cmd: EngineCommand) -> Result<(), String> {
@@ -84,13 +89,14 @@ impl SimulationEngine {
                 self.sim.city_name = name;
                 Ok(())
             }
-            EngineCommand::SetTaxRate(rate) => {
-                self.sim.tax_rate = rate.clamp(0, 20);
+            EngineCommand::SetTaxRate { sector, rate } => {
+                self.sim.tax_rates.set(sector, rate);
                 Ok(())
             }
             EngineCommand::ReplaceState { map, sim } => {
                 self.map = map;
                 self.sim = sim;
+                self.refresh_sector_stats();
                 Ok(())
             }
             EngineCommand::SetPaused(paused) => {
@@ -137,8 +143,13 @@ impl SimulationEngine {
 
         for (x, y, tile) in tiles_to_place {
             self.map.set(x, y, tile);
+            // If we're placing something over a plant tile (somehow), we should remove it.
+            // But plants are 4x4, so this is unlikely via line drag.
+            // However, we should be safe.
+            self.sim.plants.remove(&(x, y));
         }
         self.sim.treasury -= total_cost;
+        self.refresh_sector_stats();
 
         Ok(())
     }
@@ -168,8 +179,10 @@ impl SimulationEngine {
 
         for (x, y, tile) in tiles_to_place {
             self.map.set(x, y, tile);
+            self.sim.plants.remove(&(x, y));
         }
         self.sim.treasury -= total_cost;
+        self.refresh_sector_stats();
 
         Ok(())
     }
@@ -206,9 +219,32 @@ impl SimulationEngine {
             for dy in 0..fh {
                 for dx in 0..fw {
                     self.map.set(ax + dx, ay + dy, new_tile);
+                    // Remove any existing plant metadata if we overwrite it
+                    self.sim.plants.remove(&(ax + dx, ay + dy));
                 }
             }
+            
+            // Register new plant if applicable
+            match tool {
+                Tool::PowerPlantCoal => {
+                    self.sim.plants.insert((ax, ay), super::sim::PlantState {
+                        age_months: 0,
+                        max_life_months: 50 * 12, // 50 years
+                        capacity_mw: 500,
+                    });
+                }
+                Tool::PowerPlantGas => {
+                    self.sim.plants.insert((ax, ay), super::sim::PlantState {
+                        age_months: 0,
+                        max_life_months: 60 * 12, // 60 years
+                        capacity_mw: 800,
+                    });
+                }
+                _ => {}
+            }
+
             self.sim.treasury -= cost;
+            self.refresh_sector_stats();
             return Ok(());
         }
 
@@ -235,8 +271,82 @@ impl SimulationEngine {
             },
         };
 
+        // If bulldoze, we should check if we're hitting any part of a 4x4 plant area
+        if tool == Tool::Bulldoze {
+            // This is tricky because we only have the top-left in `sim.plants`.
+            // Let's do a search.
+            let mut plant_to_remove = None;
+            for (&(px, py), _) in self.sim.plants.iter() {
+                if x >= px && x < px + 4 && y >= py && y < py + 4 {
+                    plant_to_remove = Some((px, py));
+                    break;
+                }
+            }
+            if let Some(pos) = plant_to_remove {
+                self.sim.plants.remove(&pos);
+            }
+        }
+
         self.map.set(x, y, new_tile);
         self.sim.treasury -= cost;
+        self.refresh_sector_stats();
         Ok(())
+    }
+
+    fn refresh_sector_stats(&mut self) {
+        let stats = super::sim::economy::compute_sector_stats(&self.map);
+        self.sim.residential_population = stats.residential_population;
+        self.sim.commercial_jobs = stats.commercial_jobs;
+        self.sim.industrial_jobs = stats.industrial_jobs;
+        self.sim.population = stats.residential_population;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn set_tax_rate_updates_only_target_sector() {
+        let mut engine = SimulationEngine::new(Map::new(8, 8), SimState::default());
+
+        engine
+            .execute_command(EngineCommand::SetTaxRate {
+                sector: TaxSector::Commercial,
+                rate: 14,
+            })
+            .unwrap();
+
+        assert_eq!(engine.sim.tax_rates.residential, 9);
+        assert_eq!(engine.sim.tax_rates.commercial, 14);
+        assert_eq!(engine.sim.tax_rates.industrial, 9);
+    }
+
+    #[test]
+    fn set_tax_rate_clamps_to_supported_range() {
+        let mut engine = SimulationEngine::new(Map::new(8, 8), SimState::default());
+
+        engine
+            .execute_command(EngineCommand::SetTaxRate {
+                sector: TaxSector::Industrial,
+                rate: 99,
+            })
+            .unwrap();
+
+        assert_eq!(engine.sim.tax_rates.industrial, 99);
+    }
+
+    #[test]
+    fn set_tax_rate_clamps_at_one_hundred_percent() {
+        let mut engine = SimulationEngine::new(Map::new(8, 8), SimState::default());
+
+        engine
+            .execute_command(EngineCommand::SetTaxRate {
+                sector: TaxSector::Industrial,
+                rate: u8::MAX,
+            })
+            .unwrap();
+
+        assert_eq!(engine.sim.tax_rates.industrial, 100);
     }
 }

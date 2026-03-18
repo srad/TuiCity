@@ -1,15 +1,17 @@
-use crate::app::StartState;
+use crate::app::screens::StartState;
+use crate::ui::theme;
 use ratatui::{
     layout::Rect,
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     widgets::{Block, Borders, Clear},
     Frame,
 };
 
 pub fn render_start(frame: &mut Frame, area: Rect, state: &mut StartState) {
-    // Dark background
+    let ui = theme::ui_palette();
+
     frame.render_widget(
-        Block::default().style(Style::default().bg(Color::Rgb(8, 8, 18))),
+        Block::default().style(Style::default().bg(ui.desktop_bg)),
         area,
     );
 
@@ -37,9 +39,7 @@ pub fn render_start(frame: &mut Frame, area: Rect, state: &mut StartState) {
                 title_x,
                 y,
                 line,
-                Style::default()
-                    .fg(Color::Rgb(100, 180, 255))
-                    .bg(Color::Rgb(8, 8, 18)),
+                Style::default().fg(ui.title).bg(ui.desktop_bg),
             );
         }
     }
@@ -52,9 +52,7 @@ pub fn render_start(frame: &mut Frame, area: Rect, state: &mut StartState) {
             sub_x,
             sub_y,
             subtitle,
-            Style::default()
-                .fg(Color::Rgb(160, 160, 200))
-                .bg(Color::Rgb(8, 8, 18)),
+            Style::default().fg(ui.subtitle).bg(ui.desktop_bg),
         );
     }
 
@@ -70,8 +68,8 @@ pub fn render_start(frame: &mut Frame, area: Rect, state: &mut StartState) {
         frame.render_widget(
             Block::default()
                 .borders(Borders::ALL)
-                .border_style(Style::default().fg(Color::Rgb(80, 100, 160)))
-                .style(Style::default().bg(Color::Rgb(12, 12, 28))),
+                .border_style(Style::default().fg(ui.window_border))
+                .style(Style::default().bg(ui.window_bg)),
             menu_rect,
         );
 
@@ -96,13 +94,11 @@ pub fn render_start(frame: &mut Frame, area: Rect, state: &mut StartState) {
             let text = format!("{}{}", prefix, opt);
             let style = if is_sel {
                 Style::default()
-                    .fg(Color::Black)
-                    .bg(Color::Rgb(200, 180, 60))
+                    .fg(ui.selection_fg)
+                    .bg(ui.selection_bg)
                     .add_modifier(Modifier::BOLD)
             } else {
-                Style::default()
-                    .fg(Color::Rgb(200, 200, 220))
-                    .bg(Color::Rgb(12, 12, 28))
+                Style::default().fg(ui.text_primary).bg(ui.window_bg)
             };
             // Pad to menu width
             let padded = format!("{:<width$}", text, width = (menu_w - 2) as usize);
@@ -118,8 +114,6 @@ pub fn render_start(frame: &mut Frame, area: Rect, state: &mut StartState) {
         hint_x,
         hint_y,
         hint,
-        Style::default()
-            .fg(Color::Rgb(80, 80, 100))
-            .bg(Color::Rgb(8, 8, 18)),
+        Style::default().fg(ui.text_dim).bg(ui.desktop_bg),
     );
 }
