@@ -95,6 +95,7 @@ pub struct AppContext<'a> {
 }
 
 pub trait Screen {
+    fn on_event(&mut self, _event: &crossterm::event::Event, _context: AppContext) -> Option<ScreenTransition> { None }
     fn on_action(&mut self, action: Action, context: AppContext) -> Option<ScreenTransition>;
     fn on_tick(&mut self, _context: AppContext) {}
     fn render(&mut self, frame: &mut Frame, context: AppContext);
@@ -126,7 +127,31 @@ impl Screen for StartScreen {
                     self.state.selected = self.state.selected.checked_sub(1).unwrap_or(N - 1);
                 }
             }
-            Action::MenuSelect | Action::MouseClick { .. } => {
+            Action::MouseClick { col, row } => {
+                for (i, area) in self.state.menu_areas.iter().enumerate() {
+                    if area.contains(col, row) {
+                        self.state.selected = i;
+                        return match self.state.selected {
+                            0 => {
+                                let saves = save::list_saves();
+                                Some(ScreenTransition::Push(Box::new(LoadCityScreen {
+                                    state: LoadCityState { saves, selected: 0 }
+                                })))
+                            }
+                            1 => {
+                                Some(ScreenTransition::Push(Box::new(NewCityScreen {
+                                    state: NewCityState::new()
+                                })))
+                            }
+                            2 => {
+                                Some(ScreenTransition::Quit)
+                            }
+                            _ => None
+                        };
+                    }
+                }
+            }
+            Action::MenuSelect => {
                 match self.state.selected {
                     0 => {
                         let saves = save::list_saves();
@@ -152,7 +177,7 @@ impl Screen for StartScreen {
 
     fn render(&mut self, frame: &mut Frame, _context: AppContext) {
         let area = frame.area();
-        crate::ui::screens::start::render_start(frame, area, &self.state);
+        crate::ui::screens::start::render_start(frame, area, &mut self.state);
     }
 }
 
@@ -163,29 +188,76 @@ pub struct NewCityScreen {
 }
 
 impl Screen for NewCityScreen {
+    fn on_event(&mut self, event: &crossterm::event::Event, context: AppContext) -> Option<ScreenTransition> {
+        use rat_widget::event::{TextOutcome, SliderOutcome, ButtonOutcome};
+        
+        let focus_city = self.state.focused_field == crate::app::NewCityField::CityName;
+        let focus_seed = self.state.focused_field == crate::app::NewCityField::SeedInput;
+        let focus_water = self.state.focused_field == crate::app::NewCityField::WaterSlider;
+        let focus_trees = self.state.focused_field == crate::app::NewCityField::TreesSlider;
+        let focus_regen = self.state.focused_field == crate::app::NewCityField::RegenerateBtn;
+        let focus_start = self.state.focused_field == crate::app::NewCityField::StartBtn;
+        let focus_back = self.state.focused_field == crate::app::NewCityField::BackBtn;
+
+        // Route events to rat-widgets
+        let _out_city = rat_widget::text_input::handle_events(&mut self.state.city_name, focus_city, event);
+        let out_seed = rat_widget::text_input::handle_events(&mut self.state.seed_input, focus_seed, event);
+        let out_water = rat_widget::slider::handle_events(&mut self.state.water_slider, focus_water, event);
+        let out_trees = rat_widget::slider::handle_events(&mut self.state.trees_slider, focus_trees, event);
+        let out_regen = rat_widget::button::handle_events(&mut self.state.regen_btn, focus_regen, event);
+        let out_start = rat_widget::button::handle_events(&mut self.state.start_btn, focus_start, event);
+        let out_back = rat_widget::button::handle_events(&mut self.state.back_btn, focus_back, event);
+
+        // Update focus on mouse click (rat_widget state changes focus internally if clicked)
+        // Wait, rat_widget button might just return Outcome::Changed, but it doesn't change our focused_field.
+        // We can look at `is_focused()` if rat-focus is used, but we are using `NewCityField`.
+        // To properly support mouse focusing, we could check if the outcome implies interaction.
+        // Actually, if a mouse click happens, we should probably update `focused_field` but it's tricky to map.
+        // Instead, let's let `rat_widget` do what it can, and we handle explicit actions.
+
+        if out_seed == TextOutcome::TextChanged {
+            self.state.apply_seed_input();
+        }
+        
+        if out_water == SliderOutcome::Changed || out_trees == SliderOutcome::Changed {
+            self.state.sync_sliders_to_seed();
+            self.state.rebuild_map();
+        }
+
+        if out_regen == ButtonOutcome::Pressed {
+            self.state.regenerate();
+        }
+        
+        if out_start == ButtonOutcome::Pressed {
+            if let Some(tx) = context.cmd_tx {
+                let _ = tx.send(crate::core::engine::EngineCommand::ReplaceState {
+                    map: self.state.preview_map.clone(),
+                    sim: crate::core::sim::SimState::default(),
+                });
+                let name = if self.state.city_name.text().is_empty() { "New City".to_string() } else { self.state.city_name.text().to_string() };
+                let _ = tx.send(crate::core::engine::EngineCommand::SetCityName(name));
+            }
+            return Some(ScreenTransition::Replace(Box::new(InGameScreen::new())));
+        }
+        
+        if out_back == ButtonOutcome::Pressed {
+            return Some(ScreenTransition::Pop);
+        }
+
+        None
+    }
+
     fn on_action(&mut self, action: Action, context: AppContext) -> Option<ScreenTransition> {
         match action {
             Action::MenuBack => {
                 return Some(ScreenTransition::Pop);
             }
-            Action::MoveCursor(dx, dy) => {
+            Action::MoveCursor(_dx, dy) => {
                 if dy != 0 {
                     if self.state.focused_field == crate::app::NewCityField::SeedInput {
                         self.state.apply_seed_input();
                     }
                     self.state.focused_field = if dy > 0 { self.state.focused_field.next() } else { self.state.focused_field.prev() };
-                } else if dx != 0 {
-                    match self.state.focused_field {
-                        crate::app::NewCityField::WaterSlider => {
-                            self.state.water_pct = (self.state.water_pct as i32 + dx * 5).clamp(0, 90) as u8;
-                            self.state.rebuild_map();
-                        }
-                        crate::app::NewCityField::TreesSlider => {
-                            self.state.trees_pct = (self.state.trees_pct as i32 + dx * 5).clamp(0, 90) as u8;
-                            self.state.rebuild_map();
-                        }
-                        _ => {}
-                    }
                 }
             }
             Action::MenuSelect => {
@@ -198,7 +270,7 @@ impl Screen for NewCityScreen {
                                 map: self.state.preview_map.clone(),
                                 sim: crate::core::sim::SimState::default(),
                             });
-                            let name = if self.state.city_name.is_empty() { "New City".to_string() } else { self.state.city_name.clone() };
+                            let name = if self.state.city_name.text().is_empty() { "New City".to_string() } else { self.state.city_name.text().to_string() };
                             let _ = tx.send(crate::core::engine::EngineCommand::SetCityName(name));
                         }
                         return Some(ScreenTransition::Replace(Box::new(InGameScreen::new())));
@@ -207,24 +279,19 @@ impl Screen for NewCityScreen {
                     _ => {}
                 }
             }
-            Action::CharInput(c) => {
-                match self.state.focused_field {
-                    crate::app::NewCityField::CityName => {
-                        if self.state.city_name.len() < 24 { self.state.city_name.push(c); }
-                    }
-                    crate::app::NewCityField::SeedInput => {
-                        if c.is_ascii_hexdigit() || c == 'x' || c == 'X' {
-                            if self.state.seed_input.len() < 18 { self.state.seed_input.push(c.to_ascii_uppercase()); }
-                        }
-                    }
-                    _ => {}
-                }
-            }
-            Action::DeleteChar => {
-                match self.state.focused_field {
-                    crate::app::NewCityField::CityName => { self.state.city_name.pop(); }
-                    crate::app::NewCityField::SeedInput => { self.state.seed_input.pop(); }
-                    _ => {}
+            // Mouse clicks are handled by rat_widget, but we need to update our focused_field
+            Action::MouseClick { col, row } => {
+                // Approximate focus mapping based on y-coordinates (since we render them linearly)
+                // We'll rely on the rat_widget components to process the click logic itself via on_event.
+                // We just need a rough way to update keyboard focus if they clicked.
+                if col >= 30 { // Right panel
+                    if row == 2 || row == 3 { self.state.focused_field = crate::app::NewCityField::CityName; }
+                    else if row == 5 || row == 6 { self.state.focused_field = crate::app::NewCityField::SeedInput; }
+                    else if row == 8 || row == 9 { self.state.focused_field = crate::app::NewCityField::WaterSlider; }
+                    else if row == 11 || row == 12 { self.state.focused_field = crate::app::NewCityField::TreesSlider; }
+                    else if row == 15 { self.state.focused_field = crate::app::NewCityField::RegenerateBtn; }
+                    else if row == 17 { self.state.focused_field = crate::app::NewCityField::StartBtn; }
+                    else if row == 19 { self.state.focused_field = crate::app::NewCityField::BackBtn; }
                 }
             }
             _ => {}
@@ -234,7 +301,7 @@ impl Screen for NewCityScreen {
 
     fn render(&mut self, frame: &mut Frame, _context: AppContext) {
         let area = frame.area();
-        crate::ui::screens::new_city::render_new_city(frame, area, &self.state);
+        crate::ui::screens::new_city::render_new_city(frame, area, &mut self.state);
     }
 }
 
@@ -1030,5 +1097,61 @@ mod tests {
         assert!(AUTO_SAVE_INTERVAL > 0);
         // Should be at least a few seconds of ticks
         assert!(AUTO_SAVE_INTERVAL >= 100);
+    }
+
+    #[test]
+    fn test_new_city_screen_rat_widget() {
+        use crate::app::{NewCityState, NewCityField};
+        use rat_widget::slider::SliderState;
+        use crossterm::event::{Event, MouseEvent, MouseEventKind, MouseButton, KeyCode, KeyEvent, KeyModifiers, KeyEventKind, KeyEventState};
+
+        let mut screen = NewCityScreen { state: NewCityState::new() };
+        let engine = std::sync::Arc::new(std::sync::RwLock::new(crate::core::engine::SimulationEngine::new(
+            crate::core::map::Map::new(10, 10), crate::core::sim::SimState::default()
+        )));
+        let cmd_tx = None;
+        let mut running = true;
+        
+        let context = AppContext {
+            engine: &engine,
+            cmd_tx: &cmd_tx,
+            running: &mut running,
+        };
+
+        // Simulate typing in the seed input
+        screen.state.focused_field = NewCityField::SeedInput;
+        screen.state.seed_input.set_text("");
+        
+        let ev = Event::Key(KeyEvent {
+            code: KeyCode::Char('1'),
+            modifiers: KeyModifiers::empty(),
+            kind: KeyEventKind::Press,
+            state: KeyEventState::empty(),
+        });
+        screen.on_event(&ev, context);
+        assert_eq!(screen.state.seed_input.text(), "0000000000000001");
+        
+        screen.state.apply_seed_input(); // Trigger apply manually or via event logic
+        assert_eq!(screen.state.seed, 1);
+        
+        let context_action = AppContext {
+            engine: &engine, cmd_tx: &cmd_tx, running: &mut running
+        };
+        // We were focused on SeedInput, MenuSelect applies seed.
+        let transition = screen.on_action(crate::app::input::Action::MenuSelect, context_action);
+        assert!(transition.is_none());
+        
+        // Focus Start button
+        screen.state.focused_field = NewCityField::StartBtn;
+        let ev_enter = Event::Key(KeyEvent {
+            code: KeyCode::Enter,
+            modifiers: KeyModifiers::empty(),
+            kind: KeyEventKind::Press,
+            state: KeyEventState::empty(),
+        });
+        let transition_start = screen.on_event(&ev_enter, AppContext {
+            engine: &engine, cmd_tx: &cmd_tx, running: &mut running
+        });
+        assert!(transition_start.is_some()); // Should trigger Replace
     }
 }

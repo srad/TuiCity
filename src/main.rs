@@ -57,6 +57,9 @@ fn run(renderer: &mut dyn Renderer) -> io::Result<()> {
 
         if event::poll(Duration::from_millis(16))? { // ~60fps poll
             let event = event::read()?;
+            
+            app.on_event(&event);
+            
             let action = app::input::translate_event(event);
             app.on_action(action);
         } else {

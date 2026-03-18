@@ -6,7 +6,7 @@ use ratatui::{
     Frame,
 };
 
-pub fn render_start(frame: &mut Frame, area: Rect, state: &StartState) {
+pub fn render_start(frame: &mut Frame, area: Rect, state: &mut StartState) {
     // Dark background
     frame.render_widget(
         Block::default().style(Style::default().bg(Color::Rgb(8, 8, 18))),
@@ -82,6 +82,15 @@ pub fn render_start(frame: &mut Frame, area: Rect, state: &StartState) {
             if y >= menu_y + menu_h - 1 {
                 break;
             }
+            
+            // Record click area
+            state.menu_areas[i] = crate::app::ClickArea {
+                x: menu_x + 1,
+                y,
+                width: menu_w - 2,
+                height: 1,
+            };
+
             let is_sel = i == state.selected;
             let prefix = if is_sel { "▶ " } else { "  " };
             let text = format!("{}{}", prefix, opt);

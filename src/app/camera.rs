@@ -58,7 +58,7 @@ impl Camera {
     }
 
     pub fn screen_to_map(&self, sx: u16, sy: u16) -> (usize, usize) {
-        let mx = (sx as i32 + self.offset_x).max(0) as usize;
+        let mx = ((sx as i32) / 2 + self.offset_x).max(0) as usize;
         let my = (sy as i32 + self.offset_y).max(0) as usize;
         (mx, my)
     }

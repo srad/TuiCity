@@ -87,7 +87,7 @@ impl<'a> Widget for MapView<'a> {
 
         for row in 0..area.height {
             for col in 0..area.width {
-                let map_x = self.camera.offset_x as usize + col as usize;
+                let map_x = self.camera.offset_x as usize + (col as usize / 2);
                 let map_y = self.camera.offset_y as usize + row as usize;
 
                 let buf_x = area.x + col;
@@ -222,11 +222,11 @@ impl<'a> Widget for MapView<'a> {
             }
         }
 
-        // Horizontal scrollbar — bottom row
-        if self.map.width > area.width as usize && area.height >= 1 {
+        // --- Horizontal Scrollbar ---
+        if self.map.width > (area.width as usize / 2) && area.height >= 1 {
             let track_len = area.width as usize;
             let map_w     = self.map.width;
-            let view_w    = area.width as usize;
+            let view_w    = area.width as usize / 2;
             let max_off   = map_w.saturating_sub(view_w);
             let thumb_len = ((track_len * view_w) / map_w).max(1);
             let thumb_pos = if max_off == 0 { 0 } else {
@@ -262,19 +262,29 @@ impl<'a> Widget for MapPreview<'a> {
         let pw = area.width as usize;
         let ph = area.height as usize;
 
+        // Center crop: find top-left coordinate, ensuring we don't underflow
+        let offset_x = (mw / 2).saturating_sub((pw / 2) / 2);
+        let offset_y = (mh / 2).saturating_sub(ph / 2);
+
         for row in 0..area.height {
             for col in 0..area.width {
-                let map_x = if pw <= 1 { 0 } else { (col as usize * (mw - 1)) / (pw - 1) };
-                let map_y = if ph <= 1 { 0 } else { (row as usize * (mh - 1)) / (ph - 1) };
+                let map_x = offset_x + (col as usize / 2);
+                let map_y = offset_y + row as usize;
 
-                let tile = self.map.get(map_x, map_y);
-                let overlay = self.map.get_overlay(map_x, map_y);
-                let glyph = theme::tile_glyph(tile, overlay);
+                if map_x < mw && map_y < mh {
+                    let tile = self.map.get(map_x, map_y);
+                    let overlay = self.map.get_overlay(map_x, map_y);
+                    let glyph = theme::tile_glyph(tile, overlay);
 
-                let cell = buf.cell_mut((area.x + col, area.y + row)).unwrap();
-                cell.set_char(glyph.ch);
-                cell.set_fg(glyph.fg);
-                cell.set_bg(glyph.bg);
+                    let cell = buf.cell_mut((area.x + col, area.y + row)).unwrap();
+                    cell.set_char(glyph.ch);
+                    cell.set_fg(glyph.fg);
+                    cell.set_bg(glyph.bg);
+                } else {
+                    let cell = buf.cell_mut((area.x + col, area.y + row)).unwrap();
+                    cell.set_char(' ');
+                    cell.set_bg(Color::Rgb(8, 12, 8)); // Match the void background
+                }
             }
         }
     }

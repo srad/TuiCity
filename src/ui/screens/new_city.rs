@@ -9,7 +9,7 @@ use ratatui::{
     Frame,
 };
 
-pub fn render_new_city(frame: &mut Frame, area: Rect, state: &NewCityState) {
+pub fn render_new_city(frame: &mut Frame, area: Rect, state: &mut NewCityState) {
     // Split: left = map preview, right = controls
     let chunks = Layout::horizontal([Constraint::Fill(1), Constraint::Length(30)]).split(area);
 
@@ -45,235 +45,127 @@ pub fn render_new_city(frame: &mut Frame, area: Rect, state: &NewCityState) {
     render_controls(frame, inner_ctrl, state);
 }
 
-fn render_controls(frame: &mut Frame, area: Rect, state: &NewCityState) {
-    if area.width < 4 || area.height < 8 {
+fn render_controls(frame: &mut Frame, area: Rect, state: &mut NewCityState) {
+    if area.width < 4 || area.height < 14 {
         return;
     }
 
-    let buf = frame.buffer_mut();
-    let w = area.width as usize;
+    use ratatui::widgets::StatefulWidget;
+    use rat_widget::text_input::TextInput;
+    use rat_widget::slider::Slider;
+    use rat_widget::button::Button;
+
+    let w = area.width;
     let mut row = area.y;
 
     // City Name
     {
         let is_focused = state.focused_field == NewCityField::CityName;
-        let label = "City Name:";
-        buf.set_string(
+        frame.buffer_mut().set_string(
             area.x,
             row,
-            label,
-            Style::default()
-                .fg(Color::Rgb(180, 180, 220))
-                .bg(Color::Rgb(8, 8, 18)),
+            "City Name:",
+            Style::default().fg(Color::Rgb(180, 180, 220)),
         );
         row += 1;
-
-        if row >= area.y + area.height {
-            return;
+        let rect = Rect::new(area.x, row, w, 1);
+        let mut widget = TextInput::new().style(
+            Style::default().fg(Color::Rgb(220, 220, 100)).bg(Color::Rgb(25, 25, 40))
+        );
+        if is_focused {
+            widget = widget.focus_style(Style::default().fg(Color::Black).bg(Color::Rgb(200, 200, 60)));
         }
-
-        let display = if state.city_name.is_empty() {
-            "_".repeat((w - 2).min(20))
-        } else {
-            format!("{}_", state.city_name)
-        };
-        let padded = format!("{:<width$}", display, width = w);
-        let style = if is_focused {
-            Style::default()
-                .fg(Color::Black)
-                .bg(Color::Rgb(200, 200, 60))
-        } else {
-            Style::default()
-                .fg(Color::Rgb(220, 220, 100))
-                .bg(Color::Rgb(25, 25, 40))
-        };
-        buf.set_string(area.x, row, &padded, style);
+        StatefulWidget::render(widget, rect, frame.buffer_mut(), &mut state.city_name);
         row += 2;
-    }
-
-    if row >= area.y + area.height {
-        return;
     }
 
     // Seed field
     {
         let is_focused = state.focused_field == NewCityField::SeedInput;
-        buf.set_string(
+        frame.buffer_mut().set_string(
             area.x,
             row,
             "Seed (hex):",
-            Style::default()
-                .fg(Color::Rgb(180, 180, 220))
-                .bg(Color::Rgb(8, 8, 18)),
+            Style::default().fg(Color::Rgb(180, 180, 220)),
         );
         row += 1;
-
-        if row >= area.y + area.height {
-            return;
+        let rect = Rect::new(area.x, row, w, 1);
+        let mut widget = TextInput::new().style(
+            Style::default().fg(Color::Rgb(160, 200, 255)).bg(Color::Rgb(20, 20, 45))
+        );
+        if is_focused {
+            widget = widget.focus_style(Style::default().fg(Color::Black).bg(Color::Rgb(200, 200, 60)));
         }
-
-        let display = format!("{}_", state.seed_input);
-        let padded = format!("{:<width$}", display, width = w);
-        let style = if is_focused {
-            Style::default()
-                .fg(Color::Black)
-                .bg(Color::Rgb(200, 200, 60))
-        } else {
-            Style::default()
-                .fg(Color::Rgb(160, 200, 255))
-                .bg(Color::Rgb(20, 20, 45))
-        };
-        buf.set_string(area.x, row, &padded, style);
+        StatefulWidget::render(widget, rect, frame.buffer_mut(), &mut state.seed_input);
         row += 2;
     }
 
-    if row >= area.y + area.height {
-        return;
-    }
-
     // Water slider
-    render_slider(
-        buf,
-        area.x,
-        row,
-        w,
-        "Water %",
-        state.water_pct,
-        100,
-        state.focused_field == NewCityField::WaterSlider,
-        Color::Rgb(64, 164, 223),
-    );
-    row += 2;
-
-    if row >= area.y + area.height {
-        return;
+    {
+        let is_focused = state.focused_field == NewCityField::WaterSlider;
+        let label_str = format!("Water: {}%", state.water_slider.value());
+        frame.buffer_mut().set_string(
+            area.x,
+            row,
+            label_str,
+            Style::default().fg(Color::Rgb(180, 180, 220)),
+        );
+        row += 1;
+        let rect = Rect::new(area.x, row, w, 1);
+        let mut widget = Slider::new().range((0, 100)).style(Style::default().fg(Color::Rgb(64, 164, 223)).bg(Color::Rgb(15, 15, 25)));
+        if is_focused {
+            widget = widget.focus_style(Style::default().bg(Color::Rgb(50, 50, 80)));
+        }
+        StatefulWidget::render(widget, rect, frame.buffer_mut(), &mut state.water_slider);
+        row += 2;
     }
 
     // Trees slider
-    render_slider(
-        buf,
-        area.x,
-        row,
-        w,
-        "Trees %",
-        state.trees_pct,
-        100,
-        state.focused_field == NewCityField::TreesSlider,
-        Color::Rgb(60, 160, 60),
-    );
-    row += 2;
-
-    if row >= area.y + area.height {
-        return;
+    {
+        let is_focused = state.focused_field == NewCityField::TreesSlider;
+        let label_str = format!("Trees: {}%", state.trees_slider.value());
+        frame.buffer_mut().set_string(
+            area.x,
+            row,
+            label_str,
+            Style::default().fg(Color::Rgb(180, 180, 220)),
+        );
+        row += 1;
+        let rect = Rect::new(area.x, row, w, 1);
+        let mut widget = Slider::new().range((0, 100)).style(Style::default().fg(Color::Rgb(60, 160, 60)).bg(Color::Rgb(15, 15, 25)));
+        if is_focused {
+            widget = widget.focus_style(Style::default().bg(Color::Rgb(50, 80, 50)));
+        }
+        StatefulWidget::render(widget, rect, frame.buffer_mut(), &mut state.trees_slider);
+        row += 2;
     }
-
-    row += 1; // spacer
 
     // Buttons
-    let btns = [
-        (NewCityField::RegenerateBtn, "[Regenerate Map]"),
-        (NewCityField::StartBtn, "  [▶ Start City]  "),
-        (NewCityField::BackBtn, "      [Back]      "),
-    ];
-
-    for (field, label) in &btns {
-        if row >= area.y + area.height {
-            break;
+    let mut render_btn = |field, text, row: u16, state_ref: &mut rat_widget::button::ButtonState| {
+        let is_focused = state.focused_field == field;
+        let rect = Rect::new(area.x, row, w, 1);
+        let mut widget = Button::new(text).style(Style::default().fg(Color::Rgb(180, 180, 220)).bg(Color::Rgb(8, 8, 18)));
+        if is_focused {
+            widget = widget.focus_style(Style::default().fg(Color::Black).bg(Color::Rgb(220, 200, 60)).add_modifier(Modifier::BOLD));
         }
-        let is_focused = state.focused_field == *field;
-        let style = if is_focused {
-            Style::default()
-                .fg(Color::Black)
-                .bg(Color::Rgb(220, 200, 60))
-                .add_modifier(Modifier::BOLD)
-        } else {
-            Style::default()
-                .fg(Color::Rgb(180, 180, 220))
-                .bg(Color::Rgb(8, 8, 18))
-        };
-        let padded = format!("{:^width$}", label, width = w);
-        buf.set_string(area.x, row, &padded, style);
-        row += 1;
+        StatefulWidget::render(widget, rect, frame.buffer_mut(), state_ref);
+    };
 
-        if row >= area.y + area.height {
-            break;
-        }
-        row += 1; // spacing between buttons
-    }
+    render_btn(NewCityField::RegenerateBtn, "[Regenerate Map]", row, &mut state.regen_btn);
+    row += 2;
+    render_btn(NewCityField::StartBtn, "  [▶ Start City]  ", row, &mut state.start_btn);
+    row += 2;
+    render_btn(NewCityField::BackBtn, "      [Back]      ", row, &mut state.back_btn);
+    row += 2;
 
     if row < area.y + area.height {
         let hint = "↑↓ Focus  ←→ Adjust  Enter Select";
-        let trimmed: String = hint.chars().take(w).collect();
-        buf.set_string(
+        let trimmed: String = hint.chars().take(w as usize).collect();
+        frame.buffer_mut().set_string(
             area.x,
             area.y + area.height - 1,
             &trimmed,
-            Style::default()
-                .fg(Color::Rgb(80, 80, 100))
-                .bg(Color::Rgb(8, 8, 18)),
+            Style::default().fg(Color::Rgb(80, 80, 100)),
         );
     }
-}
-
-#[allow(clippy::too_many_arguments)]
-fn render_slider(
-    buf: &mut ratatui::buffer::Buffer,
-    x: u16,
-    y: u16,
-    w: usize,
-    label: &str,
-    value: u8,
-    max: u8,
-    focused: bool,
-    fill_color: Color,
-) {
-    // Label line
-    let label_str = format!("{}: {}%", label, value);
-    buf.set_string(
-        x,
-        y,
-        format!("{:<width$}", label_str, width = w),
-        Style::default()
-            .fg(if focused {
-                Color::Rgb(255, 220, 60)
-            } else {
-                Color::Rgb(180, 180, 220)
-            })
-            .bg(Color::Rgb(8, 8, 18)),
-    );
-
-    // Slider bar
-    let bar_w = (w.saturating_sub(2)) as u16;
-    let filled = ((value as u32 * bar_w as u32) / max as u32) as u16;
-
-    buf.set_string(
-        x,
-        y + 1,
-        "[",
-        Style::default()
-            .fg(Color::Rgb(120, 120, 140))
-            .bg(Color::Rgb(8, 8, 18)),
-    );
-
-    for i in 0..bar_w {
-        let ch = if i < filled { '█' } else { '─' };
-        let fg = if i < filled {
-            fill_color
-        } else {
-            Color::Rgb(50, 50, 60)
-        };
-        let cell = buf.cell_mut((x + 1 + i, y + 1)).unwrap();
-        cell.set_char(ch);
-        cell.set_fg(fg);
-        cell.set_bg(Color::Rgb(15, 15, 25));
-    }
-
-    buf.set_string(
-        x + 1 + bar_w,
-        y + 1,
-        "]",
-        Style::default()
-            .fg(Color::Rgb(120, 120, 140))
-            .bg(Color::Rgb(8, 8, 18)),
-    );
 }

@@ -68,16 +68,16 @@ Navigate with the **arrow keys** and confirm with **Enter**.
 
 ### Creating a New City
 
-Selecting **New City** opens a form with four fields:
+Selecting **New City** opens an interactive form powered by `rat-widget`. You can use your mouse or keyboard (Tab/Arrows) to adjust the map generator:
 
 | Field | Description | Default |
 |-------|-------------|---------|
 | **City Name** | Used as the save file prefix | — |
-| **Seed** | RNG seed for map generation (integer) | random |
-| **Water %** | Percentage of map tiles that are water | 20 |
-| **Trees %** | Percentage of map tiles that are forest | 30 |
+| **Seed (hex)** | A 16-character hex code that perfectly encodes the Water %, Trees %, and the random map noise seed. Pasting a code here will automatically snap the sliders to the exact percentages used. | random |
+| **Water %** | Interactive slider for the percentage of map tiles that are water | 20 |
+| **Trees %** | Interactive slider for the percentage of map tiles that are forest | 30 |
 
-Tab between fields, edit with the keyboard, and press **Enter** to generate and enter the city.
+As you drag the sliders, the preview map and the hex seed update in real-time. Press **Enter** on the Start button to generate and enter the city.
 
 ### Controls
 
@@ -273,7 +273,7 @@ src/
    - Each window is clamped so its title bar stays on-screen and neither dimension writes outside the buffer.
    - Windows are rendered in back-to-front order: background → map → panel → budget → inspect → menu bar.
    - `Clear` is rendered before each window to erase whatever is behind it.
-5. `MapView` iterates visible tiles (camera offset + viewport size), picks a glyph and colour from `theme.rs`, and writes `Cell` values into the buffer. Scrollbar overlays are drawn on the last column and row if the map is larger than the viewport.
+5. `MapView` iterates visible tiles (camera offset + viewport size), picks a glyph and colour from `theme.rs`, and writes `Cell` values into the buffer. To fix terminal font aspect ratios, **the map is rendered using "Double-Width Tiles"** (each map tile is mapped to two horizontal terminal cells), which ensures the game grid looks perfectly square without relying on specialized fonts. Scrollbar overlays are drawn on the last column and row if the map is larger than the viewport.
 6. The panel window renders toolbar buttons, a minimap, and a tile-info section. Layout is computed from the window's nominal height (not its clipped height), so sub-widget proportions stay constant when the window is dragged toward the screen edge.
 7. The menu bar (`tui-menu`) is rendered last so it always appears on top.
 
@@ -298,7 +298,10 @@ src/
 | Crate | Version | Purpose |
 |-------|---------|---------|
 | `ratatui` | 0.30 | Terminal UI framework — layout, widgets, rendering buffer |
-| `crossterm` | 0.28 | Raw mode, mouse capture, cross-platform terminal control |
+| `crossterm` | 0.29 | Raw mode, mouse capture, cross-platform terminal control |
+| `rat-widget` | 3.2 | Advanced interactive stateful widgets (Sliders, Buttons, Inputs) |
+| `rat-focus` | 2.1 | Focus management for interactive UI components |
+| `rat-event` | 2.1 | Trait implementations mapping crossterm events to widgets |
 | `serde` | 1.0 | Serialisation traits |
 | `serde_json` | 1.0 | JSON save file format |
 | `rand` | 0.8 | Map generation RNG, disaster probability rolls |

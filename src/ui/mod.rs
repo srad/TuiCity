@@ -114,7 +114,7 @@ pub fn render_game_v2(frame: &mut Frame, area: Rect, app: &AppState, screen: &mu
     }
     .min(map_inner.width as usize)
     .max(1);
-    screen.camera.view_w = exposed_map_w;
+    screen.camera.view_w = exposed_map_w / 2;
     screen.camera.view_h = map_inner.height as usize;
 
     // ── Update click areas ────────────────────────────────────────────────────

@@ -129,67 +129,122 @@ impl NewCityField {
 
 pub struct StartState {
     pub selected: usize,
+    pub menu_areas: [ClickArea; 3],
 }
 
 impl Default for StartState {
     fn default() -> Self {
-        Self { selected: 0 }
+        Self {
+            selected: 0,
+            menu_areas: [ClickArea::default(); 3],
+        }
     }
 }
 
 pub struct NewCityState {
-    pub city_name: String,
-    pub seed: u64,
-    pub seed_input: String,   // editable hex — synced with seed on focus-leave / Enter
-    pub water_pct: u8,
-    pub trees_pct: u8,
+    pub seed: u64, // The packed seed (water, trees, raw seed)
     pub preview_map: Map,
     pub focused_field: NewCityField,
+    
+    // rat-widget states
+    pub city_name: rat_widget::text_input::TextInputState,
+    pub seed_input: rat_widget::text_input::TextInputState,
+    pub water_slider: rat_widget::slider::SliderState,
+    pub trees_slider: rat_widget::slider::SliderState,
+    pub regen_btn: rat_widget::button::ButtonState,
+    pub start_btn: rat_widget::button::ButtonState,
+    pub back_btn: rat_widget::button::ButtonState,
 }
 
 impl NewCityState {
+    pub fn pack_seed(water_pct: u8, trees_pct: u8, raw_seed: u64) -> u64 {
+        let w = (water_pct.min(100) as u64) << 56;
+        let t = (trees_pct.min(100) as u64) << 48;
+        let s = raw_seed & 0x0000_FFFF_FFFF_FFFF;
+        w | t | s
+    }
+
+    pub fn unpack_seed(packed: u64) -> (u8, u8, u64) {
+        let w = ((packed >> 56) & 0xFF) as u8;
+        let t = ((packed >> 48) & 0xFF) as u8;
+        let s = packed & 0x0000_FFFF_FFFF_FFFF;
+        (w.min(100), t.min(100), s)
+    }
+
     pub fn new() -> Self {
-        let seed = rand::random::<u64>();
-        let params = gen::GenParams { seed, ..Default::default() };
+        let raw_seed = rand::random::<u64>() & 0x0000_FFFF_FFFF_FFFF;
+        let params = gen::GenParams { seed: raw_seed, ..Default::default() };
         let preview_map = gen::generate(&params);
+        
+        let seed = Self::pack_seed(params.water_pct, params.trees_pct, raw_seed);
+
+        let city_name = rat_widget::text_input::TextInputState::default();
+        let mut seed_input = rat_widget::text_input::TextInputState::default();
+        seed_input.set_text(&format!("{:016X}", seed));
+        
+        let mut water_slider = rat_widget::slider::SliderState::default();
+        water_slider.set_value(params.water_pct as usize);
+        
+        let mut trees_slider = rat_widget::slider::SliderState::default();
+        trees_slider.set_value(params.trees_pct as usize);
+        
         Self {
-            city_name: String::new(),
             seed,
-            seed_input: format!("{:016X}", seed),
-            water_pct: params.water_pct,
-            trees_pct: params.trees_pct,
             preview_map,
             focused_field: NewCityField::CityName,
+            city_name,
+            seed_input,
+            water_slider,
+            trees_slider,
+            regen_btn: rat_widget::button::ButtonState::default(),
+            start_btn: rat_widget::button::ButtonState::default(),
+            back_btn: rat_widget::button::ButtonState::default(),
         }
     }
 
     /// Randomise seed and rebuild map.
     pub fn regenerate(&mut self) {
-        self.seed = rand::random::<u64>();
-        self.seed_input = format!("{:016X}", self.seed);
+        let raw_seed = rand::random::<u64>() & 0x0000_FFFF_FFFF_FFFF;
+        let w = self.water_slider.value() as u8;
+        let t = self.trees_slider.value() as u8;
+        self.seed = Self::pack_seed(w, t, raw_seed);
+        self.seed_input.set_text(&format!("{:016X}", self.seed));
         self.rebuild_map();
     }
 
     /// Try to parse `seed_input` as a hex (or decimal) u64, then rebuild.
     pub fn apply_seed_input(&mut self) {
-        let raw = self.seed_input.trim()
+        let text = self.seed_input.text();
+        let raw = text.trim()
             .trim_start_matches("0x")
             .trim_start_matches("0X");
         let parsed = u64::from_str_radix(raw, 16)
-            .or_else(|_| self.seed_input.trim().parse::<u64>());
+            .or_else(|_| text.trim().parse::<u64>());
         if let Ok(new_seed) = parsed {
             self.seed = new_seed;
+            let (w, t, _) = Self::unpack_seed(self.seed);
+            self.water_slider.set_value(w as usize);
+            self.trees_slider.set_value(t as usize);
         }
         // Always reformat to canonical hex so the field stays clean
-        self.seed_input = format!("{:016X}", self.seed);
+        self.seed_input.set_text(&format!("{:016X}", self.seed));
         self.rebuild_map();
     }
 
+    pub fn sync_sliders_to_seed(&mut self) {
+        let w = self.water_slider.value() as u8;
+        let t = self.trees_slider.value() as u8;
+        let (_, _, raw) = Self::unpack_seed(self.seed);
+        self.seed = Self::pack_seed(w, t, raw);
+        self.seed_input.set_text(&format!("{:016X}", self.seed));
+    }
+
     pub fn rebuild_map(&mut self) {
+        let (w, t, raw_seed) = Self::unpack_seed(self.seed);
         let params = gen::GenParams {
-            water_pct: self.water_pct,
-            trees_pct: self.trees_pct,
-            seed: self.seed,
+            water_pct: w,
+            trees_pct: t,
+            seed: raw_seed,
             ..Default::default()
         };
         self.preview_map = gen::generate(&params);
@@ -244,6 +299,39 @@ impl AppState {
         self.running = running;
     }
 
+    pub fn on_event(&mut self, event: &crossterm::event::Event) -> bool {
+        let mut running = self.running;
+        let transition = {
+            let context = AppContext {
+                engine: &self.engine,
+                cmd_tx: &self.cmd_tx,
+                running: &mut running,
+            };
+            if let Some(screen) = self.screens.last_mut() {
+                screen.on_event(event, context)
+            } else {
+                None
+            }
+        };
+        self.running = running;
+
+        let handled = transition.is_some();
+        if let Some(t) = transition {
+            match t {
+                ScreenTransition::Push(s) => self.screens.push(s),
+                ScreenTransition::Pop => { self.screens.pop(); }
+                ScreenTransition::Replace(s) => { self.screens.pop(); self.screens.push(s); }
+                ScreenTransition::Quit => self.running = false,
+            }
+        }
+        
+        if self.screens.is_empty() {
+            self.running = false;
+        }
+
+        handled
+    }
+
     pub fn on_action(&mut self, action: Action) {
         if matches!(action, Action::Quit) {
             self.running = false;
@@ -277,5 +365,24 @@ impl AppState {
         if self.screens.is_empty() {
             self.running = false;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_seed_packing() {
+        let water_pct = 40;
+        let trees_pct = 60;
+        let raw_seed = 0x123456789ABC;
+
+        let packed = NewCityState::pack_seed(water_pct, trees_pct, raw_seed);
+        let (w, t, r) = NewCityState::unpack_seed(packed);
+
+        assert_eq!(w, water_pct);
+        assert_eq!(t, trees_pct);
+        assert_eq!(r, raw_seed);
     }
 }
