@@ -1,6 +1,7 @@
 use crate::{
     app::camera::Camera,
     core::map::Map,
+    ui::game::map_view,
     ui::theme::{self, OverlayMode},
 };
 use ratatui::{buffer::Buffer, layout::Rect, style::Style, widgets::Widget};
@@ -44,16 +45,16 @@ impl<'a> Widget for MiniMap<'a> {
 
         let mw = self.map.width;
         let mh = self.map.height;
-        let rw_usize = render_area.width as usize;
+        let rw_usize = (render_area.width / 2) as usize;
         let rh_usize = render_area.height as usize;
 
         for row in 0..render_area.height {
-            for col in 0..render_area.width {
-                // Endpoint-interpolation: col 0 → tile 0, col (rw-1) → tile (mw-1)
+            for col in 0..rw_usize {
+                // Endpoint-interpolation: visual tile 0 → tile 0, last visual tile → last map tile.
                 let map_x = if rw_usize <= 1 {
                     0
                 } else {
-                    (col as usize * (mw - 1)) / (rw_usize - 1)
+                    (col * (mw - 1)) / (rw_usize - 1)
                 };
                 let map_y = if rh_usize <= 1 {
                     0
@@ -63,49 +64,47 @@ impl<'a> Widget for MiniMap<'a> {
 
                 let tile = self.map.get(map_x, map_y);
                 let overlay = self.map.get_overlay(map_x, map_y);
-                let glyph = theme::tile_glyph(tile, overlay);
-
-                // Use overlay tint if active.
-                let bg = theme::overlay_tint(self.overlay_mode, overlay).unwrap_or(glyph.bg);
-
-                let cell = buf
-                    .cell_mut((render_area.x + col, render_area.y + row))
-                    .unwrap();
-                cell.set_char(' ');
-                cell.set_bg(bg);
+                let mut sprite =
+                    map_view::committed_tile_sprite(self.map, tile, overlay, map_x, map_y);
+                if let Some(bg) = theme::overlay_tint(self.overlay_mode, overlay) {
+                    sprite = sprite.with_bg(bg);
+                }
+                let bx = render_area.x + col as u16 * 2;
+                let by = render_area.y + row;
+                map_view::write_tile_sprite(buf, render_area, bx, by, sprite);
             }
         }
 
         // Draw viewport rectangle — use same endpoint-interpolation formula as tile sampling
-        // pixel = tile * (rw-1) / (mw-1)
-        let vx0 = if mw <= 1 {
+        // visual_tile = tile * (rw-1) / (mw-1)
+        let vx0_tile = if mw <= 1 || rw_usize <= 1 {
             0u16
         } else {
             ((self.camera.offset_x as usize * (rw_usize - 1)) / (mw - 1)) as u16
         };
-        let vy0 = if mh <= 1 {
+        let vy0 = if mh <= 1 || rh_usize <= 1 {
             0u16
         } else {
             ((self.camera.offset_y as usize * (rh_usize - 1)) / (mh - 1)) as u16
         };
-        let vx1 = if mw <= 1 {
-            (rw_usize - 1) as u16
+        let vx1_tile = if mw <= 1 || rw_usize <= 1 {
+            rw_usize.saturating_sub(1) as u16
         } else {
             (((self.camera.offset_x + self.camera.view_w as i32) as usize).min(mw - 1)
                 * (rw_usize - 1)
                 / (mw - 1)) as u16
         };
-        let vy1 = if mh <= 1 {
-            (rh_usize - 1) as u16
+        let vy1 = if mh <= 1 || rh_usize <= 1 {
+            rh_usize.saturating_sub(1) as u16
         } else {
             (((self.camera.offset_y + self.camera.view_h as i32) as usize).min(mh - 1)
                 * (rh_usize - 1)
                 / (mh - 1)) as u16
         };
 
-        let vx0 = vx0.min(render_area.width.saturating_sub(1));
+        let vx0 = (vx0_tile.saturating_mul(2)).min(render_area.width.saturating_sub(1));
         let vy0 = vy0.min(render_area.height.saturating_sub(1));
-        let vx1 = vx1.min(render_area.width.saturating_sub(1));
+        let vx1 = (vx1_tile.saturating_mul(2) + 1).min(render_area.width.saturating_sub(1));
         let vy1 = vy1.min(render_area.height.saturating_sub(1));
 
         // Draw viewport border on minimap
@@ -133,6 +132,9 @@ pub fn minimap_render_area(area: Rect, map_width: usize, map_height: usize) -> R
     if body.width == 0 || body.height == 0 {
         return Rect::default();
     }
+    if body.width < 2 {
+        return Rect::default();
+    }
 
     let map_visual_aspect = (2.0 * map_width as f32) / map_height as f32;
     let (rw, rh) = if body.width as f32 / body.height as f32 > map_visual_aspect {
@@ -145,7 +147,7 @@ pub fn minimap_render_area(area: Rect, map_width: usize, map_height: usize) -> R
         (w as u16, h as u16)
     };
 
-    let width = rw.max(1);
+    let width = (rw.max(2).min(body.width) / 2) * 2;
     let height = rh.max(1);
     Rect::new(
         body.x + (body.width.saturating_sub(width)) / 2,
@@ -163,6 +165,16 @@ pub fn tile_at_minimap_click(
     row: u16,
 ) -> Option<(usize, usize)> {
     let render_area = minimap_render_area(area, map_width, map_height);
+    tile_at_render_area_click(render_area, map_width, map_height, col, row)
+}
+
+pub fn tile_at_render_area_click(
+    render_area: Rect,
+    map_width: usize,
+    map_height: usize,
+    col: u16,
+    row: u16,
+) -> Option<(usize, usize)> {
     if render_area.width == 0
         || render_area.height == 0
         || col < render_area.x
@@ -173,9 +185,9 @@ pub fn tile_at_minimap_click(
         return None;
     }
 
-    let rel_x = (col - render_area.x) as usize;
+    let rel_x = ((col - render_area.x) / 2) as usize;
     let rel_y = (row - render_area.y) as usize;
-    let grid_w = render_area.width as usize;
+    let grid_w = (render_area.width / 2) as usize;
     let grid_h = render_area.height as usize;
     let tile_x = if grid_w <= 1 {
         0
@@ -187,6 +199,7 @@ pub fn tile_at_minimap_click(
     } else {
         rel_y * map_height.saturating_sub(1) / (grid_h - 1)
     };
+
     Some((tile_x, tile_y))
 }
 
@@ -211,6 +224,7 @@ mod tests {
         assert!(render.y >= 6);
         assert!(render.x + render.width <= 30);
         assert!(render.y + render.height <= 14);
+        assert_eq!(render.width % 2, 0);
     }
 
     #[test]
@@ -227,5 +241,16 @@ mod tests {
         .expect("center click should hit the rendered minimap");
         assert!(tile_x > 0 && tile_x < 127);
         assert!(tile_y > 0 && tile_y < 63);
+    }
+
+    #[test]
+    fn both_columns_of_a_sprite_map_to_the_same_tile() {
+        let area = Rect::new(0, 0, 20, 9);
+        let render = minimap_render_area(area, 8, 8);
+        let left =
+            tile_at_minimap_click(area, 8, 8, render.x, render.y).expect("left column should hit");
+        let right = tile_at_minimap_click(area, 8, 8, render.x + 1, render.y)
+            .expect("right column should hit");
+        assert_eq!(left, right);
     }
 }

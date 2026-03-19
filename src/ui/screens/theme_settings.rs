@@ -1,9 +1,6 @@
 use crate::{
     app::{screens::ThemeSettingsState, ClickArea},
-    ui::{
-        theme,
-        view::ThemeSettingsViewModel,
-    },
+    ui::{theme, view::ThemeSettingsViewModel},
 };
 use ratatui::{
     buffer::Buffer,
@@ -102,7 +99,11 @@ fn render_panel(
     buf.set_string(
         inner.x,
         inner.y,
-        format!("{:<width$}", truncate(&hint, inner.width as usize), width = inner.width as usize),
+        format!(
+            "{:<width$}",
+            truncate(&hint, inner.width as usize),
+            width = inner.width as usize
+        ),
         Style::default()
             .fg(Color::Rgb(170, 223, 219))
             .bg(Color::Rgb(35, 34, 55))
@@ -179,7 +180,12 @@ fn render_swatch(
 ) {
     let colors = [a, b, c, d, e, f];
     for (idx, color) in colors.iter().enumerate() {
-        buf.set_string(x + idx as u16 * 3, y, "██", Style::default().fg(*color).bg(bg));
+        buf.set_string(
+            x + idx as u16 * 3,
+            y,
+            "██",
+            Style::default().fg(*color).bg(bg),
+        );
     }
 }
 

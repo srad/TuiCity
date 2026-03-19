@@ -196,8 +196,7 @@ fn paint_background(buf: &mut Buffer, area: Rect) {
             let dx = x as i32 - sun_x as i32;
             let dy = y as i32 - sun_y as i32;
             let dist = ((dx * dx + dy * dy) as f32).sqrt();
-            let glow =
-                (1.0 - dist / (area.width.max(area.height) as f32 * 0.45)).clamp(0.0, 1.0);
+            let glow = (1.0 - dist / (area.width.max(area.height) as f32 * 0.45)).clamp(0.0, 1.0);
             let color = blend_color(base, Color::Rgb(255, 224, 138), glow * 0.45);
             if let Some(cell) = buf.cell_mut((x, y)) {
                 cell.set_symbol(" ").set_fg(color).set_bg(color);
@@ -263,7 +262,9 @@ fn paint_skyline(buf: &mut Buffer, area: Rect, base_y: u16) {
         for bx in x..(x + width).min(area.x + area.width) {
             for by in top..base_y {
                 if let Some(cell) = buf.cell_mut((bx, by)) {
-                    cell.set_symbol(" ").set_fg(building_color).set_bg(building_color);
+                    cell.set_symbol(" ")
+                        .set_fg(building_color)
+                        .set_bg(building_color);
                 }
             }
         }

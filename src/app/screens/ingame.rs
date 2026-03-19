@@ -11,9 +11,8 @@ use crate::{
         runtime::{ConfirmPromptChoice, ToolChooserKind},
         theme::{self, OverlayMode},
         view::{
-            BudgetViewModel, ConfirmPromptViewModel, InGameDesktopView,
-            StatisticsWindowViewModel, TextWindowViewModel, ToolChooserViewModel,
-            ToolbarPaletteViewModel,
+            BudgetViewModel, ConfirmPromptViewModel, InGameDesktopView, StatisticsWindowViewModel,
+            TextWindowViewModel, ToolChooserViewModel, ToolbarPaletteViewModel,
         },
     },
 };
@@ -327,7 +326,10 @@ impl InGameScreen {
         }
     }
 
-    fn statistics_view_model(&self, sim: &crate::core::sim::SimState) -> Option<StatisticsWindowViewModel> {
+    fn statistics_view_model(
+        &self,
+        sim: &crate::core::sim::SimState,
+    ) -> Option<StatisticsWindowViewModel> {
         self.is_stats_open().then(|| StatisticsWindowViewModel {
             city_name: sim.city_name.clone(),
             current_population: sim.population,

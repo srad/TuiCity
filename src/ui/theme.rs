@@ -973,6 +973,54 @@ pub struct TileGlyph {
     pub bg: Color,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct SpriteCell {
+    pub ch: char,
+    pub fg: Color,
+    pub bg: Color,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TileSprite {
+    pub left: SpriteCell,
+    pub right: SpriteCell,
+}
+
+impl TileSprite {
+    pub fn uniform(ch: char, fg: Color, bg: Color) -> Self {
+        Self::pair(ch, ch, fg, bg)
+    }
+
+    pub fn pair(left: char, right: char, fg: Color, bg: Color) -> Self {
+        Self {
+            left: SpriteCell { ch: left, fg, bg },
+            right: SpriteCell { ch: right, fg, bg },
+        }
+    }
+
+    pub fn with_bg(self, bg: Color) -> Self {
+        Self {
+            left: SpriteCell { bg, ..self.left },
+            right: SpriteCell { bg, ..self.right },
+        }
+    }
+
+    pub fn recolor(self, fg: Color, bg: Color) -> Self {
+        Self {
+            left: SpriteCell {
+                fg,
+                bg,
+                ..self.left
+            },
+            right: SpriteCell {
+                fg,
+                bg,
+                ..self.right
+            },
+        }
+    }
+}
+
 pub fn tile_glyph(tile: Tile, overlay: TileOverlay) -> TileGlyph {
     let ui = ui_palette();
     if overlay.on_fire {
@@ -1102,9 +1150,14 @@ pub fn tile_glyph(tile: Tile, overlay: TileOverlay) -> TileGlyph {
     }
 }
 
+pub fn tile_sprite(tile: Tile, overlay: TileOverlay) -> TileSprite {
+    let glyph = tile_glyph(tile, overlay);
+    TileSprite::uniform(glyph.ch, glyph.fg, glyph.bg)
+}
+
 // ── Feature 4: Network characters (Borders) ──────────────────────────────────
 
-pub fn network_char(tile: Tile, n: bool, e: bool, s: bool, w: bool) -> char {
+fn network_sprite_chars(tile: Tile, n: bool, e: bool, s: bool, w: bool) -> (char, char) {
     let idx = (if n { 1 } else { 0 })
         | (if e { 2 } else { 0 })
         | (if s { 4 } else { 0 })
@@ -1112,32 +1165,74 @@ pub fn network_char(tile: Tile, n: bool, e: bool, s: bool, w: bool) -> char {
 
     match tile {
         Tile::Road | Tile::RoadPowerLine => [
-            ' ', '║', '═', '╚', '║', '║', '╔', '╠', '═', '╝', '═', '╩', '╗', '╣', '╦', '╬',
+            (' ', ' '),
+            (' ', '║'),
+            ('═', '═'),
+            (' ', '╚'),
+            (' ', '║'),
+            (' ', '║'),
+            (' ', '╔'),
+            (' ', '╠'),
+            ('═', '═'),
+            ('═', '╝'),
+            ('═', '═'),
+            ('═', '╩'),
+            ('═', '╗'),
+            ('═', '╣'),
+            ('═', '╦'),
+            ('═', '╬'),
         ][idx],
         Tile::Rail => [
-            ' ', '╽', '╼', '┗', '╿', '┃', '┏', '┣', '╾', '┛', '━', '┻', '┓', '┫', '┳', '╋',
+            (' ', ' '),
+            (' ', '╽'),
+            ('━', '━'),
+            (' ', '┗'),
+            (' ', '╿'),
+            (' ', '┃'),
+            (' ', '┏'),
+            (' ', '┣'),
+            ('━', '━'),
+            ('━', '┛'),
+            ('━', '━'),
+            ('━', '┻'),
+            ('━', '┓'),
+            ('━', '┫'),
+            ('━', '┳'),
+            ('━', '╋'),
         ][idx],
         Tile::PowerLine => [
-            ' ', '╏', '╌', '┗', '╏', '┃', '┏', '┣', '╌', '┛', '━', '┻', '┓', '┫', '┳', '╋',
+            (' ', ' '),
+            (' ', '╏'),
+            ('╌', '╌'),
+            (' ', '┗'),
+            (' ', '╏'),
+            (' ', '┃'),
+            (' ', '┏'),
+            (' ', '┣'),
+            ('╌', '╌'),
+            ('╌', '┛'),
+            ('╌', '╌'),
+            ('╌', '┻'),
+            ('╌', '┓'),
+            ('╌', '┫'),
+            ('╌', '┳'),
+            ('╌', '╋'),
         ][idx],
-        _ => ' ',
+        _ => (' ', ' '),
     }
 }
 
-pub fn building_char(tile: Tile, n: bool, e: bool, s: bool, w: bool) -> char {
-    let _idx = (if n { 1 } else { 0 })
-        | (if e { 2 } else { 0 })
-        | (if s { 4 } else { 0 })
-        | (if w { 8 } else { 0 });
-
-    match tile {
-        Tile::PowerPlantCoal | Tile::PowerPlantGas => 'Y',
-        Tile::Park => '♠',
-        Tile::Police => 'P',
-        Tile::Fire => 'F',
-        Tile::Hospital => 'H',
-        _ => ' ',
-    }
+pub fn network_sprite(
+    tile: Tile,
+    n: bool,
+    e: bool,
+    s: bool,
+    w: bool,
+    fg: Color,
+    bg: Color,
+) -> TileSprite {
+    let (left, right) = network_sprite_chars(tile, n, e, s, w);
+    TileSprite::pair(left, right, fg, bg)
 }
 
 // ── Feature 5: Cursor ─────────────────────────────────────────────────────────
@@ -1204,12 +1299,42 @@ mod tests {
 
     #[test]
     fn ui_palette_exposes_expected_core_colors() {
-        let palette = ui_palette();
+        let palette = palette_for(ThemePreset::Copper);
         assert_eq!(palette.menu_fg, Color::Rgb(31, 19, 10));
         assert_eq!(palette.toolbar_active_bg, Color::Rgb(233, 176, 80));
         assert_eq!(palette.scrollbar_thumb_bg, Color::Rgb(128, 96, 55));
         assert_eq!(palette.sector_residential, Color::Rgb(130, 218, 122));
         assert_eq!(palette.sector_commercial, Color::Rgb(110, 196, 232));
         assert_eq!(palette.sector_industrial, Color::Rgb(227, 194, 96));
+    }
+
+    #[test]
+    fn network_sprite_keeps_vertical_road_single_stem() {
+        let sprite = network_sprite(
+            Tile::Road,
+            true,
+            false,
+            true,
+            false,
+            Color::White,
+            Color::Black,
+        );
+        assert_eq!(sprite.left.ch, ' ');
+        assert_eq!(sprite.right.ch, '║');
+    }
+
+    #[test]
+    fn network_sprite_uses_single_stem_crossing() {
+        let sprite = network_sprite(
+            Tile::PowerLine,
+            true,
+            true,
+            true,
+            true,
+            Color::White,
+            Color::Black,
+        );
+        assert_eq!(sprite.left.ch, '╌');
+        assert_eq!(sprite.right.ch, '╋');
     }
 }

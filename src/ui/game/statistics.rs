@@ -9,11 +9,7 @@ use ratatui::{
 
 use crate::ui::view::StatisticsWindowViewModel;
 
-pub fn render_statistics_content(
-    frame: &mut Frame,
-    area: Rect,
-    view: &StatisticsWindowViewModel,
-) {
+pub fn render_statistics_content(frame: &mut Frame, area: Rect, view: &StatisticsWindowViewModel) {
     if area.width < 20 || area.height < 8 {
         return;
     }
@@ -23,10 +19,10 @@ pub fn render_statistics_content(
 
     let rows = Layout::vertical([Constraint::Percentage(50), Constraint::Percentage(50)])
         .split(sections[1]);
-    let top = Layout::horizontal([Constraint::Percentage(50), Constraint::Percentage(50)])
-        .split(rows[0]);
-    let bottom = Layout::horizontal([Constraint::Percentage(50), Constraint::Percentage(50)])
-        .split(rows[1]);
+    let top =
+        Layout::horizontal([Constraint::Percentage(50), Constraint::Percentage(50)]).split(rows[0]);
+    let bottom =
+        Layout::horizontal([Constraint::Percentage(50), Constraint::Percentage(50)]).split(rows[1]);
 
     render_series_chart(
         frame,

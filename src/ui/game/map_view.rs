@@ -366,6 +366,47 @@ fn preview_connectivity(
     (n, e, s, w)
 }
 
+pub(crate) fn committed_tile_sprite(
+    map: &Map,
+    tile: Tile,
+    overlay: TileOverlay,
+    x: usize,
+    y: usize,
+) -> theme::TileSprite {
+    let glyph = theme::tile_glyph(tile, overlay);
+    if matches!(
+        tile,
+        Tile::Road | Tile::Rail | Tile::PowerLine | Tile::RoadPowerLine
+    ) {
+        let (n, e, s, w) = map_connectivity(map, tile, x, y);
+        theme::network_sprite(tile, n, e, s, w, glyph.fg, glyph.bg)
+    } else {
+        theme::tile_sprite(tile, overlay)
+    }
+}
+
+fn write_sprite_cell(buf: &mut Buffer, x: u16, y: u16, cell_data: theme::SpriteCell) {
+    let cell = buf.cell_mut((x, y)).unwrap();
+    cell.set_char(cell_data.ch);
+    cell.set_fg(cell_data.fg);
+    cell.set_bg(cell_data.bg);
+}
+
+pub(crate) fn write_tile_sprite(
+    buf: &mut Buffer,
+    area: Rect,
+    x: u16,
+    y: u16,
+    sprite: theme::TileSprite,
+) {
+    if x < area.x + area.width {
+        write_sprite_cell(buf, x, y, sprite.left);
+    }
+    if x + 1 < area.x + area.width {
+        write_sprite_cell(buf, x + 1, y, sprite.right);
+    }
+}
+
 impl<'a> Widget for MapView<'a> {
     fn render(self, area: Rect, buf: &mut Buffer) {
         if area.width == 0 || area.height == 0 {
@@ -377,83 +418,57 @@ impl<'a> Widget for MapView<'a> {
 
         let preview_set: std::collections::HashSet<(usize, usize)> =
             self.line_preview.iter().copied().collect();
+        let visible_tiles_w = (area.width as usize + 1) / 2;
 
         for row in 0..area.height {
-            for col in 0..area.width {
-                let map_x = self.camera.offset_x as usize + (col as usize / 2);
-                let map_y = self.camera.offset_y as usize + row as usize;
-
-                let buf_x = area.x + col;
+            let map_y = self.camera.offset_y as usize + row as usize;
+            for tile_col in 0..visible_tiles_w {
+                let map_x = self.camera.offset_x as usize + tile_col;
+                let buf_x = area.x + tile_col as u16 * 2;
                 let buf_y = area.y + row;
 
                 if map_x < self.map.width && map_y < self.map.height {
                     let tile = self.map.get(map_x, map_y);
                     let overlay = self.map.get_overlay(map_x, map_y);
-                    let glyph = theme::tile_glyph(tile, overlay);
-
                     let is_cursor = map_x == self.camera.cursor_x && map_y == self.camera.cursor_y;
                     let is_preview = !is_cursor && preview_set.contains(&(map_x, map_y));
 
-                    let ch = if matches!(
-                        tile,
-                        Tile::Road | Tile::Rail | Tile::PowerLine | Tile::RoadPowerLine
-                    ) {
-                        let (n, e, s, w) = map_connectivity(self.map, tile, map_x, map_y);
-                        theme::network_char(tile, n, e, s, w)
-                    } else if matches!(
-                        tile,
-                        Tile::PowerPlantCoal
-                            | Tile::PowerPlantGas
-                            | Tile::Park
-                            | Tile::Police
-                            | Tile::Fire
-                    ) {
-                        let same = |tx: usize, ty: usize| self.map.get(tx, ty) == tile;
-                        let n = map_y
-                            .checked_sub(1)
-                            .map(|ny| same(map_x, ny))
-                            .unwrap_or(false);
-                        let s = if map_y + 1 < self.map.height {
-                            same(map_x, map_y + 1)
-                        } else {
-                            false
-                        };
-                        let e = if map_x + 1 < self.map.width {
-                            same(map_x + 1, map_y)
-                        } else {
-                            false
-                        };
-                        let w = map_x
-                            .checked_sub(1)
-                            .map(|wx| same(wx, map_y))
-                            .unwrap_or(false);
-                        theme::building_char(tile, n, e, s, w)
-                    } else {
-                        glyph.ch
-                    };
-
-                    let (ch, fg, bg) = if is_cursor {
-                        (ch, cursor_fg, cursor_bg)
+                    let sprite = if is_cursor {
+                        committed_tile_sprite(self.map, tile, overlay, map_x, map_y)
+                            .recolor(cursor_fg, cursor_bg)
                     } else if is_preview {
                         match &self.preview_kind {
                             PreviewKind::Line(tool) => {
                                 let can_place = tool.can_place(tile);
-                                let preview_ch = if let Some(target) = tool.target_tile() {
-                                    let (n, e, s, w) = preview_connectivity(
-                                        self.map,
-                                        target,
-                                        map_x,
-                                        map_y,
-                                        &preview_set,
-                                    );
-                                    theme::network_char(target, n, e, s, w)
+                                let (preview_fg, preview_bg) = if can_place {
+                                    (ui.preview_line_fg, ui.preview_line_bg)
                                 } else {
-                                    '╬'
+                                    (ui.preview_invalid_fg, ui.preview_invalid_bg)
                                 };
-                                if can_place {
-                                    (preview_ch, ui.preview_line_fg, ui.preview_line_bg)
+                                if let Some(target) = tool.target_tile() {
+                                    if matches!(
+                                        target,
+                                        Tile::Road
+                                            | Tile::Rail
+                                            | Tile::PowerLine
+                                            | Tile::RoadPowerLine
+                                    ) {
+                                        let (n, e, s, w) = preview_connectivity(
+                                            self.map,
+                                            target,
+                                            map_x,
+                                            map_y,
+                                            &preview_set,
+                                        );
+                                        theme::network_sprite(
+                                            target, n, e, s, w, preview_fg, preview_bg,
+                                        )
+                                    } else {
+                                        theme::tile_sprite(target, TileOverlay::default())
+                                            .recolor(preview_fg, preview_bg)
+                                    }
                                 } else {
-                                    (preview_ch, ui.preview_invalid_fg, ui.preview_invalid_bg)
+                                    theme::TileSprite::uniform('╬', preview_fg, preview_bg)
                                 }
                             }
                             PreviewKind::Rect(tool) => {
@@ -463,9 +478,17 @@ impl<'a> Widget for MapView<'a> {
                                     .map(|t| theme::tile_glyph(t, TileOverlay::default()).ch)
                                     .unwrap_or('?');
                                 if can_place {
-                                    (preview_ch, ui.preview_valid_fg, ui.preview_valid_bg)
+                                    theme::TileSprite::uniform(
+                                        preview_ch,
+                                        ui.preview_valid_fg,
+                                        ui.preview_valid_bg,
+                                    )
                                 } else {
-                                    (preview_ch, ui.preview_invalid_fg, ui.preview_invalid_bg)
+                                    theme::TileSprite::uniform(
+                                        preview_ch,
+                                        ui.preview_invalid_fg,
+                                        ui.preview_invalid_bg,
+                                    )
                                 }
                             }
                             PreviewKind::Footprint(tool, all_valid) => {
@@ -474,43 +497,46 @@ impl<'a> Widget for MapView<'a> {
                                     .map(|t| theme::tile_glyph(t, TileOverlay::default()).ch)
                                     .unwrap_or('?');
                                 if *all_valid {
-                                    (preview_ch, ui.preview_valid_fg, ui.preview_valid_bg)
+                                    theme::TileSprite::uniform(
+                                        preview_ch,
+                                        ui.preview_valid_fg,
+                                        ui.preview_valid_bg,
+                                    )
                                 } else {
-                                    (preview_ch, ui.preview_invalid_fg, ui.preview_invalid_bg)
+                                    theme::TileSprite::uniform(
+                                        preview_ch,
+                                        ui.preview_invalid_fg,
+                                        ui.preview_invalid_bg,
+                                    )
                                 }
                             }
-                            PreviewKind::None => (ch, glyph.fg, glyph.bg),
+                            PreviewKind::None => {
+                                committed_tile_sprite(self.map, tile, overlay, map_x, map_y)
+                            }
                         }
                     } else {
-                        // Apply heat-map tint (replaces bg, keeps ch and fg)
-                        let bg =
-                            theme::overlay_tint(self.overlay_mode, overlay).unwrap_or(glyph.bg);
+                        let mut sprite =
+                            committed_tile_sprite(self.map, tile, overlay, map_x, map_y);
+                        let bg = theme::overlay_tint(self.overlay_mode, overlay)
+                            .unwrap_or(sprite.left.bg);
+                        sprite = sprite.with_bg(bg);
 
-                        // Blinking unpowered icon
-                        let mut final_ch = ch;
-                        let mut final_fg = glyph.fg;
                         if tile.receives_power() && !overlay.is_powered() {
                             let ms = std::time::SystemTime::now()
                                 .duration_since(std::time::UNIX_EPOCH)
                                 .unwrap()
                                 .as_millis();
                             if (ms / 500) % 2 == 0 {
-                                final_ch = '⚡';
-                                final_fg = ui.warning;
+                                sprite = theme::TileSprite::uniform('⚡', ui.warning, bg);
                             }
                         }
-                        (final_ch, final_fg, bg)
+                        sprite
                     };
 
-                    let cell = buf.cell_mut((buf_x, buf_y)).unwrap();
-                    cell.set_char(ch);
-                    cell.set_fg(fg);
-                    cell.set_bg(bg);
+                    write_tile_sprite(buf, area, buf_x, buf_y, sprite);
                 } else {
-                    // Out-of-bounds: render dark void
-                    let cell = buf.cell_mut((buf_x, buf_y)).unwrap();
-                    cell.set_char(' ');
-                    cell.set_bg(ui.desktop_bg);
+                    let sprite = theme::TileSprite::uniform(' ', ui.text_dim, ui.desktop_bg);
+                    write_tile_sprite(buf, area, buf_x, buf_y, sprite);
                 }
             }
         }
@@ -585,19 +611,10 @@ impl<'a> Widget for MapPreview<'a> {
 
                 let tile = self.map.get(map_x, map_y);
                 let overlay = self.map.get_overlay(map_x, map_y);
-                let glyph = theme::tile_glyph(tile, overlay);
-
-                // Draw two columns for this visual tile
-                for dx in 0..2 {
-                    let bx = render_area.x + (v_col as u16 * 2) + dx;
-                    let by = render_area.y + v_row as u16;
-                    if bx < area.x + area.width && by < area.y + area.height {
-                        let cell = buf.cell_mut((bx, by)).unwrap();
-                        cell.set_char(glyph.ch);
-                        cell.set_fg(glyph.fg);
-                        cell.set_bg(glyph.bg);
-                    }
-                }
+                let sprite = committed_tile_sprite(self.map, tile, overlay, map_x, map_y);
+                let bx = render_area.x + (v_col as u16 * 2);
+                let by = render_area.y + v_row as u16;
+                write_tile_sprite(buf, area, bx, by, sprite);
             }
         }
     }
@@ -606,6 +623,7 @@ impl<'a> Widget for MapPreview<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ratatui::buffer::Buffer;
 
     #[test]
     fn layout_reserves_both_scrollbars_when_needed() {
@@ -620,5 +638,59 @@ mod tests {
     fn scrollbar_offset_from_pointer_clamps_to_max() {
         let offset = scrollbar_offset_from_pointer(10, 3, 20, 99, 1);
         assert_eq!(offset, 20);
+    }
+
+    #[test]
+    fn vertical_road_uses_single_stem_sprite() {
+        let mut map = Map::new(3, 3);
+        map.set(1, 0, Tile::Road);
+        map.set(1, 1, Tile::Road);
+        map.set(1, 2, Tile::Road);
+
+        let camera = Camera {
+            offset_x: 1,
+            offset_y: 1,
+            cursor_x: usize::MAX,
+            cursor_y: usize::MAX,
+            ..Camera::default()
+        };
+        let area = Rect::new(0, 0, 2, 1);
+        let mut buf = Buffer::empty(area);
+
+        MapView {
+            map: &map,
+            camera: &camera,
+            line_preview: &[],
+            preview_kind: PreviewKind::None,
+            overlay_mode: OverlayMode::None,
+        }
+        .render(area, &mut buf);
+
+        assert_eq!(buf.cell((0, 0)).unwrap().symbol(), " ");
+        assert_eq!(buf.cell((1, 0)).unwrap().symbol(), "║");
+    }
+
+    #[test]
+    fn line_preview_uses_network_sprite_pair() {
+        let map = Map::new(3, 1);
+        let camera = Camera {
+            cursor_x: usize::MAX,
+            cursor_y: usize::MAX,
+            ..Camera::default()
+        };
+        let area = Rect::new(0, 0, 2, 1);
+        let mut buf = Buffer::empty(area);
+
+        MapView {
+            map: &map,
+            camera: &camera,
+            line_preview: &[(0, 0), (1, 0)],
+            preview_kind: PreviewKind::Line(Tool::Road),
+            overlay_mode: OverlayMode::None,
+        }
+        .render(area, &mut buf);
+
+        assert_eq!(buf.cell((0, 0)).unwrap().symbol(), "═");
+        assert_eq!(buf.cell((1, 0)).unwrap().symbol(), "═");
     }
 }

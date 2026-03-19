@@ -21,24 +21,13 @@ impl InGameScreen {
         }
         let engine = context.engine.read().unwrap();
         let mm = self.ui_areas.minimap;
-        if mm.width == 0 || mm.height == 0 {
-            return None;
-        }
-        let rc = (col - mm.x) as usize;
-        let rr = (row - mm.y) as usize;
-        let rw = mm.width as usize;
-        let rh = mm.height as usize;
-        let tile_x = if rw <= 1 {
-            0
-        } else {
-            rc * engine.map.width.saturating_sub(1) / (rw - 1)
-        };
-        let tile_y = if rh <= 1 {
-            0
-        } else {
-            rr * engine.map.height.saturating_sub(1) / (rh - 1)
-        };
-        Some((tile_x, tile_y))
+        crate::ui::game::minimap::tile_at_render_area_click(
+            ratatui::layout::Rect::new(mm.x, mm.y, mm.width, mm.height),
+            engine.map.width,
+            engine.map.height,
+            col,
+            row,
+        )
     }
 
     fn title_close_hit(&self, id: WindowId, col: u16, row: u16) -> bool {

@@ -146,7 +146,11 @@ fn render_compact_load_city(
         buf.set_string(
             inner.x,
             y,
-            format!("{:<width$}", truncate(&text, inner.width as usize), width = inner.width as usize),
+            format!(
+                "{:<width$}",
+                truncate(&text, inner.width as usize),
+                width = inner.width as usize
+            ),
             style,
         );
     }
@@ -217,7 +221,11 @@ fn render_archive_panel(
     buf.set_string(
         inner.x,
         inner.y,
-        format!("{:<width$}", truncate(&header, inner.width as usize), width = inner.width as usize),
+        format!(
+            "{:<width$}",
+            truncate(&header, inner.width as usize),
+            width = inner.width as usize
+        ),
         Style::default()
             .fg(Color::Rgb(170, 223, 219))
             .bg(Color::Rgb(35, 34, 55))
@@ -271,7 +279,11 @@ fn render_archive_panel(
                 .fg(ui.text_primary)
                 .bg(Color::Rgb(56, 42, 78))
         };
-        let padded = format!("{:<width$}", truncate(&line, inner.width as usize), width = inner.width as usize);
+        let padded = format!(
+            "{:<width$}",
+            truncate(&line, inner.width as usize),
+            width = inner.width as usize
+        );
         buf.set_string(inner.x, row_y, padded, style);
     }
 }
@@ -345,7 +357,9 @@ fn paint_sun(buf: &mut Buffer, area: Rect, center_x: u16, center_y: u16, horizon
     for y in center_y.saturating_sub(radius_y)..=(center_y + radius_y).min(horizon_y) {
         let dy = y as i32 - center_y as i32;
         let ny = dy as f32 / radius_y.max(1) as f32;
-        for x in center_x.saturating_sub(radius_x)..=(center_x + radius_x).min(area.x + area.width - 1) {
+        for x in
+            center_x.saturating_sub(radius_x)..=(center_x + radius_x).min(area.x + area.width - 1)
+        {
             let dx = x as i32 - center_x as i32;
             let nx = dx as f32 / radius_x.max(1) as f32;
             let dist = nx * nx + ny * ny;

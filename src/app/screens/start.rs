@@ -62,12 +62,7 @@ impl Screen for StartScreen {
     fn build_view(&self, _context: AppContext<'_>) -> crate::ui::view::ScreenView {
         crate::ui::view::ScreenView::Start(crate::ui::view::StartViewModel {
             selected: self.state.selected,
-            options: [
-                "Load Existing City",
-                "Create New City",
-                "Settings",
-                "Quit",
-            ],
+            options: ["Load Existing City", "Create New City", "Settings", "Quit"],
         })
     }
 }

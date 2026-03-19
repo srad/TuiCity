@@ -111,7 +111,11 @@ fn render_compact_start(
         } else {
             opt.to_string()
         };
-        let padded = format!("{:^width$}", text, width = rect.width.saturating_sub(4) as usize);
+        let padded = format!(
+            "{:^width$}",
+            text,
+            width = rect.width.saturating_sub(4) as usize
+        );
         let style = if selected {
             Style::default()
                 .fg(Color::Rgb(27, 27, 42))
@@ -297,7 +301,9 @@ fn paint_sun(buf: &mut Buffer, area: Rect, center_x: u16, center_y: u16, horizon
     for y in center_y.saturating_sub(radius_y)..=(center_y + radius_y).min(horizon_y) {
         let dy = y as i32 - center_y as i32;
         let ny = dy as f32 / radius_y.max(1) as f32;
-        for x in center_x.saturating_sub(radius_x)..=(center_x + radius_x).min(area.x + area.width - 1) {
+        for x in
+            center_x.saturating_sub(radius_x)..=(center_x + radius_x).min(area.x + area.width - 1)
+        {
             let dx = x as i32 - center_x as i32;
             let nx = dx as f32 / radius_x.max(1) as f32;
             let dist = nx * nx + ny * ny;
