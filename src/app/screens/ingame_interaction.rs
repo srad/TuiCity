@@ -1,6 +1,7 @@
 use crate::{
     app::{LineDrag, RectDrag, Tool, WindowId},
     core::engine::EngineCommand,
+    ui::runtime::ToolbarHitTarget,
 };
 
 use super::{
@@ -9,37 +10,61 @@ use super::{
 };
 
 impl InGameScreen {
+    fn minimap_click_target(
+        &self,
+        col: u16,
+        row: u16,
+        context: &AppContext,
+    ) -> Option<(usize, usize)> {
+        if !self.ui_areas.minimap.contains(col, row) {
+            return None;
+        }
+        let engine = context.engine.read().unwrap();
+        let mm = self.ui_areas.minimap;
+        if mm.width == 0 || mm.height == 0 {
+            return None;
+        }
+        let rc = (col - mm.x) as usize;
+        let rr = (row - mm.y) as usize;
+        let rw = mm.width as usize;
+        let rh = mm.height as usize;
+        let tile_x = if rw <= 1 {
+            0
+        } else {
+            rc * engine.map.width.saturating_sub(1) / (rw - 1)
+        };
+        let tile_y = if rh <= 1 {
+            0
+        } else {
+            rr * engine.map.height.saturating_sub(1) / (rh - 1)
+        };
+        Some((tile_x, tile_y))
+    }
+
     fn title_close_hit(&self, id: WindowId, col: u16, row: u16) -> bool {
         let win = self.desktop.window(id);
-        win.closable
+        win.visible
+            && win.closable
             && row == win.y
-            && col >= win.x + win.width.saturating_sub(5)
-            && col < win.x + win.width
+            && col >= win.x.saturating_add(win.width.saturating_sub(5))
+            && col < win.x.saturating_add(win.width)
     }
 
-    fn power_picker_button_at(&self, col: u16, row: u16) -> Option<Tool> {
-        let win = self.desktop.window(WindowId::PowerPicker);
-        if !win.visible {
-            return None;
-        }
-        let inner_x = win.x.saturating_add(2);
-        let inner_y = win.y.saturating_add(2);
-        if row == inner_y + 3 && col >= inner_x && col < inner_x + 20 {
-            Some(Tool::PowerPlantCoal)
-        } else if row == inner_y + 8 && col >= inner_x && col < inner_x + 20 {
-            Some(Tool::PowerPlantGas)
-        } else {
-            None
-        }
+    fn tool_chooser_tool_at(&self, col: u16, row: u16) -> Option<Tool> {
+        let kind = self.open_tool_chooser?;
+        self.ui_areas
+            .tool_chooser_items
+            .iter()
+            .position(|area| area.contains(col, row))
+            .and_then(|index| kind.tools().get(index).copied())
     }
 
-    fn toolbar_tool_at(&self, col: u16, row: u16) -> Option<Tool> {
-        let panel = self.desktop.window(WindowId::Panel);
-        if !panel.visible || col < panel.x + 1 || row < panel.y + 1 {
-            return None;
-        }
-        let toolbar_row = row.saturating_sub(panel.y + 1);
-        crate::ui::game::toolbar::tool_at_row(toolbar_row)
+    fn toolbar_target_at(&self, col: u16, row: u16) -> Option<ToolbarHitTarget> {
+        self.ui_areas
+            .toolbar_items
+            .iter()
+            .find(|hit| hit.area.contains(col, row))
+            .map(|hit| hit.target)
     }
 
     pub fn place_current_tool(&mut self, context: &AppContext) {
@@ -55,7 +80,12 @@ impl InGameScreen {
         self.message = None;
     }
 
-    pub fn screen_to_map_clamped(&self, col: u16, row: u16, context: &AppContext) -> (usize, usize) {
+    pub fn screen_to_map_clamped(
+        &self,
+        col: u16,
+        row: u16,
+        context: &AppContext,
+    ) -> (usize, usize) {
         let sx = col - self.ui_areas.map.viewport.x;
         let sy = row - self.ui_areas.map.viewport.y;
         let (mx, my) = self.camera.screen_to_map(sx, sy);
@@ -153,7 +183,9 @@ impl InGameScreen {
     }
 
     pub fn drag_scrollbar_thumb(&mut self, col: u16, row: u16, context: &AppContext) {
-        let Some(drag) = self.scrollbar_drag else { return };
+        let Some(drag) = self.scrollbar_drag else {
+            return;
+        };
         let (map_w, map_h) = {
             let engine = context.engine.read().unwrap();
             (engine.map.width, engine.map.height)
@@ -207,7 +239,9 @@ impl InGameScreen {
     }
 
     pub fn drag_middle_pan(&mut self, col: u16, row: u16, context: &AppContext) {
-        let Some(mut drag) = self.map_pan_drag else { return };
+        let Some(mut drag) = self.map_pan_drag else {
+            return;
+        };
         let delta_cols = col as i32 - drag.last_col as i32;
         let delta_rows = row as i32 - drag.last_row as i32;
         drag.last_col = col;
@@ -227,10 +261,14 @@ impl InGameScreen {
         if let Some(ref drag) = self.line_drag {
             let tool = drag.tool;
             let engine = context.engine.read().unwrap();
-            let placeable = drag.path.iter()
-                .filter(|&&(x, y)| x < engine.map.width
-                    && y < engine.map.height
-                    && tool.can_place(engine.map.get(x, y)))
+            let placeable = drag
+                .path
+                .iter()
+                .filter(|&&(x, y)| {
+                    x < engine.map.width
+                        && y < engine.map.height
+                        && tool.can_place(engine.map.get(x, y))
+                })
                 .count();
             let blocked = drag.path.len() - placeable;
             let cost = placeable as i64 * tool.cost();
@@ -247,18 +285,37 @@ impl InGameScreen {
         if let Some(ref drag) = self.rect_drag {
             let tool = drag.tool;
             let engine = context.engine.read().unwrap();
-            let placeable = drag.tiles_cache.iter()
-                .filter(|&&(x, y)| x < engine.map.width
-                    && y < engine.map.height
-                    && tool.can_place(engine.map.get(x, y)))
+            let placeable = drag
+                .tiles_cache
+                .iter()
+                .filter(|&&(x, y)| {
+                    x < engine.map.width
+                        && y < engine.map.height
+                        && tool.can_place(engine.map.get(x, y))
+                })
                 .count();
             let blocked = drag.tiles_cache.len() - placeable;
             let cost = placeable as i64 * tool.cost();
             let (w, h) = (drag.width(), drag.height());
             self.message = Some(if blocked > 0 {
-                format!("{}: {}×{} = {} tiles  ${} ({} blocked)", tool.label(), w, h, placeable, cost, blocked)
+                format!(
+                    "{}: {}×{} = {} tiles  ${} ({} blocked)",
+                    tool.label(),
+                    w,
+                    h,
+                    placeable,
+                    cost,
+                    blocked
+                )
             } else {
-                format!("{}: {}×{} = {} tiles  ${}", tool.label(), w, h, placeable, cost)
+                format!(
+                    "{}: {}×{} = {} tiles  ${}",
+                    tool.label(),
+                    w,
+                    h,
+                    placeable,
+                    cost
+                )
             });
         }
     }
@@ -274,10 +331,19 @@ impl InGameScreen {
             return;
         }
 
+        if let Some((tile_x, tile_y)) = self.minimap_click_target(col, row, context) {
+            let engine = context.engine.read().unwrap();
+            self.camera
+                .center_on(tile_x, tile_y, engine.map.width, engine.map.height);
+            return;
+        }
+
         if self.desktop.contains(WindowId::Panel, col, row)
             || self.desktop.contains(WindowId::Budget, col, row)
             || self.desktop.contains(WindowId::Inspect, col, row)
             || self.desktop.contains(WindowId::PowerPicker, col, row)
+            || self.desktop.contains(WindowId::Help, col, row)
+            || self.desktop.contains(WindowId::About, col, row)
         {
             return;
         }
@@ -294,34 +360,31 @@ impl InGameScreen {
 
             if self.current_tool == Tool::Inspect {
                 self.inspect_pos = Some((mx, my));
-                self.desktop.open(WindowId::Inspect, false);
+                if self.is_inspect_open() {
+                    self.open_inspect_window();
+                }
             } else {
                 drop(engine);
                 self.place_current_tool(context);
             }
             return;
         }
-
-        if self.ui_areas.minimap.contains(col, row) {
-            let mm = self.ui_areas.minimap;
-            if row == mm.y || mm.height <= 1 {
-                return;
-            }
-            let (mw, mh) = (engine.map.width, engine.map.height);
-            let rc = (col - mm.x) as usize;
-            let rr = (row - mm.y - 1) as usize;
-            let rw = mm.width as usize;
-            let rh = (mm.height - 1) as usize;
-            let tile_x = if rw <= 1 { 0 } else { rc * (mw - 1) / (rw - 1) };
-            let tile_y = if rh <= 1 { 0 } else { rr * (mh - 1) / (rh - 1) };
-            let new_ox = tile_x as i32 - self.camera.view_w as i32 / 2;
-            let new_oy = tile_y as i32 - self.camera.view_h as i32 / 2;
-            self.camera.offset_x = new_ox.clamp(0, (mw as i32 - self.camera.view_w as i32).max(0));
-            self.camera.offset_y = new_oy.clamp(0, (mh as i32 - self.camera.view_h as i32).max(0));
-        }
     }
 
     pub fn handle_mouse_click_action(&mut self, col: u16, row: u16, context: &AppContext) -> bool {
+        if self.is_stats_open() {
+            if self.title_close_hit(WindowId::Statistics, col, row) {
+                self.close_stats_window();
+                return true;
+            }
+            if self.desktop.begin_drag(WindowId::Statistics, col, row) {
+                return true;
+            }
+            if self.desktop.contains(WindowId::Statistics, col, row) {
+                return true;
+            }
+            return true;
+        }
         if self.is_budget_open() {
             if self.title_close_hit(WindowId::Budget, col, row) {
                 self.close_budget();
@@ -337,32 +400,68 @@ impl InGameScreen {
         }
         if self.is_inspect_open() {
             if self.title_close_hit(WindowId::Inspect, col, row) {
-                self.inspect_pos = None;
-                self.desktop.close(WindowId::Inspect);
+                self.close_inspect_window();
                 return true;
             }
             if self.desktop.begin_drag(WindowId::Inspect, col, row) {
                 return true;
             }
         }
-        if self.is_power_picker_open() {
+        if self.is_tool_chooser_open() {
             if self.title_close_hit(WindowId::PowerPicker, col, row) {
-                self.desktop.close(WindowId::PowerPicker);
+                self.close_tool_chooser();
                 return true;
             }
-            if let Some(tool) = self.power_picker_button_at(col, row) {
+            if self.desktop.begin_drag(WindowId::PowerPicker, col, row) {
+                return true;
+            }
+            if let Some(tool) = self.tool_chooser_tool_at(col, row) {
                 self.select_tool(tool);
+                return true;
+            }
+            if self.desktop.contains(WindowId::PowerPicker, col, row) {
                 return true;
             }
         }
-        if let Some(tool) = self.toolbar_tool_at(col, row) {
-            if tool == Tool::PowerPlantPicker {
-                self.desktop.toggle(WindowId::PowerPicker, true);
-            } else {
-                self.select_tool(tool);
+        if self.is_help_open() {
+            if self.title_close_hit(WindowId::Help, col, row) {
+                self.close_help_window();
+                return true;
+            }
+            if self.desktop.begin_drag(WindowId::Help, col, row) {
+                return true;
+            }
+            if self.desktop.contains(WindowId::Help, col, row) {
+                return true;
             }
             return true;
         }
+        if self.is_about_open() {
+            if self.title_close_hit(WindowId::About, col, row) {
+                self.close_about_window();
+                return true;
+            }
+            if self.desktop.begin_drag(WindowId::About, col, row) {
+                return true;
+            }
+            if self.desktop.contains(WindowId::About, col, row) {
+                return true;
+            }
+            return true;
+        }
+        if self.title_close_hit(WindowId::Panel, col, row) {
+            self.close_tool_chooser();
+            self.desktop.close(WindowId::Panel);
+            return true;
+        }
+        if let Some(target) = self.toolbar_target_at(col, row) {
+            match target {
+                ToolbarHitTarget::SelectTool(tool) => self.select_tool(tool),
+                ToolbarHitTarget::OpenChooser(kind) => self.toggle_tool_chooser(kind),
+            }
+            return true;
+        }
+        self.close_tool_chooser();
         if self.desktop.begin_drag(WindowId::Panel, col, row) {
             return true;
         }
@@ -379,13 +478,16 @@ impl InGameScreen {
             self.handle_click(col, row, true, context);
             return true;
         }
-        if Tool::uses_line_drag(self.current_tool) && self.ui_areas.map.viewport.contains(col, row) {
+        if Tool::uses_line_drag(self.current_tool) && self.ui_areas.map.viewport.contains(col, row)
+        {
             let (mx, my) = self.screen_to_map_clamped(col, row, context);
             self.camera.cursor_x = mx;
             self.camera.cursor_y = my;
             self.line_drag = Some(LineDrag::new(self.current_tool, mx, my));
             self.update_line_drag_message(context);
-        } else if Tool::uses_rect_drag(self.current_tool) && self.ui_areas.map.viewport.contains(col, row) {
+        } else if Tool::uses_rect_drag(self.current_tool)
+            && self.ui_areas.map.viewport.contains(col, row)
+        {
             let (mx, my) = self.screen_to_map_clamped(col, row, context);
             self.camera.cursor_x = mx;
             self.camera.cursor_y = my;
@@ -410,7 +512,11 @@ impl InGameScreen {
         }
         if self.line_drag.is_some() && self.ui_areas.map.viewport.contains(col, row) {
             let (mx, my) = self.screen_to_map_clamped(col, row, context);
-            let (tool, sx, sy) = self.line_drag.as_ref().map(|drag| (drag.tool, drag.start_x, drag.start_y)).unwrap();
+            let (tool, sx, sy) = self
+                .line_drag
+                .as_ref()
+                .map(|drag| (drag.tool, drag.start_x, drag.start_y))
+                .unwrap();
             let new_path = {
                 let engine = context.engine.read().unwrap();
                 crate::app::line_drag::line_shortest_path(&engine.map, tool, sx, sy, mx, my)
@@ -445,7 +551,11 @@ impl InGameScreen {
         if self.line_drag.is_some() {
             if self.ui_areas.map.viewport.contains(col, row) && !self.is_over_window(col, row) {
                 let (mx, my) = self.screen_to_map_clamped(col, row, context);
-                let (tool, sx, sy) = self.line_drag.as_ref().map(|drag| (drag.tool, drag.start_x, drag.start_y)).unwrap();
+                let (tool, sx, sy) = self
+                    .line_drag
+                    .as_ref()
+                    .map(|drag| (drag.tool, drag.start_x, drag.start_y))
+                    .unwrap();
                 let final_path = {
                     let engine = context.engine.read().unwrap();
                     crate::app::line_drag::line_shortest_path(&engine.map, tool, sx, sy, mx, my)

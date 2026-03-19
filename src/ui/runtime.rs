@@ -1,4 +1,6 @@
-#[derive(Clone, Copy, Default, Debug)]
+use crate::core::tool::Tool;
+
+#[derive(Clone, Copy, Default, Debug, PartialEq, Eq)]
 pub struct ClickArea {
     pub x: u16,
     pub y: u16,
@@ -33,15 +35,92 @@ pub struct MapUiAreas {
     pub corner: ClickArea,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ToolChooserKind {
+    Zones,
+    PowerPlants,
+    Buildings,
+    Amusement,
+}
+
+impl ToolChooserKind {
+    pub fn title(self) -> &'static str {
+        match self {
+            ToolChooserKind::Zones => " Zone Selection ",
+            ToolChooserKind::PowerPlants => " Power Plant Selection ",
+            ToolChooserKind::Buildings => " Civic Building Selection ",
+            ToolChooserKind::Amusement => " Amusement Selection ",
+        }
+    }
+
+    pub fn button_label(self) -> &'static str {
+        match self {
+            ToolChooserKind::Zones => "Zones",
+            ToolChooserKind::PowerPlants => "Power Plants",
+            ToolChooserKind::Buildings => "Buildings",
+            ToolChooserKind::Amusement => "Amusement",
+        }
+    }
+
+    pub fn tools(self) -> &'static [Tool] {
+        match self {
+            ToolChooserKind::Zones => &[Tool::ZoneRes, Tool::ZoneComm, Tool::ZoneInd],
+            ToolChooserKind::PowerPlants => &[Tool::PowerPlantCoal, Tool::PowerPlantGas],
+            ToolChooserKind::Buildings => &[Tool::Police, Tool::Fire],
+            ToolChooserKind::Amusement => &[Tool::Park],
+        }
+    }
+
+    pub fn for_tool(tool: Tool) -> Option<Self> {
+        match tool {
+            Tool::ZoneRes | Tool::ZoneComm | Tool::ZoneInd => Some(ToolChooserKind::Zones),
+            Tool::PowerPlantCoal | Tool::PowerPlantGas => Some(ToolChooserKind::PowerPlants),
+            Tool::Police | Tool::Fire => Some(ToolChooserKind::Buildings),
+            Tool::Park => Some(ToolChooserKind::Amusement),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ToolbarHitTarget {
+    SelectTool(Tool),
+    OpenChooser(ToolChooserKind),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ConfirmPromptChoice {
+    SaveFirst,
+    ContinueWithoutSaving,
+    Cancel,
+}
+
+impl ConfirmPromptChoice {
+    pub const ORDER: [ConfirmPromptChoice; 3] = [
+        ConfirmPromptChoice::SaveFirst,
+        ConfirmPromptChoice::ContinueWithoutSaving,
+        ConfirmPromptChoice::Cancel,
+    ];
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ToolbarHitArea {
+    pub area: ClickArea,
+    pub target: ToolbarHitTarget,
+}
+
 #[derive(Default)]
 pub struct UiAreas {
     pub menu_bar: ClickArea,
-    pub menu_items: [ClickArea; 5],
+    pub menu_items: [ClickArea; 6],
     pub menu_popup: ClickArea,
-    pub menu_popup_items: [ClickArea; 7],
+    pub menu_popup_items: Vec<ClickArea>,
     pub map: MapUiAreas,
     pub minimap: ClickArea,
     pub pause_btn: ClickArea,
+    pub toolbar_items: Vec<ToolbarHitArea>,
+    pub tool_chooser_items: Vec<ClickArea>,
+    pub exit_prompt_items: Vec<ClickArea>,
 }
 
 #[derive(Clone, Debug)]
@@ -53,6 +132,7 @@ pub struct WindowState {
     pub visible: bool,
     pub movable: bool,
     pub closable: bool,
+    pub shadowed: bool,
     pub modal: bool,
     pub center_on_open: bool,
     pub title: &'static str,
@@ -68,6 +148,7 @@ impl WindowState {
             visible: true,
             movable: true,
             closable: false,
+            shadowed: true,
             modal: false,
             center_on_open: false,
             title: "",
@@ -75,10 +156,7 @@ impl WindowState {
     }
 
     pub fn title_bar_contains(&self, col: u16, row: u16) -> bool {
-        self.width > 0
-            && row == self.y
-            && col >= self.x
-            && col < self.x + self.width
+        self.width > 0 && row == self.y && col >= self.x && col < self.x + self.width
     }
 
     pub fn contains(&self, col: u16, row: u16) -> bool {
@@ -101,7 +179,12 @@ pub struct UiRect {
 
 impl UiRect {
     pub fn new(x: u16, y: u16, width: u16, height: u16) -> Self {
-        Self { x, y, width, height }
+        Self {
+            x,
+            y,
+            width,
+            height,
+        }
     }
 }
 
@@ -110,17 +193,23 @@ pub enum WindowId {
     Map,
     Panel,
     Budget,
+    Statistics,
     Inspect,
     PowerPicker,
+    Help,
+    About,
 }
 
 impl WindowId {
-    pub const ALL: [WindowId; 5] = [
+    pub const ALL: [WindowId; 8] = [
         WindowId::Map,
         WindowId::Panel,
         WindowId::Budget,
+        WindowId::Statistics,
         WindowId::Inspect,
         WindowId::PowerPicker,
+        WindowId::Help,
+        WindowId::About,
     ];
 
     pub fn index(self) -> usize {
@@ -128,8 +217,11 @@ impl WindowId {
             WindowId::Map => 0,
             WindowId::Panel => 1,
             WindowId::Budget => 2,
-            WindowId::Inspect => 3,
-            WindowId::PowerPicker => 4,
+            WindowId::Statistics => 3,
+            WindowId::Inspect => 4,
+            WindowId::PowerPicker => 5,
+            WindowId::Help => 6,
+            WindowId::About => 7,
         }
     }
 }
@@ -153,7 +245,7 @@ pub struct WindowLayout {
 pub struct DesktopLayout {
     pub menu_bar: UiRect,
     pub status_bar: UiRect,
-    windows: [WindowLayout; 5],
+    windows: [WindowLayout; 8],
 }
 
 impl DesktopLayout {
@@ -164,7 +256,7 @@ impl DesktopLayout {
 
 #[derive(Clone, Debug)]
 pub struct DesktopState {
-    windows: [WindowState; 5],
+    windows: [WindowState; 8],
     pub drag: Option<WindowDragState>,
     pub z_order: Vec<WindowId>,
 }
@@ -175,7 +267,8 @@ impl DesktopState {
         map.title = " MAP ";
 
         let mut panel = WindowState::new(u16::MAX, 4, 24, 35);
-        panel.title = " TOOLS ";
+        panel.title = " TOOLBOX ";
+        panel.closable = true;
 
         let mut budget = WindowState::new(8, 4, 74, 29);
         budget.title = " Budget Control Center ";
@@ -183,27 +276,51 @@ impl DesktopState {
         budget.closable = true;
         budget.modal = true;
 
+        let mut statistics = WindowState::new(0, 0, 86, 24);
+        statistics.title = " City Statistics ";
+        statistics.visible = false;
+        statistics.closable = true;
+        statistics.modal = true;
+        statistics.center_on_open = true;
+
         let mut inspect = WindowState::new(15, 5, 34, 16);
         inspect.title = " Inspect ";
         inspect.visible = false;
         inspect.closable = true;
 
-        let mut power = WindowState::new(0, 0, 50, 20);
-        power.title = " Power Plant Selection ";
+        let mut power = WindowState::new(0, 0, 38, 16);
+        power.title = " Tool Selection ";
         power.visible = false;
         power.closable = true;
         power.modal = true;
         power.center_on_open = true;
 
+        let mut help = WindowState::new(0, 0, 74, 25);
+        help.title = " Help ";
+        help.visible = false;
+        help.closable = true;
+        help.modal = true;
+        help.center_on_open = true;
+
+        let mut about = WindowState::new(0, 0, 60, 8);
+        about.title = " About ";
+        about.visible = false;
+        about.closable = true;
+        about.modal = true;
+        about.center_on_open = true;
+
         Self {
-            windows: [map, panel, budget, inspect, power],
+            windows: [map, panel, budget, statistics, inspect, power, help, about],
             drag: None,
             z_order: vec![
                 WindowId::Map,
                 WindowId::Panel,
                 WindowId::Budget,
+                WindowId::Statistics,
                 WindowId::Inspect,
                 WindowId::PowerPicker,
+                WindowId::Help,
+                WindowId::About,
             ],
         }
     }
@@ -254,7 +371,13 @@ impl DesktopState {
     pub fn begin_drag(&mut self, id: WindowId, col: u16, row: u16) -> bool {
         let (visible, movable, x, y, title_contains) = {
             let win = self.window(id);
-            (win.visible, win.movable, win.x, win.y, win.title_bar_contains(col, row))
+            (
+                win.visible,
+                win.movable,
+                win.x,
+                win.y,
+                win.title_bar_contains(col, row),
+            )
         };
         if !visible || !movable || !title_contains {
             return false;
@@ -290,8 +413,13 @@ impl DesktopState {
     pub fn layout(&mut self, full: UiRect) -> DesktopLayout {
         let menu_bar = UiRect::new(full.x, full.y, full.width, 1);
         let status_bar = UiRect::new(full.x, full.y.saturating_add(1), full.width, 1);
-        let desktop = UiRect::new(full.x, full.y.saturating_add(2), full.width, full.height.saturating_sub(2));
-        let mut windows = [WindowLayout::default(); 5];
+        let desktop = UiRect::new(
+            full.x,
+            full.y.saturating_add(2),
+            full.width,
+            full.height.saturating_sub(2),
+        );
+        let mut windows = [WindowLayout::default(); 8];
 
         for id in WindowId::ALL {
             let win = self.window_mut(id);
@@ -352,13 +480,19 @@ pub fn clamp_window_to_desktop(window: &mut WindowState, desktop: UiRect) -> UiR
     let h = window.height.max(4);
     let w = window.width.max(6);
     if window.x == u16::MAX {
-        window.x = desktop.x + desktop.width.saturating_sub(w);
+        window.x = desktop.x + desktop.width.saturating_sub(w).saturating_sub(3);
     }
 
     let min_x = (desktop.x + 4).saturating_sub(w);
-    let max_x = desktop.x + desktop.width.saturating_sub(4).min(desktop.width.saturating_sub(w));
+    let max_x = desktop.x
+        + desktop
+            .width
+            .saturating_sub(4)
+            .min(desktop.width.saturating_sub(w));
     let x = window.x.clamp(min_x, max_x);
-    let y = window.y.clamp(desktop.y, desktop.y + desktop.height.saturating_sub(1));
+    let y = window
+        .y
+        .clamp(desktop.y, desktop.y + desktop.height.saturating_sub(1));
     window.x = x;
     window.y = y;
 

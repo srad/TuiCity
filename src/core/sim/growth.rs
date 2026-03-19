@@ -1,4 +1,4 @@
-use super::{SimState, economy::compute_sector_stats};
+use super::{economy::compute_sector_stats, SimState};
 use crate::core::map::{Map, Tile};
 use rand::Rng;
 
@@ -11,10 +11,10 @@ pub fn tick_growth(map: &mut Map, sim: &mut SimState) {
 
     for y in 0..h {
         for x in 0..w {
-            let tile    = map.get(x, y);
+            let tile = map.get(x, y);
             let overlay = map.get_overlay(x, y);
-            let powered      = overlay.is_powered();
-            let road_access  = has_road_access(map, x, y, 3);
+            let powered = overlay.is_powered();
+            let road_access = has_road_access(map, x, y, 3);
 
             // Modifier: pollution hurts residential growth (0.3..1.0)
             let pollution_penalty = 1.0 - (overlay.pollution as f32 / 255.0) * 0.7;
@@ -25,7 +25,8 @@ pub fn tick_growth(map: &mut Map, sim: &mut SimState) {
 
             match tile {
                 Tile::ZoneRes => {
-                    let chance = (sim.demand_res * 0.15 + lv_bonus) * pollution_penalty * crime_penalty;
+                    let chance =
+                        (sim.demand_res * 0.15 + lv_bonus) * pollution_penalty * crime_penalty;
                     if road_access && powered && rng.gen::<f32>() < chance {
                         changes.push((x, y, Tile::ResLow));
                     }
@@ -43,7 +44,8 @@ pub fn tick_growth(map: &mut Map, sim: &mut SimState) {
                     }
                 }
                 Tile::ResLow => {
-                    let chance = (sim.demand_res * 0.03 + lv_bonus) * pollution_penalty * crime_penalty;
+                    let chance =
+                        (sim.demand_res * 0.03 + lv_bonus) * pollution_penalty * crime_penalty;
                     if road_access && powered && rng.gen::<f32>() < chance {
                         changes.push((x, y, Tile::ResMed));
                     } else if !powered && rng.gen::<f32>() < 0.01 {
@@ -51,7 +53,9 @@ pub fn tick_growth(map: &mut Map, sim: &mut SimState) {
                     }
                 }
                 Tile::ResMed => {
-                    let chance = (sim.demand_res * 0.015 + lv_bonus * 0.5) * pollution_penalty * crime_penalty;
+                    let chance = (sim.demand_res * 0.015 + lv_bonus * 0.5)
+                        * pollution_penalty
+                        * crime_penalty;
                     if road_access && powered && rng.gen::<f32>() < chance {
                         changes.push((x, y, Tile::ResHigh));
                     } else if !powered && rng.gen::<f32>() < 0.05 {
@@ -130,9 +134,15 @@ mod tests {
     fn test_road_access_powerline() {
         let mut map = Map::new(10, 10);
         map.set(5, 5, Tile::RoadPowerLine);
-        
-        assert!(has_road_access(&map, 5, 6, 3), "Tile at (5,6) should have road access from (5,5) RoadPowerLine");
-        assert!(has_road_access(&map, 7, 5, 3), "Tile at (7,5) should have road access from (5,5) RoadPowerLine");
+
+        assert!(
+            has_road_access(&map, 5, 6, 3),
+            "Tile at (5,6) should have road access from (5,5) RoadPowerLine"
+        );
+        assert!(
+            has_road_access(&map, 7, 5, 3),
+            "Tile at (7,5) should have road access from (5,5) RoadPowerLine"
+        );
     }
 
     #[test]
@@ -141,23 +151,26 @@ mod tests {
         map.set(0, 0, Tile::PowerPlantCoal);
         map.set(1, 0, Tile::RoadPowerLine);
         map.set(2, 0, Tile::ZoneRes);
-        
+
         // Use the new PowerSystem for testing
-        use crate::core::sim::systems::PowerSystem;
         use crate::core::sim::system::SimSystem;
+        use crate::core::sim::systems::PowerSystem;
         use crate::core::sim::PlantState;
-        
+
         let mut sim = SimState::default();
-        sim.plants.insert((0, 0), PlantState {
-            age_months: 0,
-            max_life_months: 600,
-            capacity_mw: 500,
-        });
-        
+        sim.plants.insert(
+            (0, 0),
+            PlantState {
+                age_months: 0,
+                max_life_months: 600,
+                capacity_mw: 500,
+            },
+        );
+
         PowerSystem.tick(&mut map, &mut sim);
-        
+
         sim.demand_res = 1.0; // High demand
-        
+
         // Growth is probabilistic, but with demand=1.0, chance is 0.15 + lv_bonus.
         let mut grown = false;
         for _ in 0..100 {
@@ -167,7 +180,7 @@ mod tests {
                 break;
             }
         }
-        
+
         assert!(grown, "Zone should have grown into ResLow after some ticks with high demand and infrastructure");
     }
 }

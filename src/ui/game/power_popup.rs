@@ -1,81 +1,121 @@
+use crate::{
+    core::tool::Tool,
+    ui::{theme, view::ToolChooserViewModel},
+};
 use ratatui::{
+    buffer::Buffer,
     layout::Rect,
     style::{Modifier, Style},
-    widgets::{Block, Borders, Clear},
-    Frame,
 };
 
-use crate::ui::theme;
-
-pub fn render_power_popup(frame: &mut Frame, popup_area: Rect) {
-    let ui = theme::ui_palette();
-
-    frame.render_widget(Clear, popup_area);
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .title(" Power Plant Selection ")
-        .title_style(Style::default().fg(ui.popup_title))
-        .border_style(Style::default().fg(ui.popup_border))
-        .style(Style::default().bg(ui.popup_bg));
-    frame.render_widget(block, popup_area);
-
-    if popup_area.width >= 5 {
-        frame.buffer_mut().set_string(
-            popup_area.x + popup_area.width - 5,
-            popup_area.y,
-            "[X]",
-            Style::default().fg(ui.selection_fg).bg(ui.danger).add_modifier(Modifier::BOLD),
-        );
+pub fn render_tool_chooser_content(
+    buf: &mut Buffer,
+    area: Rect,
+    chooser: &ToolChooserViewModel,
+) -> Vec<crate::app::ClickArea> {
+    if area.width < 12 || area.height < 1 {
+        return Vec::new();
     }
 
-    let inner = Rect::new(
-        popup_area.x + 2,
-        popup_area.y + 2,
-        popup_area.width.saturating_sub(4),
-        popup_area.height.saturating_sub(4),
-    );
-    let buf = frame.buffer_mut();
-    let mut row = inner.y;
+    let ui = theme::ui_palette();
+    let mut hits = Vec::new();
 
-    let put = |buf: &mut ratatui::buffer::Buffer, x, y, text: &str, style: Style| {
-        buf.set_string(x, y, text, style);
-    };
+    for y in area.y..area.y + area.height {
+        for x in area.x..area.x + area.width {
+            if let Some(cell) = buf.cell_mut((x, y)) {
+                cell.set_char(' ');
+                cell.set_bg(ui.popup_bg);
+                cell.set_fg(ui.text_primary);
+            }
+        }
+    }
 
-    put(buf, inner.x, row, "COAL PLANT", Style::default().fg(ui.accent).add_modifier(Modifier::BOLD));
-    row += 1;
-    put(buf, inner.x, row, "• Capacity: 500 MW | Life: 50y", Style::default().fg(ui.text_secondary));
-    row += 1;
-    put(buf, inner.x, row, "• Pros: Cheap | Cons: HIGH POLLUTION", Style::default().fg(ui.text_secondary));
-    row += 1;
-    put(
-        buf,
-        inner.x,
-        row,
-        "[ Build Coal ]",
-        Style::default().fg(ui.button_fg).bg(ui.button_bg).add_modifier(Modifier::BOLD),
-    );
-    row += 2;
+    let mut row = area.y;
+    for &tool in &chooser.tools {
+        if row >= area.y + area.height {
+            break;
+        }
+        let is_selected = chooser.selected_tool == tool;
+        let style = if is_selected {
+            Style::default()
+                .fg(ui.selection_fg)
+                .bg(ui.selection_bg)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(ui.text_primary).bg(ui.popup_bg)
+        };
+        let line = format!(
+            "{} {:<14} {:>6}",
+            marker(is_selected),
+            popup_label(tool),
+            format!("${}", tool.cost())
+        );
+        buf.set_string(
+            area.x,
+            row,
+            truncate_padded(&line, area.width as usize),
+            style,
+        );
+        hits.push(crate::app::ClickArea {
+            x: area.x,
+            y: row,
+            width: area.width,
+            height: 1,
+        });
+        row += 1;
+    }
 
-    put(buf, inner.x, row, "GAS PLANT", Style::default().fg(ui.info).add_modifier(Modifier::BOLD));
-    row += 1;
-    put(buf, inner.x, row, "• Capacity: 800 MW | Life: 60y", Style::default().fg(ui.text_secondary));
-    row += 1;
-    put(buf, inner.x, row, "• Pros: Cleaner | Cons: Expensive", Style::default().fg(ui.text_secondary));
-    row += 1;
-    put(
-        buf,
-        inner.x,
-        row,
-        "[ Build Gas  ]",
-        Style::default().fg(ui.button_fg).bg(ui.button_bg).add_modifier(Modifier::BOLD),
-    );
-    row += 2;
+    hits
+}
 
-    put(
-        buf,
-        inner.x,
-        row,
-        "Press ESC or click [X] to cancel.",
-        Style::default().fg(ui.text_dim).add_modifier(Modifier::ITALIC),
-    );
+fn marker(is_selected: bool) -> &'static str {
+    if is_selected {
+        ">"
+    } else {
+        " "
+    }
+}
+
+fn popup_label(tool: Tool) -> &'static str {
+    match tool {
+        Tool::ZoneRes => "Residential",
+        Tool::ZoneComm => "Commercial",
+        Tool::ZoneInd => "Industrial",
+        Tool::PowerPlantCoal => "Coal Plant",
+        Tool::PowerPlantGas => "Gas Plant",
+        Tool::Park => "Park",
+        Tool::Police => "Police",
+        Tool::Fire => "Fire Dept",
+        _ => tool.label(),
+    }
+}
+
+fn truncate_padded(text: &str, width: usize) -> String {
+    format!("{:<width$}", truncate(text, width), width = width)
+}
+
+fn truncate(text: &str, max: usize) -> String {
+    if text.chars().count() <= max {
+        text.to_string()
+    } else {
+        text.chars().take(max).collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn chooser_renders_one_hit_area_per_tool() {
+        let chooser = ToolChooserViewModel {
+            selected_tool: Tool::ZoneRes,
+            tools: vec![Tool::ZoneRes, Tool::ZoneComm, Tool::ZoneInd],
+        };
+        let mut buf = Buffer::empty(Rect::new(0, 0, 28, 8));
+
+        let hits = render_tool_chooser_content(&mut buf, Rect::new(0, 0, 28, 8), &chooser);
+
+        assert_eq!(hits.len(), 3);
+    }
 }

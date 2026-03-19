@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [[bin]]
-name = "tuicity2"
+name = "tc2000"
 path = "src/main.rs"
 
 [dependencies]

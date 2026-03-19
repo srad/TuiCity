@@ -4,7 +4,7 @@ pub mod tile;
 
 pub use tile::{Tile, TileOverlay};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Map {
     pub tiles: Vec<Tile>,
     pub overlays: Vec<TileOverlay>,
@@ -72,23 +72,35 @@ mod tests {
         map.set(0, 0, Tile::PowerPlantCoal);
         map.set(1, 0, Tile::PowerLine);
         map.set(2, 0, Tile::ZoneRes);
-        
+
         // Use the new PowerSystem for testing
-        use crate::core::sim::systems::PowerSystem;
         use crate::core::sim::system::SimSystem;
-        use crate::core::sim::{SimState, PlantState};
-        
+        use crate::core::sim::systems::PowerSystem;
+        use crate::core::sim::{PlantState, SimState};
+
         let mut sim = SimState::default();
-        sim.plants.insert((0, 0), PlantState {
-            age_months: 0,
-            max_life_months: 600,
-            capacity_mw: 500,
-        });
-        
+        sim.plants.insert(
+            (0, 0),
+            PlantState {
+                age_months: 0,
+                max_life_months: 600,
+                capacity_mw: 500,
+            },
+        );
+
         PowerSystem.tick(&mut map, &mut sim);
-        
-        assert!(map.get_overlay(0, 0).is_powered(), "Power plant should be powered");
-        assert!(map.get_overlay(1, 0).is_powered(), "Power line should be powered");
-        assert!(map.get_overlay(2, 0).is_powered(), "Zone adjacent to power line should be powered");
+
+        assert!(
+            map.get_overlay(0, 0).is_powered(),
+            "Power plant should be powered"
+        );
+        assert!(
+            map.get_overlay(1, 0).is_powered(),
+            "Power line should be powered"
+        );
+        assert!(
+            map.get_overlay(2, 0).is_powered(),
+            "Zone adjacent to power line should be powered"
+        );
     }
 }

@@ -1,8 +1,9 @@
 mod app;
 mod core;
+mod game_info;
 mod ui;
 
-use std::{io, time::Duration, sync::mpsc};
+use std::{io, sync::mpsc, time::Duration};
 
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture},
@@ -17,17 +18,13 @@ fn main() -> io::Result<()> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
-    
+
     let mut renderer = TerminalRenderer::new()?;
     let result = run(&mut renderer);
 
     // Always restore terminal
     disable_raw_mode()?;
-    execute!(
-        io::stdout(),
-        LeaveAlternateScreen,
-        DisableMouseCapture
-    )?;
+    execute!(io::stdout(), LeaveAlternateScreen, DisableMouseCapture)?;
 
     result
 }
@@ -38,7 +35,7 @@ fn run(renderer: &mut dyn Renderer) -> io::Result<()> {
     app.cmd_tx = Some(tx);
 
     let engine_arc = app.engine.clone();
-    
+
     std::thread::spawn(move || {
         loop {
             // Process all pending commands
@@ -46,7 +43,7 @@ fn run(renderer: &mut dyn Renderer) -> io::Result<()> {
                 let mut engine = engine_arc.write().unwrap();
                 let _ = engine.execute_command(cmd);
             }
-            
+
             // Sleep a bit to prevent 100% CPU usage
             std::thread::sleep(Duration::from_millis(10));
         }
@@ -55,11 +52,12 @@ fn run(renderer: &mut dyn Renderer) -> io::Result<()> {
     loop {
         renderer.render(&mut app)?;
 
-        if event::poll(Duration::from_millis(16))? { // ~60fps poll
+        if event::poll(Duration::from_millis(16))? {
+            // ~60fps poll
             let event = event::read()?;
-            
+
             app.on_event(&event);
-            
+
             let action = app::input::translate_event(event);
             app.on_action(action);
         } else {

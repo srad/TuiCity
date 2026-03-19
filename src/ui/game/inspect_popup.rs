@@ -1,13 +1,14 @@
-use crate::{core::{map::Map, sim::economy::{tile_sector_capacity, TaxSector}}, ui::theme};
+use crate::{
+    core::{
+        map::Map,
+        sim::economy::{tile_sector_capacity, TaxSector},
+    },
+    ui::theme,
+};
 
 #[cfg(test)]
 use crate::core::map::Tile;
-use ratatui::{
-    buffer::Buffer,
-    layout::Rect,
-    style::Style,
-    widgets::Widget,
-};
+use ratatui::{buffer::Buffer, layout::Rect, style::Style, widgets::Widget};
 
 #[cfg(test)]
 /// Population / job estimate displayed for a tile (display-only approximation).
@@ -27,7 +28,7 @@ fn pct(val: u8) -> u8 {
 
 fn lv_label(val: u8) -> &'static str {
     match val {
-        0..=85  => "Low",
+        0..=85 => "Low",
         86..=170 => "Med",
         _ => "High",
     }
@@ -47,7 +48,7 @@ impl<'a> Widget for InspectContent<'a> {
         if x >= self.map.width || y >= self.map.height {
             return;
         }
-        let tile    = self.map.get(x, y);
+        let tile = self.map.get(x, y);
         let overlay = self.map.get_overlay(x, y);
 
         let ix = area.x;
@@ -83,7 +84,10 @@ impl<'a> Widget for InspectContent<'a> {
         row += 1; // blank separator
 
         let (powered_text, powered_color) = if overlay.is_powered() {
-            (format!("Power:      {}%", pct(overlay.power_level)), ui.success)
+            (
+                format!("Power:      {}%", pct(overlay.power_level)),
+                ui.success,
+            )
         } else {
             ("Power:      None".to_string(), ui.danger)
         };
@@ -96,7 +100,11 @@ impl<'a> Widget for InspectContent<'a> {
         row += 1; // blank separator
 
         put!(
-            format!("Land Value: {} ({}%)", lv_label(overlay.land_value), pct(overlay.land_value)),
+            format!(
+                "Land Value: {} ({}%)",
+                lv_label(overlay.land_value),
+                pct(overlay.land_value)
+            ),
             Style::default().fg(ui.warning)
         );
         put!(
@@ -123,7 +131,6 @@ pub fn render_inspect_content(buf: &mut Buffer, inner: Rect, pos: (usize, usize)
     InspectContent { pos, map }.render(inner, buf);
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -131,8 +138,8 @@ mod tests {
 
     #[test]
     fn pop_estimate_residential_buildings() {
-        assert_eq!(pop_estimate(Tile::ResLow),  Some((10,  "Pop")));
-        assert_eq!(pop_estimate(Tile::ResMed),  Some((50,  "Pop")));
+        assert_eq!(pop_estimate(Tile::ResLow), Some((10, "Pop")));
+        assert_eq!(pop_estimate(Tile::ResMed), Some((50, "Pop")));
         assert_eq!(pop_estimate(Tile::ResHigh), Some((200, "Pop")));
     }
 

@@ -26,7 +26,10 @@ impl Screen for LoadCityScreen {
                     self.state.selected = if dy > 0 {
                         (self.state.selected + 1) % count
                     } else {
-                        self.state.selected.checked_sub(1).unwrap_or(count.saturating_sub(1))
+                        self.state
+                            .selected
+                            .checked_sub(1)
+                            .unwrap_or(count.saturating_sub(1))
                     };
                 }
                 None
@@ -45,7 +48,10 @@ impl Screen for LoadCityScreen {
                     match save::load_city(&entry.path) {
                         Ok((map, sim)) => {
                             if let Some(tx) = context.cmd_tx {
-                                let _ = tx.send(crate::core::engine::EngineCommand::ReplaceState { map, sim });
+                                let _ = tx.send(crate::core::engine::EngineCommand::ReplaceState {
+                                    map,
+                                    sim,
+                                });
                             }
                             Some(ScreenTransition::Replace(Box::new(InGameScreen::new())))
                         }

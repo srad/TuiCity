@@ -17,7 +17,7 @@ impl TaxSector {
     }
 }
 
-#[derive(Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct TaxRates {
     pub residential: u8,
     pub commercial: u8,

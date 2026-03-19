@@ -35,7 +35,9 @@ fn demand_block(v: f32) -> char {
 }
 
 fn sparkline_str(history: &[f32], max_cols: usize) -> String {
-    if history.is_empty() { return String::new(); }
+    if history.is_empty() {
+        return String::new();
+    }
     let start = history.len().saturating_sub(max_cols);
     history[start..].iter().map(|&v| demand_block(v)).collect()
 }
@@ -74,8 +76,12 @@ impl<'a> Widget for InfoPanel<'a> {
         macro_rules! print_row {
             ($text:expr, $fg:expr) => {
                 if row < area.y + area.height {
-                    buf.set_string(area.x, row, truncate($text, w),
-                        Style::default().fg($fg).bg(bg));
+                    buf.set_string(
+                        area.x,
+                        row,
+                        truncate($text, w),
+                        Style::default().fg($fg).bg(bg),
+                    );
                     row += 1;
                 }
             };
@@ -87,18 +93,51 @@ impl<'a> Widget for InfoPanel<'a> {
         // ── RCI demand bars ───────────────────────────────────────────────────
         let bar_w = (w.saturating_sub(4)).min(10);
 
-        let render_demand_row = |buf: &mut Buffer, row: u16, label: &str, val: f32, color: Color| {
-            if row >= area.y + area.height { return; }
-            buf.set_string(area.x, row, label, Style::default().fg(ui.text_primary).bg(bg));
-            let bar = bar_str(val, bar_w);
-            buf.set_string(area.x + 3, row, truncate(&bar, w.saturating_sub(3)),
-                Style::default().fg(color).bg(bg));
-        };
+        let render_demand_row =
+            |buf: &mut Buffer, row: u16, label: &str, val: f32, color: Color| {
+                if row >= area.y + area.height {
+                    return;
+                }
+                buf.set_string(
+                    area.x,
+                    row,
+                    label,
+                    Style::default().fg(ui.text_primary).bg(bg),
+                );
+                let bar = bar_str(val, bar_w);
+                buf.set_string(
+                    area.x + 3,
+                    row,
+                    truncate(&bar, w.saturating_sub(3)),
+                    Style::default().fg(color).bg(bg),
+                );
+            };
 
         if area.height >= 4 {
-            render_demand_row(buf, row, "R:", self.demand_res, theme::sector_color(TaxSector::Residential)); row += 1;
-            render_demand_row(buf, row, "C:", self.demand_comm, theme::sector_color(TaxSector::Commercial)); row += 1;
-            render_demand_row(buf, row, "I:", self.demand_ind, theme::sector_color(TaxSector::Industrial)); row += 1;
+            render_demand_row(
+                buf,
+                row,
+                "R:",
+                self.demand_res,
+                theme::sector_color(TaxSector::Residential),
+            );
+            row += 1;
+            render_demand_row(
+                buf,
+                row,
+                "C:",
+                self.demand_comm,
+                theme::sector_color(TaxSector::Commercial),
+            );
+            row += 1;
+            render_demand_row(
+                buf,
+                row,
+                "I:",
+                self.demand_ind,
+                theme::sector_color(TaxSector::Industrial),
+            );
+            row += 1;
         }
 
         // ── Demand history sparklines (shown when panel is tall enough) ───────
@@ -108,21 +147,39 @@ impl<'a> Widget for InfoPanel<'a> {
             print_row!("Trend (24m):", ui.text_dim);
 
             if row < area.y + area.height {
-                let spark_r = sparkline_str(self.demand_history_res,  spark_cols);
-                buf.set_string(area.x, row, truncate(&spark_r, w),
-                    Style::default().fg(theme::sector_color(TaxSector::Residential)).bg(bg));
+                let spark_r = sparkline_str(self.demand_history_res, spark_cols);
+                buf.set_string(
+                    area.x,
+                    row,
+                    truncate(&spark_r, w),
+                    Style::default()
+                        .fg(theme::sector_color(TaxSector::Residential))
+                        .bg(bg),
+                );
                 row += 1;
             }
             if row < area.y + area.height {
                 let spark_c = sparkline_str(self.demand_history_comm, spark_cols);
-                buf.set_string(area.x, row, truncate(&spark_c, w),
-                    Style::default().fg(theme::sector_color(TaxSector::Commercial)).bg(bg));
+                buf.set_string(
+                    area.x,
+                    row,
+                    truncate(&spark_c, w),
+                    Style::default()
+                        .fg(theme::sector_color(TaxSector::Commercial))
+                        .bg(bg),
+                );
                 row += 1;
             }
             if row < area.y + area.height {
-                let spark_i = sparkline_str(self.demand_history_ind,  spark_cols);
-                buf.set_string(area.x, row, truncate(&spark_i, w),
-                    Style::default().fg(theme::sector_color(TaxSector::Industrial)).bg(bg));
+                let spark_i = sparkline_str(self.demand_history_ind, spark_cols);
+                buf.set_string(
+                    area.x,
+                    row,
+                    truncate(&spark_i, w),
+                    Style::default()
+                        .fg(theme::sector_color(TaxSector::Industrial))
+                        .bg(bg),
+                );
                 row += 1;
             }
         }
@@ -139,7 +196,10 @@ impl<'a> Widget for InfoPanel<'a> {
         // Power info
         let surplus = self.power_produced as i32 - self.power_consumed as i32;
         let p_color = if surplus >= 0 { ui.success } else { ui.danger };
-        print_row!(&format!("⚡ Pwr: {}/{} MW", self.power_produced, self.power_consumed), p_color);
+        print_row!(
+            &format!("⚡ Pwr: {}/{} MW", self.power_produced, self.power_consumed),
+            p_color
+        );
 
         if self.overlay.is_powered() {
             let level = self.overlay.power_level as u16 * 100 / 255;
@@ -152,10 +212,10 @@ impl<'a> Widget for InfoPanel<'a> {
         if self.overlay.pollution > 10 {
             let pct = self.overlay.pollution as u16 * 100 / 255;
             let level = match self.overlay.pollution {
-                0..=50   => "",
+                0..=50 => "",
                 51..=120 => " (Moderate)",
                 121..=180 => " (High)",
-                _        => " (Severe)",
+                _ => " (Severe)",
             };
             let text = format!("💨 Pollut {}%{}", pct, level);
             let color = match self.overlay.pollution {
@@ -203,7 +263,7 @@ impl<'a> Widget for InfoPanel<'a> {
                 print_row!(&text, ui.text_secondary);
             }
         }
-        
+
         let _ = row;
     }
 }

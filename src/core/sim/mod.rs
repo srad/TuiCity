@@ -5,38 +5,40 @@ pub mod systems;
 
 pub use economy::{TaxRates, TaxSector};
 
+use std::collections::HashMap;
+
 // ── MaintenanceBreakdown ──────────────────────────────────────────────────────
 
 /// Per-category annual maintenance costs, populated by `FinanceSystem` each month.
-#[derive(Default, Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Default, Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct MaintenanceBreakdown {
-    pub roads:        i64,
-    pub power_lines:  i64,
+    pub roads: i64,
+    pub power_lines: i64,
     pub power_plants: i64,
-    pub police:       i64,
-    pub fire:         i64,
-    pub parks:        i64,
+    pub police: i64,
+    pub fire: i64,
+    pub parks: i64,
     pub residential_tax: i64,
-    pub commercial_tax:  i64,
-    pub industrial_tax:  i64,
-    pub total:        i64,
-    pub annual_tax:   i64,
+    pub commercial_tax: i64,
+    pub industrial_tax: i64,
+    pub total: i64,
+    pub annual_tax: i64,
 }
 
 // ── Disaster configuration ────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct DisasterConfig {
-    pub fire_enabled:    bool,
-    pub flood_enabled:   bool,
+    pub fire_enabled: bool,
+    pub flood_enabled: bool,
     pub tornado_enabled: bool,
 }
 
 impl Default for DisasterConfig {
     fn default() -> Self {
         Self {
-            fire_enabled:    true,
-            flood_enabled:   false,
+            fire_enabled: true,
+            flood_enabled: false,
             tornado_enabled: false,
         }
     }
@@ -44,7 +46,7 @@ impl Default for DisasterConfig {
 
 // ── Power Plant State ────────────────────────────────────────────────────────
 
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct PlantState {
     pub age_months: u32,
     pub max_life_months: u32,
@@ -53,7 +55,7 @@ pub struct PlantState {
 
 // ── SimState ──────────────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SimState {
     pub city_name: String,
     pub year: i32,
@@ -67,24 +69,34 @@ pub struct SimState {
     pub demand_comm: f32,
     pub demand_ind: f32,
     pub tax_rates: TaxRates,
+    #[serde(default)]
     pub demand_history_res: Vec<f32>,
+    #[serde(default)]
     pub demand_history_comm: Vec<f32>,
+    #[serde(default)]
     pub demand_history_ind: Vec<f32>,
+    #[serde(default)]
     pub treasury_history: Vec<i64>,
+    #[serde(default)]
+    pub population_history: Vec<u64>,
+    #[serde(default)]
+    pub income_history: Vec<i64>,
+    #[serde(default)]
+    pub power_balance_history: Vec<i32>,
     #[serde(default)]
     pub disasters: DisasterConfig,
     #[serde(default)]
-    pub last_income: i64,   // annualised net income (taxes - maintenance×12), updated each month
+    pub last_income: i64, // annualised net income (taxes - maintenance×12), updated each month
     #[serde(default)]
     pub last_breakdown: MaintenanceBreakdown,
-    
+
     // New Power System fields
     #[serde(default)]
     pub power_produced_mw: u32,
     #[serde(default)]
     pub power_consumed_mw: u32,
-    #[serde(default)]
-    pub plants: std::collections::HashMap<(usize, usize), PlantState>,
+    #[serde(default, with = "plant_map_serde")]
+    pub plants: HashMap<(usize, usize), PlantState>,
 }
 
 impl Default for SimState {
@@ -106,13 +118,60 @@ impl Default for SimState {
             demand_history_comm: Vec::new(),
             demand_history_ind: Vec::new(),
             treasury_history: Vec::new(),
+            population_history: Vec::new(),
+            income_history: Vec::new(),
+            power_balance_history: Vec::new(),
             disasters: DisasterConfig::default(),
             last_income: 0,
             last_breakdown: MaintenanceBreakdown::default(),
             power_produced_mw: 0,
             power_consumed_mw: 0,
-            plants: std::collections::HashMap::new(),
+            plants: HashMap::new(),
         }
+    }
+}
+
+mod plant_map_serde {
+    use super::PlantState;
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+    use std::collections::HashMap;
+
+    #[derive(Serialize, Deserialize)]
+    struct PlantEntry {
+        x: usize,
+        y: usize,
+        state: PlantState,
+    }
+
+    pub fn serialize<S>(
+        plants: &HashMap<(usize, usize), PlantState>,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let entries: Vec<PlantEntry> = plants
+            .iter()
+            .map(|(&(x, y), state)| PlantEntry {
+                x,
+                y,
+                state: state.clone(),
+            })
+            .collect();
+        entries.serialize(serializer)
+    }
+
+    pub fn deserialize<'de, D>(
+        deserializer: D,
+    ) -> Result<HashMap<(usize, usize), PlantState>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let entries = Vec::<PlantEntry>::deserialize(deserializer)?;
+        Ok(entries
+            .into_iter()
+            .map(|entry| ((entry.x, entry.y), entry.state))
+            .collect())
     }
 }
 

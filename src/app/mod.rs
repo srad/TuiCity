@@ -1,4 +1,5 @@
 pub mod camera;
+pub mod config;
 pub mod input;
 pub mod line_drag;
 pub mod rect_drag;
@@ -13,16 +14,9 @@ use input::Action;
 use line_drag::LineDrag;
 use rect_drag::RectDrag;
 
-use crate::core::{
-    engine::EngineCommand,
-    map::Map,
-    sim::SimState,
-    tool::Tool,
-};
-use crate::app::screens::{AppContext, Screen, ScreenTransition, StartScreen};
-pub use crate::ui::runtime::{
-    ClickArea, DesktopState, MapUiAreas, UiAreas, UiRect, WindowId,
-};
+use crate::app::screens::{AppContext, InGameScreen, Screen, ScreenTransition, StartScreen};
+use crate::core::{engine::EngineCommand, map::Map, sim::SimState, tool::Tool};
+pub use crate::ui::runtime::{ClickArea, DesktopState, MapUiAreas, UiAreas, UiRect, WindowId};
 
 pub struct AppState {
     pub screens: Vec<Box<dyn Screen>>,
@@ -33,6 +27,7 @@ pub struct AppState {
 
 impl AppState {
     pub fn new() -> Self {
+        config::apply_user_config();
         Self {
             screens: vec![Box::new(StartScreen::new())],
             engine: Arc::new(RwLock::new(crate::core::engine::SimulationEngine::new(
@@ -88,11 +83,13 @@ impl AppState {
     }
 
     pub fn on_action(&mut self, action: Action) {
-        if matches!(action, Action::Quit) {
-            self.running = false;
-            return;
-        }
-
+        let is_quit = matches!(action, Action::Quit);
+        let suppress_quit_fallback = is_quit
+            && self
+                .screens
+                .last_mut()
+                .map(|screen| screen.as_any_mut().is::<InGameScreen>())
+                .unwrap_or(false);
         let mut running = self.running;
         let transition = {
             let context = AppContext {
@@ -110,6 +107,8 @@ impl AppState {
 
         if let Some(transition) = transition {
             self.apply_transition(transition);
+        } else if is_quit && !suppress_quit_fallback {
+            self.running = false;
         }
 
         if self.screens.is_empty() {
@@ -129,5 +128,25 @@ impl AppState {
             }
             ScreenTransition::Quit => self.running = false,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn quit_action_does_not_immediately_exit_ingame() {
+        let mut app = AppState::new();
+        app.screens = vec![Box::new(InGameScreen::new())];
+
+        app.on_action(Action::Quit);
+
+        assert!(app.running);
+        let screen = app.screens[0]
+            .as_any_mut()
+            .downcast_mut::<InGameScreen>()
+            .expect("ingame screen should downcast");
+        assert!(screen.is_confirm_prompt_open());
     }
 }

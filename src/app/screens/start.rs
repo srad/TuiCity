@@ -1,17 +1,17 @@
 use crate::app::{input::Action, save, ClickArea};
 
-use super::{LoadCityScreen, NewCityScreen, Screen, ScreenTransition, AppContext};
+use super::{AppContext, LoadCityScreen, NewCityScreen, Screen, ScreenTransition, SettingsScreen};
 
 pub struct StartState {
     pub selected: usize,
-    pub menu_areas: [ClickArea; 3],
+    pub menu_areas: [ClickArea; 4],
 }
 
 impl Default for StartState {
     fn default() -> Self {
         Self {
             selected: 0,
-            menu_areas: [ClickArea::default(); 3],
+            menu_areas: [ClickArea::default(); 4],
         }
     }
 }
@@ -34,7 +34,7 @@ impl Screen for StartScreen {
     }
 
     fn on_action(&mut self, action: Action, _context: AppContext) -> Option<ScreenTransition> {
-        const N: usize = 3;
+        const N: usize = 4;
         match action {
             Action::Quit | Action::CharInput('q') => Some(ScreenTransition::Quit),
             Action::MoveCursor(_, dy) => {
@@ -62,7 +62,12 @@ impl Screen for StartScreen {
     fn build_view(&self, _context: AppContext<'_>) -> crate::ui::view::ScreenView {
         crate::ui::view::ScreenView::Start(crate::ui::view::StartViewModel {
             selected: self.state.selected,
-            options: ["Load Existing City", "Create New City", "Quit"],
+            options: [
+                "Load Existing City",
+                "Create New City",
+                "Settings",
+                "Quit",
+            ],
         })
     }
 }
@@ -73,13 +78,18 @@ impl StartScreen {
             0 => {
                 let saves = save::list_saves();
                 Some(ScreenTransition::Push(Box::new(LoadCityScreen {
-                    state: super::load_city::LoadCityState { saves, selected: 0, row_areas: Vec::new() },
+                    state: super::load_city::LoadCityState {
+                        saves,
+                        selected: 0,
+                        row_areas: Vec::new(),
+                    },
                 })))
             }
             1 => Some(ScreenTransition::Push(Box::new(NewCityScreen {
                 state: super::new_city::NewCityState::new(),
             }))),
-            2 => Some(ScreenTransition::Quit),
+            2 => Some(ScreenTransition::Push(Box::new(SettingsScreen::new()))),
+            3 => Some(ScreenTransition::Quit),
             _ => None,
         }
     }
@@ -94,7 +104,12 @@ mod tests {
     #[test]
     fn mouse_click_on_menu_item_activates_selection() {
         let mut screen = StartScreen::new();
-        screen.state.menu_areas[1] = ClickArea { x: 10, y: 5, width: 20, height: 1 };
+        screen.state.menu_areas[1] = ClickArea {
+            x: 10,
+            y: 5,
+            width: 20,
+            height: 1,
+        };
 
         let engine = Arc::new(RwLock::new(crate::core::engine::SimulationEngine::new(
             crate::core::map::Map::new(10, 10),

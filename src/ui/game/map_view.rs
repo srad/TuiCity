@@ -173,7 +173,12 @@ pub fn layout_map_chrome(
         Rect::default()
     };
     let corner = if need_h && need_v {
-        Rect::new(viewport.x + viewport.width, viewport.y + viewport.height, 1, 1)
+        Rect::new(
+            viewport.x + viewport.width,
+            viewport.y + viewport.height,
+            1,
+            1,
+        )
     } else {
         Rect::default()
     };
@@ -252,13 +257,17 @@ pub fn render_scrollbars(layout: &MapChromeLayout, buf: &mut Buffer) {
         fill(buf, layout.vertical_bar, '▒', track_fg, track_bg);
         fill(buf, layout.vertical_thumb, '█', thumb_fg, thumb_bg);
         if layout.vertical_dec.width > 0 {
-            let cell = buf.cell_mut((layout.vertical_dec.x, layout.vertical_dec.y)).unwrap();
+            let cell = buf
+                .cell_mut((layout.vertical_dec.x, layout.vertical_dec.y))
+                .unwrap();
             cell.set_char('▲');
             cell.set_fg(button_fg);
             cell.set_bg(button_bg);
         }
         if layout.vertical_inc.width > 0 {
-            let cell = buf.cell_mut((layout.vertical_inc.x, layout.vertical_inc.y)).unwrap();
+            let cell = buf
+                .cell_mut((layout.vertical_inc.x, layout.vertical_inc.y))
+                .unwrap();
             cell.set_char('▼');
             cell.set_fg(button_fg);
             cell.set_bg(button_bg);
@@ -269,13 +278,17 @@ pub fn render_scrollbars(layout: &MapChromeLayout, buf: &mut Buffer) {
         fill(buf, layout.horizontal_bar, '▒', track_fg, track_bg);
         fill(buf, layout.horizontal_thumb, '█', thumb_fg, thumb_bg);
         if layout.horizontal_dec.width > 0 {
-            let cell = buf.cell_mut((layout.horizontal_dec.x, layout.horizontal_dec.y)).unwrap();
+            let cell = buf
+                .cell_mut((layout.horizontal_dec.x, layout.horizontal_dec.y))
+                .unwrap();
             cell.set_char('◄');
             cell.set_fg(button_fg);
             cell.set_bg(button_bg);
         }
         if layout.horizontal_inc.width > 0 {
-            let cell = buf.cell_mut((layout.horizontal_inc.x, layout.horizontal_inc.y)).unwrap();
+            let cell = buf
+                .cell_mut((layout.horizontal_inc.x, layout.horizontal_inc.y))
+                .unwrap();
             cell.set_char('►');
             cell.set_fg(button_fg);
             cell.set_bg(button_bg);
@@ -298,8 +311,16 @@ fn map_connectivity(map: &Map, tile: Tile, x: usize, y: usize) -> (bool, bool, b
         .checked_sub(1)
         .map(|ny| matches_tile(map.get(x, ny)))
         .unwrap_or(false);
-    let e = if x + 1 < map.width { matches_tile(map.get(x + 1, y)) } else { false };
-    let s = if y + 1 < map.height { matches_tile(map.get(x, y + 1)) } else { false };
+    let e = if x + 1 < map.width {
+        matches_tile(map.get(x + 1, y))
+    } else {
+        false
+    };
+    let s = if y + 1 < map.height {
+        matches_tile(map.get(x, y + 1))
+    } else {
+        false
+    };
     let w = x
         .checked_sub(1)
         .map(|wx| matches_tile(map.get(wx, y)))
@@ -331,8 +352,16 @@ fn preview_connectivity(
         }
     };
     let n = y.checked_sub(1).map(|ny| connects(x, ny)).unwrap_or(false);
-    let e = if x + 1 < map.width { connects(x + 1, y) } else { false };
-    let s = if y + 1 < map.height { connects(x, y + 1) } else { false };
+    let e = if x + 1 < map.width {
+        connects(x + 1, y)
+    } else {
+        false
+    };
+    let s = if y + 1 < map.height {
+        connects(x, y + 1)
+    } else {
+        false
+    };
     let w = x.checked_sub(1).map(|wx| connects(wx, y)).unwrap_or(false);
     (n, e, s, w)
 }
@@ -373,13 +402,31 @@ impl<'a> Widget for MapView<'a> {
                         theme::network_char(tile, n, e, s, w)
                     } else if matches!(
                         tile,
-                        Tile::PowerPlantCoal | Tile::PowerPlantGas | Tile::Park | Tile::Police | Tile::Fire
+                        Tile::PowerPlantCoal
+                            | Tile::PowerPlantGas
+                            | Tile::Park
+                            | Tile::Police
+                            | Tile::Fire
                     ) {
                         let same = |tx: usize, ty: usize| self.map.get(tx, ty) == tile;
-                        let n = map_y.checked_sub(1).map(|ny| same(map_x, ny)).unwrap_or(false);
-                        let s = if map_y + 1 < self.map.height { same(map_x, map_y + 1) } else { false };
-                        let e = if map_x + 1 < self.map.width  { same(map_x + 1, map_y) } else { false };
-                        let w = map_x.checked_sub(1).map(|wx| same(wx, map_y)).unwrap_or(false);
+                        let n = map_y
+                            .checked_sub(1)
+                            .map(|ny| same(map_x, ny))
+                            .unwrap_or(false);
+                        let s = if map_y + 1 < self.map.height {
+                            same(map_x, map_y + 1)
+                        } else {
+                            false
+                        };
+                        let e = if map_x + 1 < self.map.width {
+                            same(map_x + 1, map_y)
+                        } else {
+                            false
+                        };
+                        let w = map_x
+                            .checked_sub(1)
+                            .map(|wx| same(wx, map_y))
+                            .unwrap_or(false);
                         theme::building_char(tile, n, e, s, w)
                     } else {
                         glyph.ch
@@ -436,14 +483,17 @@ impl<'a> Widget for MapView<'a> {
                         }
                     } else {
                         // Apply heat-map tint (replaces bg, keeps ch and fg)
-                        let bg = theme::overlay_tint(self.overlay_mode, overlay)
-                            .unwrap_or(glyph.bg);
-                        
+                        let bg =
+                            theme::overlay_tint(self.overlay_mode, overlay).unwrap_or(glyph.bg);
+
                         // Blinking unpowered icon
                         let mut final_ch = ch;
                         let mut final_fg = glyph.fg;
                         if tile.receives_power() && !overlay.is_powered() {
-                            let ms = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis();
+                            let ms = std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .unwrap()
+                                .as_millis();
                             if (ms / 500) % 2 == 0 {
                                 final_ch = '⚡';
                                 final_fg = ui.warning;
@@ -464,7 +514,6 @@ impl<'a> Widget for MapView<'a> {
                 }
             }
         }
-
     }
 }
 
@@ -523,8 +572,16 @@ impl<'a> Widget for MapPreview<'a> {
         for v_row in 0..num_v_tiles_y {
             for v_col in 0..num_v_tiles_x {
                 // Endpoint-interpolation
-                let map_x = if num_v_tiles_x <= 1 { 0 } else { (v_col * (mw_usize - 1)) / (num_v_tiles_x - 1) };
-                let map_y = if num_v_tiles_y <= 1 { 0 } else { (v_row * (mh_usize - 1)) / (num_v_tiles_y - 1) };
+                let map_x = if num_v_tiles_x <= 1 {
+                    0
+                } else {
+                    (v_col * (mw_usize - 1)) / (num_v_tiles_x - 1)
+                };
+                let map_y = if num_v_tiles_y <= 1 {
+                    0
+                } else {
+                    (v_row * (mh_usize - 1)) / (num_v_tiles_y - 1)
+                };
 
                 let tile = self.map.get(map_x, map_y);
                 let overlay = self.map.get_overlay(map_x, map_y);

@@ -97,7 +97,10 @@ impl NewCityState {
 
     pub fn apply_seed_input(&mut self) {
         let text = self.seed_input.clone();
-        let raw = text.trim().trim_start_matches("0x").trim_start_matches("0X");
+        let raw = text
+            .trim()
+            .trim_start_matches("0x")
+            .trim_start_matches("0X");
         let parsed = u64::from_str_radix(raw, 16).or_else(|_| text.trim().parse::<u64>());
         if let Ok(new_seed) = parsed {
             self.seed = new_seed;
@@ -167,15 +170,19 @@ impl Screen for NewCityScreen {
                             NewCityField::StartBtn => self.start_city(context),
                             NewCityField::BackBtn => Some(ScreenTransition::Pop),
                             NewCityField::WaterSlider => {
-                                let relative = col.saturating_sub(area.x).min(area.width.saturating_sub(1));
-                                self.state.water_pct = ((relative as u32 * 100) / area.width.max(1) as u32) as usize;
+                                let relative =
+                                    col.saturating_sub(area.x).min(area.width.saturating_sub(1));
+                                self.state.water_pct =
+                                    ((relative as u32 * 100) / area.width.max(1) as u32) as usize;
                                 self.state.sync_sliders_to_seed();
                                 self.state.rebuild_map();
                                 None
                             }
                             NewCityField::TreesSlider => {
-                                let relative = col.saturating_sub(area.x).min(area.width.saturating_sub(1));
-                                self.state.trees_pct = ((relative as u32 * 100) / area.width.max(1) as u32) as usize;
+                                let relative =
+                                    col.saturating_sub(area.x).min(area.width.saturating_sub(1));
+                                self.state.trees_pct =
+                                    ((relative as u32 * 100) / area.width.max(1) as u32) as usize;
                                 self.state.sync_sliders_to_seed();
                                 self.state.rebuild_map();
                                 None
@@ -296,7 +303,9 @@ mod tests {
 
     #[test]
     fn test_new_city_screen_requires_name() {
-        let mut screen = NewCityScreen { state: NewCityState::new() };
+        let mut screen = NewCityScreen {
+            state: NewCityState::new(),
+        };
         let engine = Arc::new(RwLock::new(crate::core::engine::SimulationEngine::new(
             crate::core::map::Map::new(10, 10),
             crate::core::sim::SimState::default(),
@@ -317,7 +326,9 @@ mod tests {
 
     #[test]
     fn test_new_city_screen_fields_and_start_flow() {
-        let mut screen = NewCityScreen { state: NewCityState::new() };
+        let mut screen = NewCityScreen {
+            state: NewCityState::new(),
+        };
         let engine = Arc::new(RwLock::new(crate::core::engine::SimulationEngine::new(
             crate::core::map::Map::new(10, 10),
             crate::core::sim::SimState::default(),
@@ -350,11 +361,14 @@ mod tests {
         assert!(transition.is_none());
 
         screen.state.focused_field = NewCityField::StartBtn;
-        let transition_start = screen.on_action(Action::MenuSelect, AppContext {
-            engine: &engine,
-            cmd_tx: &cmd_tx,
-            running: &mut running,
-        });
+        let transition_start = screen.on_action(
+            Action::MenuSelect,
+            AppContext {
+                engine: &engine,
+                cmd_tx: &cmd_tx,
+                running: &mut running,
+            },
+        );
         assert!(transition_start.is_some());
     }
 }

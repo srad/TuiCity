@@ -86,10 +86,7 @@ impl Tile {
     pub fn receives_power(&self) -> bool {
         self.is_building()
             || self.is_zone()
-            || matches!(
-                self,
-                Tile::Police | Tile::Fire | Tile::Hospital
-            )
+            || matches!(self, Tile::Police | Tile::Fire | Tile::Hospital)
     }
 
     pub fn road_connects(self) -> bool {
@@ -131,7 +128,7 @@ impl Tile {
     }
 }
 
-#[derive(Clone, Copy, Default, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, Default, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct TileOverlay {
     /// Power level delivered to this tile. 0 = none, 255 = maximum strength.
     pub power_level: u8,

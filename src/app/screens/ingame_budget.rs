@@ -1,4 +1,7 @@
-use crate::{app::{input::Action, WindowId}, core::{engine::EngineCommand, sim::TaxSector}};
+use crate::{
+    app::{input::Action, WindowId},
+    core::{engine::EngineCommand, sim::TaxSector},
+};
 
 use super::{AppContext, InGameScreen};
 
@@ -78,10 +81,7 @@ impl InGameScreen {
         self.desktop.close(WindowId::Budget);
     }
 
-    pub fn budget_tax_input_mut(
-        &mut self,
-        sector: TaxSector,
-    ) -> &mut String {
+    pub fn budget_tax_input_mut(&mut self, sector: TaxSector) -> &mut String {
         match sector {
             TaxSector::Residential => &mut self.budget_ui.residential_tax_input,
             TaxSector::Commercial => &mut self.budget_ui.commercial_tax_input,
@@ -114,7 +114,10 @@ impl InGameScreen {
         let rate = rate.min(100);
         self.set_budget_tax_ui_value(sector, rate);
         if let Some(tx) = context.cmd_tx {
-            let _ = tx.send(EngineCommand::SetTaxRate { sector, rate: rate as u8 });
+            let _ = tx.send(EngineCommand::SetTaxRate {
+                sector,
+                rate: rate as u8,
+            });
         }
     }
 

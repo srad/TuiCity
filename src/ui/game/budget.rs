@@ -57,7 +57,8 @@ fn budget_rows(area: Rect) -> [Rect; 3] {
 
 fn budget_side(area: Rect) -> [Rect; 4] {
     let rows = budget_rows(area);
-    let body = Layout::horizontal([Constraint::Percentage(54), Constraint::Percentage(46)]).split(rows[1]);
+    let body =
+        Layout::horizontal([Constraint::Percentage(54), Constraint::Percentage(46)]).split(rows[1]);
     let side = Layout::vertical([
         Constraint::Length(4),
         Constraint::Length(4),
@@ -126,7 +127,12 @@ fn render_card(
     let inner = block.inner(area);
     block.render(area, buf);
     if inner.height > 0 {
-        buf.set_string(inner.x, inner.y, truncate(title, inner.width as usize), title_style.bg(ui.window_bg));
+        buf.set_string(
+            inner.x,
+            inner.y,
+            truncate(title, inner.width as usize),
+            title_style.bg(ui.window_bg),
+        );
     }
     if inner.height > 1 {
         buf.set_string(
@@ -157,9 +163,17 @@ fn render_tax_panel(
         .title_style(
             Style::default()
                 .fg(theme::sector_color(sector))
-                .add_modifier(if focused { Modifier::BOLD } else { Modifier::empty() }),
+                .add_modifier(if focused {
+                    Modifier::BOLD
+                } else {
+                    Modifier::empty()
+                }),
         )
-        .border_style(Style::default().fg(if focused { theme::sector_color(sector) } else { ui.window_border }))
+        .border_style(Style::default().fg(if focused {
+            theme::sector_color(sector)
+        } else {
+            ui.window_border
+        }))
         .style(Style::default().bg(ui.window_bg));
     let inner = block.inner(area);
     block.render(area, buf);
@@ -172,9 +186,21 @@ fn render_tax_panel(
     let percent_x = inner.x + inner.width.saturating_sub(1);
     let field_x = percent_x.saturating_sub(field_width);
     let field_area = Rect::new(field_x, inner.y, field_width, 1);
-    let field_bg = if focused { theme::sector_color(sector) } else { ui.input_bg };
-    let field_fg = if focused { ui.input_focus_fg } else { theme::sector_color(sector) };
-    let visible_text = format!("{:>width$}", truncate(input, field_width as usize), width = field_width as usize);
+    let field_bg = if focused {
+        theme::sector_color(sector)
+    } else {
+        ui.input_bg
+    };
+    let field_fg = if focused {
+        ui.input_focus_fg
+    } else {
+        theme::sector_color(sector)
+    };
+    let visible_text = format!(
+        "{:>width$}",
+        truncate(input, field_width as usize),
+        width = field_width as usize
+    );
 
     buf.set_string(
         inner.x,
@@ -182,7 +208,12 @@ fn render_tax_panel(
         truncate("Tax", field_x.saturating_sub(inner.x + 1) as usize),
         Style::default().fg(ui.text_secondary).bg(ui.window_bg),
     );
-    buf.set_string(field_area.x, field_area.y, visible_text, Style::default().fg(field_fg).bg(field_bg));
+    buf.set_string(
+        field_area.x,
+        field_area.y,
+        visible_text,
+        Style::default().fg(field_fg).bg(field_bg),
+    );
     buf.set_string(
         percent_x,
         inner.y,
@@ -194,7 +225,19 @@ fn render_tax_panel(
     );
 
     let bar = Rect::new(inner.x, inner.y + 1, inner.width, 1);
-    render_dos_bar(buf, bar, value, 100, theme::sector_color(sector), if focused { theme::sector_bg(sector) } else { ui.slider_bg }, ui);
+    render_dos_bar(
+        buf,
+        bar,
+        value,
+        100,
+        theme::sector_color(sector),
+        if focused {
+            theme::sector_bg(sector)
+        } else {
+            ui.slider_bg
+        },
+        ui,
+    );
 }
 
 fn render_dos_bar(
@@ -211,11 +254,25 @@ fn render_dos_bar(
     }
     let inner_width = area.width.saturating_sub(2);
     let filled = ((value.min(max) as u32 * inner_width as u32) / max.max(1) as u32) as u16;
-    buf.set_string(area.x, area.y, "[", Style::default().fg(ui.text_secondary).bg(bg));
-    buf.set_string(area.x + area.width - 1, area.y, "]", Style::default().fg(ui.text_secondary).bg(bg));
+    buf.set_string(
+        area.x,
+        area.y,
+        "[",
+        Style::default().fg(ui.text_secondary).bg(bg),
+    );
+    buf.set_string(
+        area.x + area.width - 1,
+        area.y,
+        "]",
+        Style::default().fg(ui.text_secondary).bg(bg),
+    );
     for i in 0..inner_width {
         let x = area.x + 1 + i;
-        let (symbol, fg) = if i < filled { ("█", fill_fg) } else { ("░", ui.text_dim) };
+        let (symbol, fg) = if i < filled {
+            ("█", fill_fg)
+        } else {
+            ("░", ui.text_dim)
+        };
         buf.set_string(x, area.y, symbol, Style::default().fg(fg).bg(bg));
     }
 }
@@ -232,9 +289,15 @@ impl<'a> Widget for BudgetContent<'a> {
 
         let ui = theme::ui_palette();
         let tax_rates = self.view.tax_rates;
-        let residential_tax = sector_tax(self.view.residential_population, tax_rates, TaxSector::Residential);
-        let commercial_tax = sector_tax(self.view.commercial_jobs, tax_rates, TaxSector::Commercial);
-        let industrial_tax = sector_tax(self.view.industrial_jobs, tax_rates, TaxSector::Industrial);
+        let residential_tax = sector_tax(
+            self.view.residential_population,
+            tax_rates,
+            TaxSector::Residential,
+        );
+        let commercial_tax =
+            sector_tax(self.view.commercial_jobs, tax_rates, TaxSector::Commercial);
+        let industrial_tax =
+            sector_tax(self.view.industrial_jobs, tax_rates, TaxSector::Industrial);
         let projected_total_tax = residential_tax + commercial_tax + industrial_tax;
         let projected_net = projected_total_tax - self.view.breakdown.total;
         let current_net = self.view.current_annual_tax - self.view.breakdown.total;
@@ -262,16 +325,28 @@ impl<'a> Widget for BudgetContent<'a> {
             "Treasury",
             &fmt_money(self.view.treasury),
             Style::default().fg(ui.text_muted),
-            Style::default().fg(if self.view.treasury >= 0 { ui.success } else { ui.danger }),
+            Style::default().fg(if self.view.treasury >= 0 {
+                ui.success
+            } else {
+                ui.danger
+            }),
             ui,
         );
         render_card(
             buf,
             cards[1],
             "Annual Net",
-            &format!("{}{}/yr", if current_net >= 0 { "+" } else { "" }, fmt_money(current_net)),
+            &format!(
+                "{}{}/yr",
+                if current_net >= 0 { "+" } else { "" },
+                fmt_money(current_net)
+            ),
             Style::default().fg(ui.text_muted),
-            Style::default().fg(if current_net >= 0 { ui.success } else { ui.danger }),
+            Style::default().fg(if current_net >= 0 {
+                ui.success
+            } else {
+                ui.danger
+            }),
             ui,
         );
         render_card(
@@ -287,13 +362,18 @@ impl<'a> Widget for BudgetContent<'a> {
             buf,
             cards[3],
             "Jobs",
-            &format!("C {} / I {}", fmt_abs(self.view.commercial_jobs), fmt_abs(self.view.industrial_jobs)),
+            &format!(
+                "C {} / I {}",
+                fmt_abs(self.view.commercial_jobs),
+                fmt_abs(self.view.industrial_jobs)
+            ),
             Style::default().fg(ui.text_muted),
             Style::default().fg(ui.text_primary),
             ui,
         );
 
-        let body = Layout::horizontal([Constraint::Percentage(54), Constraint::Percentage(46)]).split(body_row);
+        let body = Layout::horizontal([Constraint::Percentage(54), Constraint::Percentage(46)])
+            .split(body_row);
 
         let ops_block = Block::default()
             .borders(Borders::ALL)
@@ -310,22 +390,44 @@ impl<'a> Widget for BudgetContent<'a> {
             ("Commercial tax", commercial_tax, ui.sector_commercial),
             ("Industrial tax", industrial_tax, ui.sector_industrial),
             ("Maintenance", -self.view.breakdown.total, ui.danger),
-            ("Net", projected_net, if projected_net >= 0 { ui.success } else { ui.danger }),
+            (
+                "Net",
+                projected_net,
+                if projected_net >= 0 {
+                    ui.success
+                } else {
+                    ui.danger
+                },
+            ),
         ];
         for (label, value, color) in summary_rows {
             if row >= ops_inner.y + ops_inner.height {
                 break;
             }
-            let value_text = if value >= 0 { format!("+{}", fmt_money(value)) } else { fmt_money(value) };
+            let value_text = if value >= 0 {
+                format!("+{}", fmt_money(value))
+            } else {
+                fmt_money(value)
+            };
             let value_width = value_text.chars().count() as u16;
             let value_x = ops_inner.x + ops_inner.width.saturating_sub(value_width);
             buf.set_string(
                 ops_inner.x,
                 row,
-                truncate(label, ops_inner.width.saturating_sub(value_width + 1) as usize),
-                Style::default().fg(ui.text_secondary).bg(ui.budget_window_bg),
+                truncate(
+                    label,
+                    ops_inner.width.saturating_sub(value_width + 1) as usize,
+                ),
+                Style::default()
+                    .fg(ui.text_secondary)
+                    .bg(ui.budget_window_bg),
             );
-            buf.set_string(value_x, row, &value_text, Style::default().fg(color).bg(ui.budget_window_bg));
+            buf.set_string(
+                value_x,
+                row,
+                &value_text,
+                Style::default().fg(color).bg(ui.budget_window_bg),
+            );
             row += 1;
         }
 
@@ -347,10 +449,18 @@ impl<'a> Widget for BudgetContent<'a> {
             buf.set_string(
                 ops_inner.x,
                 row,
-                truncate(label, ops_inner.width.saturating_sub(value_width + 1) as usize),
+                truncate(
+                    label,
+                    ops_inner.width.saturating_sub(value_width + 1) as usize,
+                ),
                 Style::default().fg(ui.text_muted).bg(ui.budget_window_bg),
             );
-            buf.set_string(value_x, row, &value_text, Style::default().fg(ui.danger).bg(ui.budget_window_bg));
+            buf.set_string(
+                value_x,
+                row,
+                &value_text,
+                Style::default().fg(ui.danger).bg(ui.budget_window_bg),
+            );
             row += 1;
         }
 
@@ -397,35 +507,61 @@ impl<'a> Widget for BudgetContent<'a> {
             ("Commercial", commercial_tax, ui.sector_commercial),
             ("Industrial", industrial_tax, ui.sector_industrial),
             ("Total tax", projected_total_tax, ui.success),
-            ("Net", projected_net, if projected_net >= 0 { ui.success } else { ui.danger }),
+            (
+                "Net",
+                projected_net,
+                if projected_net >= 0 {
+                    ui.success
+                } else {
+                    ui.danger
+                },
+            ),
         ] {
             if row >= forecast_inner.y + forecast_inner.height {
                 break;
             }
-            let value_text = if value >= 0 { format!("+{}", fmt_money(value)) } else { fmt_money(value) };
+            let value_text = if value >= 0 {
+                format!("+{}", fmt_money(value))
+            } else {
+                fmt_money(value)
+            };
             let value_width = value_text.chars().count() as u16;
             let value_x = forecast_inner.x + forecast_inner.width.saturating_sub(value_width);
             buf.set_string(
                 forecast_inner.x,
                 row,
-                truncate(label, forecast_inner.width.saturating_sub(value_width + 1) as usize),
+                truncate(
+                    label,
+                    forecast_inner.width.saturating_sub(value_width + 1) as usize,
+                ),
                 Style::default().fg(ui.text_secondary).bg(ui.window_bg),
             );
-            buf.set_string(value_x, row, &value_text, Style::default().fg(color).bg(ui.window_bg));
+            buf.set_string(
+                value_x,
+                row,
+                &value_text,
+                Style::default().fg(color).bg(ui.window_bg),
+            );
             row += 1;
         }
 
         buf.set_string(
             footer_row.x,
             footer_row.y,
-            truncate("Up/Down focus  Left/Right +/-1  Type 0-100", footer_row.width as usize),
+            truncate(
+                "Up/Down focus  Left/Right +/-1  Type 0-100",
+                footer_row.width as usize,
+            ),
             Style::default().fg(ui.text_dim).bg(ui.budget_window_bg),
         );
         if footer_row.height > 1 {
             buf.set_string(
                 footer_row.x,
                 footer_row.y + 1,
-                truncate("Click sector panel to focus  [X], Esc, or B closes", footer_row.width as usize),
+                truncate(
+                    "Click sector panel to focus  [X], Esc, or B closes",
+                    footer_row.width as usize,
+                ),
                 Style::default().fg(ui.text_dim).bg(ui.budget_window_bg),
             );
         }
@@ -439,7 +575,10 @@ pub fn render_budget_content(buf: &mut Buffer, inner: Rect, view: &BudgetViewMod
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{core::{map::Map, sim::SimState}, ui::view::BudgetViewModel};
+    use crate::{
+        core::{map::Map, sim::SimState},
+        ui::view::BudgetViewModel,
+    };
     use ratatui::{buffer::Buffer, layout::Rect};
 
     fn render_budget_lines(width: u16, height: u16) -> Vec<String> {
@@ -465,7 +604,8 @@ mod tests {
     fn right_column_rows(width: u16, height: u16) -> [u16; 4] {
         let area = Rect::new(0, 0, width, height);
         let [_, body, _] = budget_rows(area);
-        let body = Layout::horizontal([Constraint::Percentage(54), Constraint::Percentage(46)]).split(body);
+        let body = Layout::horizontal([Constraint::Percentage(54), Constraint::Percentage(46)])
+            .split(body);
         let side = Layout::vertical([
             Constraint::Length(4),
             Constraint::Length(4),
@@ -477,7 +617,8 @@ mod tests {
     }
 
     fn find_row(lines: &[String], needle: &str) -> usize {
-        lines.iter()
+        lines
+            .iter()
             .position(|line| line.contains(needle))
             .unwrap_or_else(|| panic!("missing line containing {needle:?}"))
     }
@@ -500,13 +641,17 @@ mod tests {
     #[test]
     fn sector_tax_uses_current_formula() {
         let rates = TaxRates::default();
-        assert_eq!(super::sector_tax(1_000, rates, TaxSector::Residential), 5_000);
+        assert_eq!(
+            super::sector_tax(1_000, rates, TaxSector::Residential),
+            5_000
+        );
     }
 
     #[test]
     fn budget_render_shows_all_sector_panels_and_forecast() {
         let lines = render_budget_lines(72, 24);
-        let [residential_row, commercial_row, industrial_row, forecast_row] = right_column_rows(72, 24);
+        let [residential_row, commercial_row, industrial_row, forecast_row] =
+            right_column_rows(72, 24);
 
         assert!(lines[residential_row as usize].contains("Residential"));
         assert!(lines[commercial_row as usize].contains("Commercial"));

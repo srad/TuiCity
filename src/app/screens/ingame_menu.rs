@@ -1,16 +1,17 @@
 use crate::{
-    app::{save, Tool, WindowId},
+    app::{save, WindowId},
     core::{engine::EngineCommand, sim::SimState},
     ui::theme::OverlayMode,
 };
 
-use super::{AppContext, InGameScreen, ScreenTransition};
+use super::{AppContext, InGameScreen, ScreenTransition, SettingsScreen};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum MenuAction {
     #[default]
     None,
     NewCity,
+    LoadCity,
     SaveCity,
     Quit,
     SpeedPause,
@@ -20,15 +21,19 @@ pub enum MenuAction {
     DisasterFire,
     DisasterFlood,
     DisasterTornado,
-    PowerCoal,
-    PowerGas,
+    ToggleToolbar,
+    ToggleInspect,
     OpenBudget,
+    OpenStatistics,
     OverlayNone,
     OverlayPower,
     OverlayPollution,
     OverlayLandValue,
     OverlayCrime,
     OverlayFireRisk,
+    OpenSettings,
+    OpenHelp,
+    OpenAbout,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -38,46 +43,142 @@ pub struct MenuRow {
     pub action: MenuAction,
 }
 
-pub const MENU_TITLES: [&str; 5] = ["System", "Speed", "Disasters", "Power", "Windows"];
+pub const MENU_TITLES: [&str; 6] = ["File", "Speed", "Disasters", "Windows", "Help", "About"];
 
-const SYSTEM_ROWS: [MenuRow; 3] = [
-    MenuRow { label: "New City", right: "Alt+N", action: MenuAction::NewCity },
-    MenuRow { label: "Save City", right: "^S", action: MenuAction::SaveCity },
-    MenuRow { label: "Quit", right: "Q", action: MenuAction::Quit },
+const FILE_ROWS: [MenuRow; 5] = [
+    MenuRow {
+        label: "New City",
+        right: "Alt+N",
+        action: MenuAction::NewCity,
+    },
+    MenuRow {
+        label: "Load City",
+        right: "",
+        action: MenuAction::LoadCity,
+    },
+    MenuRow {
+        label: "Save City",
+        right: "^S",
+        action: MenuAction::SaveCity,
+    },
+    MenuRow {
+        label: "Settings",
+        right: "Shift+P",
+        action: MenuAction::OpenSettings,
+    },
+    MenuRow {
+        label: "Quit",
+        right: "Q",
+        action: MenuAction::Quit,
+    },
 ];
 const SPEED_ROWS: [MenuRow; 4] = [
-    MenuRow { label: "Pause / Resume", right: "Space", action: MenuAction::SpeedPause },
-    MenuRow { label: "Slow", right: "100", action: MenuAction::SpeedSlow },
-    MenuRow { label: "Normal", right: "50", action: MenuAction::SpeedNormal },
-    MenuRow { label: "Fast", right: "20", action: MenuAction::SpeedFast },
+    MenuRow {
+        label: "Pause / Resume",
+        right: "Space",
+        action: MenuAction::SpeedPause,
+    },
+    MenuRow {
+        label: "Slow",
+        right: "100",
+        action: MenuAction::SpeedSlow,
+    },
+    MenuRow {
+        label: "Normal",
+        right: "50",
+        action: MenuAction::SpeedNormal,
+    },
+    MenuRow {
+        label: "Fast",
+        right: "20",
+        action: MenuAction::SpeedFast,
+    },
 ];
 const DISASTER_ROWS: [MenuRow; 3] = [
-    MenuRow { label: "Fire", right: "", action: MenuAction::DisasterFire },
-    MenuRow { label: "Flood", right: "", action: MenuAction::DisasterFlood },
-    MenuRow { label: "Tornado", right: "", action: MenuAction::DisasterTornado },
+    MenuRow {
+        label: "Fire",
+        right: "",
+        action: MenuAction::DisasterFire,
+    },
+    MenuRow {
+        label: "Flood",
+        right: "",
+        action: MenuAction::DisasterFlood,
+    },
+    MenuRow {
+        label: "Tornado",
+        right: "",
+        action: MenuAction::DisasterTornado,
+    },
 ];
-const POWER_ROWS: [MenuRow; 2] = [
-    MenuRow { label: "Coal Plant", right: "$3000", action: MenuAction::PowerCoal },
-    MenuRow { label: "Gas Plant", right: "$6000", action: MenuAction::PowerGas },
-];
-const WINDOWS_ROWS: [MenuRow; 7] = [
-    MenuRow { label: "Budget & Taxes", right: "$", action: MenuAction::OpenBudget },
-    MenuRow { label: "Overlay: Off", right: "", action: MenuAction::OverlayNone },
-    MenuRow { label: "Overlay: Power", right: "", action: MenuAction::OverlayPower },
-    MenuRow { label: "Overlay: Pollution", right: "", action: MenuAction::OverlayPollution },
-    MenuRow { label: "Overlay: Land Value", right: "", action: MenuAction::OverlayLandValue },
-    MenuRow { label: "Overlay: Crime", right: "", action: MenuAction::OverlayCrime },
-    MenuRow { label: "Overlay: Fire Risk", right: "", action: MenuAction::OverlayFireRisk },
+const WINDOWS_ROWS: [MenuRow; 10] = [
+    MenuRow {
+        label: "Toolbox",
+        right: "",
+        action: MenuAction::ToggleToolbar,
+    },
+    MenuRow {
+        label: "Inspect",
+        right: "",
+        action: MenuAction::ToggleInspect,
+    },
+    MenuRow {
+        label: "Budget & Taxes",
+        right: "$",
+        action: MenuAction::OpenBudget,
+    },
+    MenuRow {
+        label: "Statistics",
+        right: "",
+        action: MenuAction::OpenStatistics,
+    },
+    MenuRow {
+        label: "Overlay: Off",
+        right: "",
+        action: MenuAction::OverlayNone,
+    },
+    MenuRow {
+        label: "Overlay: Power",
+        right: "",
+        action: MenuAction::OverlayPower,
+    },
+    MenuRow {
+        label: "Overlay: Pollution",
+        right: "",
+        action: MenuAction::OverlayPollution,
+    },
+    MenuRow {
+        label: "Overlay: Land Value",
+        right: "",
+        action: MenuAction::OverlayLandValue,
+    },
+    MenuRow {
+        label: "Overlay: Crime",
+        right: "",
+        action: MenuAction::OverlayCrime,
+    },
+    MenuRow {
+        label: "Overlay: Fire Risk",
+        right: "",
+        action: MenuAction::OverlayFireRisk,
+    },
 ];
 
 pub fn menu_rows(menu: usize) -> &'static [MenuRow] {
     match menu {
-        0 => &SYSTEM_ROWS,
+        0 => &FILE_ROWS,
         1 => &SPEED_ROWS,
         2 => &DISASTER_ROWS,
-        3 => &POWER_ROWS,
-        4 => &WINDOWS_ROWS,
+        3 => &WINDOWS_ROWS,
         _ => &[],
+    }
+}
+
+fn direct_menu_action(menu: usize) -> Option<MenuAction> {
+    match menu {
+        4 => Some(MenuAction::OpenHelp),
+        5 => Some(MenuAction::OpenAbout),
+        _ => None,
     }
 }
 
@@ -92,6 +193,10 @@ impl InGameScreen {
             if area.contains(col, row) {
                 self.menu_selected = idx;
                 self.menu_item_selected = 0;
+                if let Some(action) = direct_menu_action(idx) {
+                    self.close_menu();
+                    return (true, self.handle_menu_action(action, context));
+                }
                 self.open_menu(idx);
                 return (true, None);
             }
@@ -107,7 +212,9 @@ impl InGameScreen {
                 }
             }
 
-            if self.ui_areas.menu_popup.contains(col, row) || self.ui_areas.menu_bar.contains(col, row) {
+            if self.ui_areas.menu_popup.contains(col, row)
+                || self.ui_areas.menu_bar.contains(col, row)
+            {
                 return (true, None);
             }
 
@@ -126,6 +233,9 @@ impl InGameScreen {
         match action {
             MenuAction::None => {}
             MenuAction::NewCity => return Some(ScreenTransition::Pop),
+            MenuAction::LoadCity => {
+                self.open_confirm_prompt(super::ingame::ConfirmPromptAction::LoadCity);
+            }
             MenuAction::SaveCity => {
                 let result = {
                     let engine = context.engine.read().unwrap();
@@ -136,7 +246,12 @@ impl InGameScreen {
                     Err(e) => self.push_message(format!("Save failed: {e}")),
                 }
             }
-            MenuAction::Quit => return Some(ScreenTransition::Quit),
+            MenuAction::Quit => {
+                self.open_confirm_prompt(super::ingame::ConfirmPromptAction::Quit);
+            }
+            MenuAction::OpenSettings => {
+                return Some(ScreenTransition::Push(Box::new(SettingsScreen::new())));
+            }
             MenuAction::SpeedPause => {
                 self.paused = !self.paused;
                 if let Some(tx) = context.cmd_tx {
@@ -158,21 +273,21 @@ impl InGameScreen {
                     let _ = tx.send(EngineCommand::SetDisasters(cfg));
                 }
             }
-            MenuAction::PowerCoal => {
-                self.current_tool = Tool::PowerPlantCoal;
-                self.desktop.close(WindowId::PowerPicker);
+            MenuAction::ToggleToolbar => {
+                self.close_tool_chooser();
+                self.desktop.toggle(WindowId::Panel, false);
             }
-            MenuAction::PowerGas => {
-                self.current_tool = Tool::PowerPlantGas;
-                self.desktop.close(WindowId::PowerPicker);
-            }
+            MenuAction::ToggleInspect => self.toggle_inspect_window(),
             MenuAction::OpenBudget => self.open_budget(context),
+            MenuAction::OpenStatistics => self.open_stats_window(),
             MenuAction::OverlayNone => self.overlay_mode = OverlayMode::None,
             MenuAction::OverlayPower => self.overlay_mode = OverlayMode::Power,
             MenuAction::OverlayPollution => self.overlay_mode = OverlayMode::Pollution,
             MenuAction::OverlayLandValue => self.overlay_mode = OverlayMode::LandValue,
             MenuAction::OverlayCrime => self.overlay_mode = OverlayMode::Crime,
             MenuAction::OverlayFireRisk => self.overlay_mode = OverlayMode::FireRisk,
+            MenuAction::OpenHelp => self.open_help_window(),
+            MenuAction::OpenAbout => self.open_about_window(),
         }
         None
     }
@@ -181,28 +296,117 @@ impl InGameScreen {
         menu_rows(menu).len()
     }
 
-    pub fn menu_row(&self, menu: usize, item: usize, sim: &SimState) -> Option<(String, String, MenuAction)> {
+    pub fn menu_row(
+        &self,
+        menu: usize,
+        item: usize,
+        sim: &SimState,
+    ) -> Option<(String, String, MenuAction)> {
         let base = *menu_rows(menu).get(item)?;
         let right = match base.action {
-            MenuAction::DisasterFire => if sim.disasters.fire_enabled { "ON" } else { "OFF" },
-            MenuAction::DisasterFlood => if sim.disasters.flood_enabled { "ON" } else { "OFF" },
-            MenuAction::DisasterTornado => if sim.disasters.tornado_enabled { "ON" } else { "OFF" },
-            MenuAction::OverlayNone => if self.overlay_mode == OverlayMode::None { "ON" } else { "" },
-            MenuAction::OverlayPower => if self.overlay_mode == OverlayMode::Power { "ON" } else { "" },
-            MenuAction::OverlayPollution => if self.overlay_mode == OverlayMode::Pollution { "ON" } else { "" },
-            MenuAction::OverlayLandValue => if self.overlay_mode == OverlayMode::LandValue { "ON" } else { "" },
-            MenuAction::OverlayCrime => if self.overlay_mode == OverlayMode::Crime { "ON" } else { "" },
-            MenuAction::OverlayFireRisk => if self.overlay_mode == OverlayMode::FireRisk { "ON" } else { "" },
+            MenuAction::DisasterFire => {
+                if sim.disasters.fire_enabled {
+                    "ON"
+                } else {
+                    "OFF"
+                }
+            }
+            MenuAction::DisasterFlood => {
+                if sim.disasters.flood_enabled {
+                    "ON"
+                } else {
+                    "OFF"
+                }
+            }
+            MenuAction::DisasterTornado => {
+                if sim.disasters.tornado_enabled {
+                    "ON"
+                } else {
+                    "OFF"
+                }
+            }
+            MenuAction::OverlayNone => {
+                if self.overlay_mode == OverlayMode::None {
+                    "ON"
+                } else {
+                    ""
+                }
+            }
+            MenuAction::OverlayPower => {
+                if self.overlay_mode == OverlayMode::Power {
+                    "ON"
+                } else {
+                    ""
+                }
+            }
+            MenuAction::OverlayPollution => {
+                if self.overlay_mode == OverlayMode::Pollution {
+                    "ON"
+                } else {
+                    ""
+                }
+            }
+            MenuAction::OverlayLandValue => {
+                if self.overlay_mode == OverlayMode::LandValue {
+                    "ON"
+                } else {
+                    ""
+                }
+            }
+            MenuAction::OverlayCrime => {
+                if self.overlay_mode == OverlayMode::Crime {
+                    "ON"
+                } else {
+                    ""
+                }
+            }
+            MenuAction::OverlayFireRisk => {
+                if self.overlay_mode == OverlayMode::FireRisk {
+                    "ON"
+                } else {
+                    ""
+                }
+            }
+            MenuAction::ToggleToolbar => {
+                if self.desktop.is_open(WindowId::Panel) {
+                    "ON"
+                } else {
+                    "OFF"
+                }
+            }
+            MenuAction::ToggleInspect => {
+                if self.desktop.is_open(WindowId::Inspect) {
+                    "ON"
+                } else {
+                    "OFF"
+                }
+            }
+            MenuAction::OpenStatistics => {
+                if self.desktop.is_open(WindowId::Statistics) {
+                    "ON"
+                } else {
+                    "OFF"
+                }
+            }
             _ => base.right,
         };
         let label = match base.action {
-            MenuAction::SpeedPause => if self.paused { "Resume" } else { "Pause" },
+            MenuAction::SpeedPause => {
+                if self.paused {
+                    "Resume"
+                } else {
+                    "Pause"
+                }
+            }
             _ => base.label,
         };
         Some((label.to_string(), right.to_string(), base.action))
     }
 
     pub fn current_menu_action(&self) -> MenuAction {
+        if let Some(action) = direct_menu_action(self.menu_selected) {
+            return action;
+        }
         menu_rows(self.menu_selected)
             .get(self.menu_item_selected)
             .map(|row| row.action)
@@ -212,7 +416,9 @@ impl InGameScreen {
     pub fn open_menu(&mut self, selected: usize) {
         self.menu_active = true;
         self.menu_selected = selected.min(MENU_TITLES.len().saturating_sub(1));
-        self.menu_item_selected = self.menu_item_selected.min(self.menu_item_count(self.menu_selected).saturating_sub(1));
+        self.menu_item_selected = self
+            .menu_item_selected
+            .min(self.menu_item_count(self.menu_selected).saturating_sub(1));
     }
 
     pub fn close_menu(&mut self) {
@@ -248,22 +454,45 @@ mod tests {
     #[test]
     fn menu_action_mapping_matches_structure() {
         assert_eq!(InGameScreen::menu_action_for(0, 0), MenuAction::NewCity);
+        assert_eq!(InGameScreen::menu_action_for(0, 1), MenuAction::LoadCity);
         assert_eq!(InGameScreen::menu_action_for(1, 3), MenuAction::SpeedFast);
-        assert_eq!(InGameScreen::menu_action_for(2, 1), MenuAction::DisasterFlood);
-        assert_eq!(InGameScreen::menu_action_for(3, 1), MenuAction::PowerGas);
-        assert_eq!(InGameScreen::menu_action_for(4, 6), MenuAction::OverlayFireRisk);
+        assert_eq!(
+            InGameScreen::menu_action_for(2, 1),
+            MenuAction::DisasterFlood
+        );
+        assert_eq!(
+            InGameScreen::menu_action_for(3, 0),
+            MenuAction::ToggleToolbar
+        );
+        assert_eq!(
+            InGameScreen::menu_action_for(3, 1),
+            MenuAction::ToggleInspect
+        );
+        assert_eq!(
+            InGameScreen::menu_action_for(3, 9),
+            MenuAction::OverlayFireRisk
+        );
+        assert_eq!(MENU_TITLES[4], "Help");
+        assert_eq!(MENU_TITLES[5], "About");
         assert_eq!(InGameScreen::menu_action_for(99, 99), MenuAction::None);
     }
 
     #[test]
     fn first_menu_click_opens_selected_menu() {
         let mut screen = InGameScreen::new();
-        screen.ui_areas.menu_items[1] = ClickArea { x: 12, y: 0, width: 8, height: 1 };
+        screen.ui_areas.menu_items[1] = ClickArea {
+            x: 12,
+            y: 0,
+            width: 8,
+            height: 1,
+        };
 
-        let engine = std::sync::Arc::new(std::sync::RwLock::new(crate::core::engine::SimulationEngine::new(
-            crate::core::map::Map::new(10, 10),
-            crate::core::sim::SimState::default(),
-        )));
+        let engine = std::sync::Arc::new(std::sync::RwLock::new(
+            crate::core::engine::SimulationEngine::new(
+                crate::core::map::Map::new(10, 10),
+                crate::core::sim::SimState::default(),
+            ),
+        ));
         let cmd_tx = None;
         let mut running = true;
         let context = AppContext {
@@ -278,5 +507,36 @@ mod tests {
         assert!(screen.menu_active);
         assert_eq!(screen.menu_selected, 1);
         assert_eq!(screen.menu_item_selected, 0);
+    }
+
+    #[test]
+    fn direct_help_menu_click_opens_help_window() {
+        let mut screen = InGameScreen::new();
+        screen.ui_areas.menu_items[4] = ClickArea {
+            x: 70,
+            y: 0,
+            width: 6,
+            height: 1,
+        };
+
+        let engine = std::sync::Arc::new(std::sync::RwLock::new(
+            crate::core::engine::SimulationEngine::new(
+                crate::core::map::Map::new(10, 10),
+                crate::core::sim::SimState::default(),
+            ),
+        ));
+        let cmd_tx = None;
+        let mut running = true;
+        let context = AppContext {
+            engine: &engine,
+            cmd_tx: &cmd_tx,
+            running: &mut running,
+        };
+
+        let (consumed, transition) = screen.handle_menu_click(71, 0, &context);
+        assert!(consumed);
+        assert!(transition.is_none());
+        assert!(screen.is_help_open());
+        assert!(!screen.menu_active);
     }
 }

@@ -1,4 +1,8 @@
-use crate::{app::ClickArea, core::sim::{SimState, TaxSector}, ui::theme};
+use crate::{
+    app::ClickArea,
+    core::sim::{SimState, TaxSector},
+    ui::theme,
+};
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
@@ -30,7 +34,10 @@ pub fn render_statusbar(
         col,
         area.y,
         &name,
-        Style::default().fg(ui.status_city).bg(ui.status_bg).add_modifier(Modifier::BOLD),
+        Style::default()
+            .fg(ui.status_city)
+            .bg(ui.status_bg)
+            .add_modifier(Modifier::BOLD),
     );
     col += name.len() as u16;
 
@@ -40,7 +47,11 @@ pub fn render_statusbar(
 
     // Treasury
     let money = format!(" ${} ", fmt_number(sim.treasury));
-    let money_color = if sim.treasury >= 0 { ui.success } else { ui.danger };
+    let money_color = if sim.treasury >= 0 {
+        ui.success
+    } else {
+        ui.danger
+    };
     buf.set_string(
         col,
         area.y,
@@ -59,7 +70,9 @@ pub fn render_statusbar(
         col,
         area.y,
         &pop,
-        Style::default().fg(theme::sector_color(TaxSector::Residential)).bg(ui.status_bg),
+        Style::default()
+            .fg(theme::sector_color(TaxSector::Residential))
+            .bg(ui.status_bg),
     );
     col += pop.len() as u16;
 
@@ -82,7 +95,11 @@ pub fn render_statusbar(
     col += 1;
     let income_sign = if sim.last_income >= 0 { "+" } else { "" };
     let income_str = format!(" {}${}/yr ", income_sign, fmt_number(sim.last_income));
-    let income_color = if sim.last_income >= 0 { ui.success } else { ui.danger };
+    let income_color = if sim.last_income >= 0 {
+        ui.success
+    } else {
+        ui.danger
+    };
     buf.set_string(
         col,
         area.y,
@@ -118,7 +135,9 @@ pub fn render_statusbar(
             .bg(ui.status_button_run_bg)
             .add_modifier(Modifier::BOLD)
     } else {
-        Style::default().fg(ui.status_button_pause_fg).bg(ui.status_button_pause_bg)
+        Style::default()
+            .fg(ui.status_button_pause_fg)
+            .bg(ui.status_button_pause_bg)
     };
     buf.set_string(btn_col, area.y, pause_text, pause_style);
 

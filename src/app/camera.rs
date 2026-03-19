@@ -37,6 +37,17 @@ impl Camera {
         self.offset_y = (self.offset_y + dy).clamp(0, max_y);
     }
 
+    pub fn center_on(&mut self, tile_x: usize, tile_y: usize, map_w: usize, map_h: usize) {
+        let max_x = (map_w as i32 - self.view_w as i32).max(0);
+        let max_y = (map_h as i32 - self.view_h as i32).max(0);
+        let clamped_x = tile_x.min(map_w.saturating_sub(1));
+        let clamped_y = tile_y.min(map_h.saturating_sub(1));
+        self.cursor_x = clamped_x;
+        self.cursor_y = clamped_y;
+        self.offset_x = (clamped_x as i32 - self.view_w as i32 / 2).clamp(0, max_x);
+        self.offset_y = (clamped_y as i32 - self.view_h as i32 / 2).clamp(0, max_y);
+    }
+
     pub fn scroll_to_cursor(&mut self, map_w: usize, map_h: usize) {
         let margin = 4i32;
         let vw = self.view_w as i32;

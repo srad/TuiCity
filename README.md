@@ -1,4 +1,4 @@
-# TuiCity2
+# TuiCity 2000
 
 A terminal-based city-building simulation written in Rust. Build roads, zone land, manage power grids, balance budgets, and survive disasters — all inside your terminal.
 
@@ -64,11 +64,11 @@ The main menu offers three options:
 | **Load City** | Resume a previously saved city |
 | **Quit** | Exit the application |
 
-Navigate with the **arrow keys** and confirm with **Enter**.
+Navigate with the **arrow keys** and confirm with **Enter**, or click an item with the mouse.
 
 ### Creating a New City
 
-Selecting **New City** opens an interactive form with a live preview. You can use the keyboard to move between fields and adjust the generator:
+Selecting **New City** opens an interactive form with a live preview. You can use the keyboard to move between fields and adjust the generator, or click fields, sliders, and buttons directly:
 
 | Field | Description | Default |
 |-------|-------------|---------|
@@ -77,7 +77,7 @@ Selecting **New City** opens an interactive form with a live preview. You can us
 | **Water %** | Percentage of map tiles that are water | 20 |
 | **Trees %** | Percentage of map tiles that are forest | 30 |
 
-As you adjust the values, the preview map and the hex seed update in real-time. Press **Enter** on the Start button to generate and enter the city.
+As you adjust the values, the preview map and the hex seed update in real-time. You can type into the name and seed fields, click the Water % and Trees % bars to jump to a value, click **Regenerate** to roll a fresh map, and activate **Start** with either **Enter** or a mouse click.
 
 ### Controls
 
@@ -87,16 +87,21 @@ As you adjust the values, the preview map and the hex seed update in real-time. 
 | Mouse move | Move cursor |
 | Left click | Place / confirm action |
 | Left click + drag on window title | Move that window |
+| Left click on menu bar / popup | Open menus and activate menu items |
+| Left click on minimap | Center the camera near the clicked location |
+| Left click on toolbar / popup buttons | Select tools or close / confirm popup actions |
 | Mouse scroll / horizontal wheel | Pan camera vertically or horizontally |
 | Middle click + drag on map | Grab-pan the map |
 | Left click on map scrollbars | Step, page, or drag the viewport |
 | Space | Pause / resume simulation |
-| `q` / `Ctrl+C` | Quit |
+| `q` / `Ctrl+C` | Open the quit prompt |
 | `Ctrl+S` | Save city |
-| `Esc` | Cancel drag / go back |
+| `Esc` | Cancel drag, close modal windows, or go back |
 | `Tab` | Cycle map overlay modes (Normal → Power → Pollution → Land Value → Crime → Fire Risk) |
 | `F1` | Open menu bar |
 | `$` | Open budget window |
+
+The **File** menu contains save/load/quit actions, the **Windows** menu can toggle the **Toolbox** panel and other utility windows, and the right-aligned **Help** and **About** items open modal reference windows.
 
 ### Tools
 
@@ -111,7 +116,8 @@ Select a tool by pressing its hotkey. For area tools, click and drag to define t
 | `r` | Road | $10 | 1×1 drag | Connect zones; required for growth |
 | `l` | Rail | $20 | 1×1 drag | High-capacity transit; boosts nearby land value |
 | `p` | Power Line | $5 | 1×1 drag | Carry electricity from plants to zones |
-| `e` | Power Plant | $3000 | 4×4 | Generates power; BFS floods electricity outward |
+| `e` | Coal Plant | $3000 | 4×4 | Opens the power picker and arms a coal plant by default |
+| `g` | Gas Plant | $6000 | 4×4 | Arms a gas plant directly |
 | `k` | Park | $80 | 2×2 | Increases land value in surrounding tiles |
 | `s` | Police Station | $500 | 3×3 | Reduces crime within radius 12 |
 | `f` | Fire Department | $500 | 3×3 | Reduces fire risk within radius 12 |
@@ -139,15 +145,17 @@ Select a tool by pressing its hotkey. For area tools, click and drag to define t
 
 ### Save & Load
 
-Press `Ctrl+S` at any time to save. Save files are written to:
+Press `Ctrl+S` at any time or use **File → Save City**. Save files are written to:
 
 ```
-~/.tuicity2/saves/{city_name}_{year}{month:02}.json
+~/.tuicity2000/saves/{city_name}_{year}{month:02}.json
 ```
 
-For example, a city named `Springfield` saved in March 2030 writes to `~/.tuicity2/saves/Springfield_203003.json`.
+For example, a city named `Springfield` saved in March 2030 writes to `~/.tuicity2000/saves/Springfield_203003.json`.
 
-To resume, choose **Load City** from the main menu and select a save file from the list.
+Legacy saves under `~/.tuicity2/saves/` are still discovered by the load screen.
+
+To resume, choose **Load City** from the main menu and select a save file from the list with the keyboard or mouse. If you are already inside a city, **File → Load City** first asks whether to save the current city before opening the load screen. The quit flow behaves the same way.
 
 ---
 
@@ -155,7 +163,7 @@ To resume, choose **Load City** from the main menu and select a save file from t
 
 ### Architecture Overview
 
-TuiCity2 is structured around three main pillars:
+TuiCity 2000 is structured around three main pillars:
 
 **1. Screen Stack**
 
@@ -177,7 +185,7 @@ The simulation runs in a dedicated OS thread managed by `core/engine.rs`. The ma
 
 **3. Frontend-Neutral Screen Views + UI Runtime**
 
-Shared geometry and window helpers now live in `src/ui/runtime.rs` (`ClickArea`, `MapUiAreas`, `UiAreas`, centered/clamped window helpers). Each screen builds a frontend-neutral `ScreenView` in `src/ui/view.rs`, and the terminal renderer turns that view into `ratatui` output. In-game UI elements (map, tools panel, budget, inspect, power picker) are movable windows managed by `DesktopState`.
+Shared geometry and window helpers now live in `src/ui/runtime.rs` (`ClickArea`, `MapUiAreas`, `UiAreas`, centered/clamped window helpers). Each screen builds a frontend-neutral `ScreenView` in `src/ui/view.rs`, and the terminal renderer turns that view into `ratatui` output. In-game UI elements (map, tools panel, budget, inspect, tool chooser, help, about) are movable windows managed by `DesktopState`.
 
 `InGameScreen` is also split into focused feature modules rather than one large implementation file:
 - `ingame.rs` keeps the screen shell and top-level lifecycle
@@ -292,19 +300,20 @@ src/
 1. The `ratatui` event loop calls `TerminalRenderer::render(&mut app_state)`.
 2. The active screen builds a frontend-neutral `ScreenView`.
 3. `TerminalRenderer` matches that `ScreenView` and dispatches to the matching terminal renderer in `src/ui/screens/*` or `src/ui/frontends/terminal/ingame.rs`.
-4. `DesktopState` computes the in-game window layout (menu bar, status bar, map, panel, budget, inspect, power picker), including centering, clamping, title bars, and close-button geometry.
+4. `DesktopState` computes the in-game window layout (menu bar, status bar, map, panel, budget, inspect, tool chooser, help, about), including centering, clamping, title bars, and close-button geometry.
 5. `MapView` iterates visible tiles (camera offset + viewport size), picks a glyph and colour from `theme.rs`, and writes `Cell` values into the buffer. To fix terminal font aspect ratios, **the map is rendered using double-width tiles** (each map tile maps to two horizontal terminal cells). When the map is larger than the viewport, dedicated DOS-style horizontal and vertical scrollbars are rendered beside it.
-6. The panel window renders the toolbar, minimap, and tile-info section. Layout is computed from the managed panel window rect so it stays stable while dragging.
-7. Popup windows such as the power-plant picker, budget window, and inspect window render through dedicated `ui/game/*` modules. The menu bar is rendered last so it always appears on top.
+6. The panel window renders the toolbox, minimap, and tile-info section. Layout is computed from the managed panel window rect so it stays stable while dragging, and the toolbar itself is layout-driven rather than row-index driven.
+7. Popup windows such as the tool chooser, budget window, inspect window, help window, and about window render through dedicated `ui/game/*` modules or shared terminal helpers. The menu bar is rendered last so it always appears on top.
 
 ### Adding a New Tool
 
 1. **Add the variant** to the `Tool` enum in `src/core/tool.rs`.
-2. **Implement placement** in the `Tool::place` match arm — return the cost and any `SimCommand`s needed.
-3. **Set the cost** in `Tool::cost`.
-4. **Set the footprint** in `Tool::footprint` (`Point`, `Rect`, `Line`, or `Centered(w, h)`).
-5. **Set the key hint** in `Tool::key_hint` and **bind the hotkey** in `InGameScreen::on_action` inside `src/app/screens/ingame.rs`.
-6. **Add the tool to a group** in `TOOL_GROUPS` in `src/ui/game/toolbar.rs` so it appears in the panel.
+2. **Define the tool metadata** in `Tool`: set `cost`, `target_tile` (or `None` for UI-only tools), `label`, `key_hint`, `can_place`, and `footprint`.
+3. **Mark the interaction style** if needed by updating `uses_line_drag`, `uses_rect_drag`, or `uses_footprint_preview`.
+4. **Bind the hotkey / selection path** in `InGameScreen::on_action` inside `src/app/screens/ingame.rs`.
+5. **Let the engine place it** through the existing `EngineCommand::PlaceTool` / `PlaceLine` / `PlaceRect` flow in `src/core/engine.rs`.
+6. **Expose the tool in the toolbox** in `src/ui/game/toolbar.rs`.
+   Group new tools under the current chooser/button structure (`Zones`, `Power Plants`, `Buildings`, `Amusement`) or add a new chooser group if the category no longer fits the existing layout.
 
 ### Adding a New Sim System
 
@@ -325,4 +334,4 @@ src/
 
 ---
 
-*TuiCity2 is a hobby project. Contributions, bug reports, and feature requests are welcome via GitHub Issues.*
+*TuiCity 2000 is a hobby project. Contributions, bug reports, and feature requests are welcome via GitHub Issues.*

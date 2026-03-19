@@ -49,17 +49,17 @@ impl SimulationEngine {
             sim,
             is_paused: false,
             systems: vec![
-                Box::new(PowerSystem),        // 1. power grid
-                Box::new(PollutionSystem),    // 2. pollution (from industry)
-                Box::new(LandValueSystem),    // 3. land value (uses pollution)
-                Box::new(PoliceSystem),       // 4. crime overlays
-                Box::new(FireSystem),         // 5. fire-risk overlays
-                Box::new(GrowthSystem),       // 6. zone → building (uses all overlays)
-                Box::new(FireSpreadSystem),   // 7. active fire disaster
-                Box::new(FloodSystem),        // 8. flood disaster
-                Box::new(TornadoSystem),      // 9. tornado disaster
-                Box::new(FinanceSystem),      // 10. taxes & maintenance
-                Box::new(HistorySystem),      // 11. record history
+                Box::new(PowerSystem),      // 1. power grid
+                Box::new(PollutionSystem),  // 2. pollution (from industry)
+                Box::new(LandValueSystem),  // 3. land value (uses pollution)
+                Box::new(PoliceSystem),     // 4. crime overlays
+                Box::new(FireSystem),       // 5. fire-risk overlays
+                Box::new(GrowthSystem),     // 6. zone → building (uses all overlays)
+                Box::new(FireSpreadSystem), // 7. active fire disaster
+                Box::new(FloodSystem),      // 8. flood disaster
+                Box::new(TornadoSystem),    // 9. tornado disaster
+                Box::new(FinanceSystem),    // 10. taxes & maintenance
+                Box::new(HistorySystem),    // 11. record history
             ],
         };
         engine.refresh_sector_stats();
@@ -78,7 +78,7 @@ impl SimulationEngine {
                         self.sim.month = 1;
                         self.sim.year += 1;
                     }
-                    
+
                     for system in &mut self.systems {
                         system.tick(&mut self.map, &mut self.sim);
                     }
@@ -223,22 +223,28 @@ impl SimulationEngine {
                     self.sim.plants.remove(&(ax + dx, ay + dy));
                 }
             }
-            
+
             // Register new plant if applicable
             match tool {
                 Tool::PowerPlantCoal => {
-                    self.sim.plants.insert((ax, ay), super::sim::PlantState {
-                        age_months: 0,
-                        max_life_months: 50 * 12, // 50 years
-                        capacity_mw: 500,
-                    });
+                    self.sim.plants.insert(
+                        (ax, ay),
+                        super::sim::PlantState {
+                            age_months: 0,
+                            max_life_months: 50 * 12, // 50 years
+                            capacity_mw: 500,
+                        },
+                    );
                 }
                 Tool::PowerPlantGas => {
-                    self.sim.plants.insert((ax, ay), super::sim::PlantState {
-                        age_months: 0,
-                        max_life_months: 60 * 12, // 60 years
-                        capacity_mw: 800,
-                    });
+                    self.sim.plants.insert(
+                        (ax, ay),
+                        super::sim::PlantState {
+                            age_months: 0,
+                            max_life_months: 60 * 12, // 60 years
+                            capacity_mw: 800,
+                        },
+                    );
                 }
                 _ => {}
             }

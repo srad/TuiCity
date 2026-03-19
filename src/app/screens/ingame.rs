@@ -1,18 +1,76 @@
 use std::collections::VecDeque;
 
 use crate::{
-    app::{input::Action, save, Camera, DesktopState, LineDrag, RectDrag, Tool, UiAreas, WindowId},
+    app::{
+        config, input::Action, save, Camera, DesktopState, LineDrag, RectDrag, Tool, UiAreas,
+        WindowId,
+    },
     core::engine::EngineCommand,
-    ui::{theme::OverlayMode, view::{BudgetViewModel, InGameDesktopView}},
+    game_info::GAME_NAME,
+    ui::{
+        runtime::{ConfirmPromptChoice, ToolChooserKind},
+        theme::{self, OverlayMode},
+        view::{
+            BudgetViewModel, ConfirmPromptViewModel, InGameDesktopView,
+            StatisticsWindowViewModel, TextWindowViewModel, ToolChooserViewModel,
+            ToolbarPaletteViewModel,
+        },
+    },
 };
 
 use super::{
-    ingame_budget::BudgetState,
-    AppContext, Screen, ScreenTransition,
+    ingame_budget::BudgetState, load_city::LoadCityState, AppContext, LoadCityScreen, Screen,
+    ScreenTransition,
 };
 
 /// Ticks between auto-saves (50 ticks/month × 12 months × 6 months ≈ every 6 in-game months).
 pub const AUTO_SAVE_INTERVAL: u32 = 50 * 12 * 6;
+
+const HELP_LINES: &[&str] = &[
+    "Goal",
+    "Grow a solvent city by giving zones three things: road access, power, and demand.",
+    "",
+    "Getting started",
+    "1. Lay a short road spine before zoning.",
+    "2. Place a power plant and connect it with power lines.",
+    "3. Zone mostly residential, then add a smaller amount of commercial and industrial.",
+    "4. Unpause and let buildings grow before spending heavily on extras.",
+    "",
+    "What makes a city work",
+    "Residential zones need nearby jobs.",
+    "Commercial and industrial zones need residents to staff them.",
+    "Unpowered or disconnected zones will stay empty.",
+    "Too much industry raises pollution and drags land value down.",
+    "",
+    "A safe early layout",
+    "Use a simple road grid.",
+    "Keep industry separated from homes.",
+    "Put commercial between residential and industry or near main roads.",
+    "Add parks to lift land value around housing.",
+    "",
+    "Money and survival",
+    "Income comes from developed buildings, not empty zones.",
+    "Do not overbuild roads, rails, or services before tax income arrives.",
+    "Check the budget window if treasury keeps falling.",
+    "",
+    "Disasters and services",
+    "Fire departments reduce fire risk.",
+    "Police stations reduce crime.",
+    "Keep some cash in reserve so one bad month does not stall the city.",
+    "",
+    "Useful controls",
+    "Left click the minimap to jump the camera.",
+    "Use the toolbox for zoning and infrastructure.",
+    "Press Ctrl+S to save, and use File to load another city.",
+];
+
+const ABOUT_LINES: &[&str] = &[
+    GAME_NAME,
+    "Terminal city-building simulation in Rust.",
+    "Author: Saman Sedighi Rad",
+    "Website: https://sedrad.com",
+    "GitHub: https://github.com/srad",
+];
 
 #[derive(Debug, Clone, Copy)]
 pub(super) struct MiddlePanDrag {
@@ -33,9 +91,20 @@ pub(super) struct ScrollbarDrag {
     pub(super) grab_offset: u16,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum ConfirmPromptAction {
+    Quit,
+    LoadCity,
+}
+
 pub struct InGameScreen {
     pub camera: Camera,
     pub current_tool: Tool,
+    pub open_tool_chooser: Option<ToolChooserKind>,
+    pub zone_tool: Tool,
+    pub power_plant_tool: Tool,
+    pub building_tool: Tool,
+    pub amusement_tool: Tool,
     pub ui_areas: UiAreas,
     pub paused: bool,
     pub menu_active: bool,
@@ -49,6 +118,8 @@ pub struct InGameScreen {
     pub rect_drag: Option<RectDrag>,
     pub overlay_mode: OverlayMode,
     pub inspect_pos: Option<(usize, usize)>,
+    confirm_prompt_action: Option<ConfirmPromptAction>,
+    confirm_prompt_selected: ConfirmPromptChoice,
     pub ticks_since_save: u32,
     pub auto_save_interval_ticks: u32,
     pub first_building_notified: bool,
@@ -64,6 +135,11 @@ impl InGameScreen {
         Self {
             camera: Camera::default(),
             current_tool: Tool::Inspect,
+            open_tool_chooser: None,
+            zone_tool: Tool::ZoneRes,
+            power_plant_tool: Tool::PowerPlantCoal,
+            building_tool: Tool::Police,
+            amusement_tool: Tool::Park,
             ui_areas: UiAreas::default(),
             paused: false,
             menu_active: false,
@@ -77,6 +153,8 @@ impl InGameScreen {
             rect_drag: None,
             overlay_mode: OverlayMode::None,
             inspect_pos: None,
+            confirm_prompt_action: None,
+            confirm_prompt_selected: ConfirmPromptChoice::SaveFirst,
             ticks_since_save: 0,
             auto_save_interval_ticks: AUTO_SAVE_INTERVAL,
             first_building_notified: false,
@@ -91,8 +169,11 @@ impl InGameScreen {
     pub fn is_over_window(&self, col: u16, row: u16) -> bool {
         self.desktop.contains(WindowId::Panel, col, row)
             || self.desktop.contains(WindowId::Budget, col, row)
+            || self.desktop.contains(WindowId::Statistics, col, row)
             || self.desktop.contains(WindowId::Inspect, col, row)
             || self.desktop.contains(WindowId::PowerPicker, col, row)
+            || self.desktop.contains(WindowId::Help, col, row)
+            || self.desktop.contains(WindowId::About, col, row)
     }
 
     pub fn push_message(&mut self, text: String) {
@@ -109,27 +190,100 @@ impl InGameScreen {
         if let Some(ref message) = self.message {
             return Some(message.as_str());
         }
-        self.event_messages.front().map(|(message, _)| message.as_str())
+        self.event_messages
+            .front()
+            .map(|(message, _)| message.as_str())
     }
 
     pub fn line_preview(&self) -> &[(usize, usize)] {
-        self.line_drag.as_ref().map(|drag| drag.path.as_slice()).unwrap_or(&[])
+        self.line_drag
+            .as_ref()
+            .map(|drag| drag.path.as_slice())
+            .unwrap_or(&[])
     }
 
     pub fn rect_preview(&self) -> &[(usize, usize)] {
-        self.rect_drag.as_ref().map(|drag| drag.tiles_cache.as_slice()).unwrap_or(&[])
+        self.rect_drag
+            .as_ref()
+            .map(|drag| drag.tiles_cache.as_slice())
+            .unwrap_or(&[])
     }
 
     pub fn is_budget_open(&self) -> bool {
         self.desktop.is_open(WindowId::Budget)
     }
 
-    pub fn is_power_picker_open(&self) -> bool {
+    pub fn is_tool_chooser_open(&self) -> bool {
         self.desktop.is_open(WindowId::PowerPicker)
+    }
+
+    pub fn is_stats_open(&self) -> bool {
+        self.desktop.is_open(WindowId::Statistics)
     }
 
     pub fn is_inspect_open(&self) -> bool {
         self.desktop.is_open(WindowId::Inspect)
+    }
+
+    pub fn is_help_open(&self) -> bool {
+        self.desktop.is_open(WindowId::Help)
+    }
+
+    pub fn is_about_open(&self) -> bool {
+        self.desktop.is_open(WindowId::About)
+    }
+
+    pub fn is_confirm_prompt_open(&self) -> bool {
+        self.confirm_prompt_action.is_some()
+    }
+
+    pub fn open_inspect_window(&mut self) {
+        if self.inspect_pos.is_none() {
+            self.inspect_pos = Some((self.camera.cursor_x, self.camera.cursor_y));
+        }
+        self.desktop.open(WindowId::Inspect, false);
+    }
+
+    pub fn close_inspect_window(&mut self) {
+        self.desktop.close(WindowId::Inspect);
+    }
+
+    pub fn open_stats_window(&mut self) {
+        self.desktop.close(WindowId::Help);
+        self.desktop.close(WindowId::About);
+        self.desktop.open(WindowId::Statistics, true);
+    }
+
+    pub fn close_stats_window(&mut self) {
+        self.desktop.close(WindowId::Statistics);
+    }
+
+    pub fn open_help_window(&mut self) {
+        self.desktop.close(WindowId::Statistics);
+        self.desktop.close(WindowId::About);
+        self.desktop.open(WindowId::Help, true);
+    }
+
+    pub fn close_help_window(&mut self) {
+        self.desktop.close(WindowId::Help);
+    }
+
+    pub fn open_about_window(&mut self) {
+        self.desktop.close(WindowId::Statistics);
+        self.desktop.close(WindowId::Help);
+        self.desktop.open(WindowId::About, true);
+    }
+
+    pub fn close_about_window(&mut self) {
+        self.desktop.close(WindowId::About);
+    }
+
+    pub fn toggle_inspect_window(&mut self) {
+        if self.is_inspect_open() {
+            self.close_inspect_window();
+        } else {
+            self.open_inspect_window();
+        }
     }
 
     pub fn build_view(
@@ -147,6 +301,9 @@ impl InGameScreen {
             sim: sim.clone(),
             camera: self.camera.clone(),
             current_tool: self.current_tool,
+            toolbar: self.toolbar_view_model(),
+            tool_chooser: self.tool_chooser_view_model(),
+            confirm_prompt: self.confirm_prompt_view_model(),
             paused: self.paused,
             overlay_mode: self.overlay_mode,
             menu_active: self.menu_active,
@@ -164,14 +321,197 @@ impl InGameScreen {
                 self.budget_ui.commercial_tax_input.clone(),
                 self.budget_ui.industrial_tax_input.clone(),
             ),
+            statistics: self.statistics_view_model(sim),
+            help: self.help_view_model(),
+            about: self.about_view_model(),
         }
+    }
+
+    fn statistics_view_model(&self, sim: &crate::core::sim::SimState) -> Option<StatisticsWindowViewModel> {
+        self.is_stats_open().then(|| StatisticsWindowViewModel {
+            city_name: sim.city_name.clone(),
+            current_population: sim.population,
+            current_treasury: sim.treasury,
+            current_income: sim.last_income,
+            current_power_produced: sim.power_produced_mw,
+            current_power_consumed: sim.power_consumed_mw,
+            treasury_history: sim.treasury_history.clone(),
+            population_history: sim.population_history.clone(),
+            income_history: sim.income_history.clone(),
+            power_balance_history: sim.power_balance_history.clone(),
+        })
+    }
+
+    fn help_view_model(&self) -> Option<TextWindowViewModel> {
+        self.is_help_open().then(|| TextWindowViewModel {
+            lines: HELP_LINES.iter().map(|line| (*line).to_string()).collect(),
+        })
+    }
+
+    fn about_view_model(&self) -> Option<TextWindowViewModel> {
+        self.is_about_open().then(|| TextWindowViewModel {
+            lines: ABOUT_LINES.iter().map(|line| (*line).to_string()).collect(),
+        })
+    }
+
+    fn toolbar_view_model(&self) -> ToolbarPaletteViewModel {
+        ToolbarPaletteViewModel {
+            current_tool: self.current_tool,
+            zone_tool: self.zone_tool,
+            power_plant_tool: self.power_plant_tool,
+            building_tool: self.building_tool,
+            amusement_tool: self.amusement_tool,
+            chooser: self.open_tool_chooser,
+        }
+    }
+
+    fn tool_chooser_view_model(&self) -> Option<ToolChooserViewModel> {
+        let kind = self.open_tool_chooser?;
+        Some(ToolChooserViewModel {
+            selected_tool: self.remembered_tool_for_chooser(kind),
+            tools: kind.tools().to_vec(),
+        })
+    }
+
+    fn confirm_prompt_view_model(&self) -> Option<ConfirmPromptViewModel> {
+        let action = self.confirm_prompt_action?;
+        let (title, message, primary_label, secondary_label) = match action {
+            ConfirmPromptAction::Quit => (
+                "Exit City".to_string(),
+                "Save city before leaving?".to_string(),
+                "Save And Quit".to_string(),
+                "Quit Without Saving".to_string(),
+            ),
+            ConfirmPromptAction::LoadCity => (
+                "Load City".to_string(),
+                "Save current city before loading another?".to_string(),
+                "Save And Load".to_string(),
+                "Load Without Saving".to_string(),
+            ),
+        };
+        Some(ConfirmPromptViewModel {
+            title,
+            message,
+            selected: self.confirm_prompt_selected,
+            primary_label,
+            secondary_label,
+        })
+    }
+
+    pub fn remembered_tool_for_chooser(&self, kind: ToolChooserKind) -> Tool {
+        match kind {
+            ToolChooserKind::Zones => self.zone_tool,
+            ToolChooserKind::PowerPlants => self.power_plant_tool,
+            ToolChooserKind::Buildings => self.building_tool,
+            ToolChooserKind::Amusement => self.amusement_tool,
+        }
+    }
+
+    fn set_chooser_tool(&mut self, kind: ToolChooserKind, tool: Tool) {
+        match kind {
+            ToolChooserKind::Zones => self.zone_tool = tool,
+            ToolChooserKind::PowerPlants => self.power_plant_tool = tool,
+            ToolChooserKind::Buildings => self.building_tool = tool,
+            ToolChooserKind::Amusement => self.amusement_tool = tool,
+        }
+    }
+
+    pub fn close_tool_chooser(&mut self) {
+        self.open_tool_chooser = None;
+        self.desktop.close(WindowId::PowerPicker);
+    }
+
+    pub(super) fn open_confirm_prompt(&mut self, action: ConfirmPromptAction) {
+        self.confirm_prompt_action = Some(action);
+        self.confirm_prompt_selected = ConfirmPromptChoice::SaveFirst;
+        self.menu_active = false;
+        self.close_tool_chooser();
+    }
+
+    pub fn close_confirm_prompt(&mut self) {
+        self.confirm_prompt_action = None;
+        self.confirm_prompt_selected = ConfirmPromptChoice::SaveFirst;
+    }
+
+    pub fn toggle_tool_chooser(&mut self, kind: ToolChooserKind) {
+        if self.open_tool_chooser == Some(kind) && self.desktop.is_open(WindowId::PowerPicker) {
+            self.close_tool_chooser();
+            return;
+        }
+
+        let win = self.desktop.window_mut(WindowId::PowerPicker);
+        win.title = kind.title();
+        win.width = 34;
+        win.height = kind.tools().len() as u16 + 6;
+
+        self.open_tool_chooser = Some(kind);
+        self.desktop.open(WindowId::PowerPicker, true);
     }
 
     pub fn select_tool(&mut self, tool: Tool) {
         self.current_tool = tool;
+        if let Some(kind) = ToolChooserKind::for_tool(tool) {
+            self.set_chooser_tool(kind, tool);
+        }
+        self.close_tool_chooser();
         self.line_drag = None;
         self.rect_drag = None;
-        self.desktop.close(WindowId::PowerPicker);
+    }
+
+    fn cycle_confirm_prompt_selection(&mut self, delta: i32) {
+        let current = ConfirmPromptChoice::ORDER
+            .iter()
+            .position(|&choice| choice == self.confirm_prompt_selected)
+            .unwrap_or(0) as i32;
+        let len = ConfirmPromptChoice::ORDER.len() as i32;
+        let next = (current + delta).rem_euclid(len) as usize;
+        self.confirm_prompt_selected = ConfirmPromptChoice::ORDER[next];
+    }
+
+    fn open_load_city_screen(&self) -> ScreenTransition {
+        ScreenTransition::Push(Box::new(LoadCityScreen {
+            state: LoadCityState {
+                saves: save::list_saves(),
+                selected: 0,
+                row_areas: Vec::new(),
+            },
+        }))
+    }
+
+    fn confirm_prompt(&mut self, context: &AppContext) -> Option<ScreenTransition> {
+        let action = self.confirm_prompt_action?;
+        match self.confirm_prompt_selected {
+            ConfirmPromptChoice::SaveFirst => {
+                let result = {
+                    let engine = context.engine.read().unwrap();
+                    save::save_city(&engine.sim, &engine.map)
+                };
+                match result {
+                    Ok(()) => {
+                        self.close_confirm_prompt();
+                        match action {
+                            ConfirmPromptAction::Quit => Some(ScreenTransition::Quit),
+                            ConfirmPromptAction::LoadCity => Some(self.open_load_city_screen()),
+                        }
+                    }
+                    Err(e) => {
+                        self.push_message(format!("Save failed: {e}"));
+                        None
+                    }
+                }
+            }
+            ConfirmPromptChoice::ContinueWithoutSaving => {
+                self.close_confirm_prompt();
+                match action {
+                    ConfirmPromptAction::Quit => Some(ScreenTransition::Quit),
+                    ConfirmPromptAction::LoadCity => Some(self.open_load_city_screen()),
+                }
+            }
+            ConfirmPromptChoice::Cancel => {
+                self.close_confirm_prompt();
+                None
+            }
+        }
     }
 }
 
@@ -227,11 +567,94 @@ impl Screen for InGameScreen {
     }
 
     fn on_action(&mut self, action: Action, context: AppContext) -> Option<ScreenTransition> {
+        if self.confirm_prompt_action.is_some() {
+            return match action {
+                Action::Quit => None,
+                Action::MenuBack => {
+                    self.close_confirm_prompt();
+                    None
+                }
+                Action::MenuSelect => self.confirm_prompt(&context),
+                Action::MoveCursor(dx, dy) => {
+                    if dx < 0 || dy < 0 {
+                        self.cycle_confirm_prompt_selection(-1);
+                    } else if dx > 0 || dy > 0 {
+                        self.cycle_confirm_prompt_selection(1);
+                    }
+                    None
+                }
+                Action::CharInput('y') | Action::CharInput('Y') => {
+                    self.confirm_prompt_selected = ConfirmPromptChoice::SaveFirst;
+                    self.confirm_prompt(&context)
+                }
+                Action::CharInput('n') | Action::CharInput('N') => {
+                    self.confirm_prompt_selected = ConfirmPromptChoice::ContinueWithoutSaving;
+                    self.confirm_prompt(&context)
+                }
+                Action::CharInput('c') | Action::CharInput('C') => {
+                    self.close_confirm_prompt();
+                    None
+                }
+                Action::MouseClick { col, row } => {
+                    if let Some(choice) = self
+                        .ui_areas
+                        .exit_prompt_items
+                        .iter()
+                        .position(|area| area.contains(col, row))
+                        .and_then(|index| ConfirmPromptChoice::ORDER.get(index).copied())
+                    {
+                        self.confirm_prompt_selected = choice;
+                        self.confirm_prompt(&context)
+                    } else {
+                        None
+                    }
+                }
+                _ => None,
+            };
+        }
+
+        if self.is_stats_open() || self.is_about_open() || self.is_help_open() {
+            return match action {
+                Action::MenuBack => {
+                    if self.is_stats_open() {
+                        self.close_stats_window();
+                    } else if self.is_about_open() {
+                        self.close_about_window();
+                    } else {
+                        self.close_help_window();
+                    }
+                    None
+                }
+                Action::MouseClick { col, row } => {
+                    self.handle_mouse_click_action(col, row, &context);
+                    None
+                }
+                Action::MouseDrag { col, row } => {
+                    self.handle_mouse_drag_action(col, row, &context);
+                    None
+                }
+                Action::MouseUp { col, row } => {
+                    self.handle_mouse_up_action(col, row, &context);
+                    None
+                }
+                Action::Quit => {
+                    self.open_confirm_prompt(ConfirmPromptAction::Quit);
+                    None
+                }
+                _ => None,
+            };
+        }
+
         if let Action::MouseClick { col, row } = action {
             let (consumed, transition) = self.handle_menu_click(col, row, &context);
             if consumed {
                 return transition;
             }
+        }
+
+        if matches!(action, Action::Quit) {
+            self.open_confirm_prompt(ConfirmPromptAction::Quit);
+            return None;
         }
 
         if matches!(action, Action::MenuActivate) {
@@ -256,7 +679,8 @@ impl Screen for InGameScreen {
                             .menu_item_selected
                             .min(self.menu_item_count(self.menu_selected).saturating_sub(1));
                     } else if dx > 0 {
-                        self.menu_selected = (self.menu_selected + 1).min(4);
+                        self.menu_selected = (self.menu_selected + 1)
+                            .min(crate::app::screens::MENU_TITLES.len().saturating_sub(1));
                         self.menu_item_selected = self
                             .menu_item_selected
                             .min(self.menu_item_count(self.menu_selected).saturating_sub(1));
@@ -291,14 +715,13 @@ impl Screen for InGameScreen {
             return None;
         }
 
-        if self.is_power_picker_open() && matches!(action, Action::MenuBack) {
-            self.desktop.close(WindowId::PowerPicker);
+        if self.is_tool_chooser_open() && matches!(action, Action::MenuBack) {
+            self.close_tool_chooser();
             return None;
         }
 
         if self.is_inspect_open() && matches!(action, Action::MenuBack) {
-            self.inspect_pos = None;
-            self.desktop.close(WindowId::Inspect);
+            self.close_inspect_window();
             return None;
         }
 
@@ -330,7 +753,9 @@ impl Screen for InGameScreen {
                     (engine.map.width, engine.map.height)
                 };
                 self.camera.move_cursor(dx, dy, mw, mh);
-                if self.current_tool != Tool::Inspect && !Tool::uses_footprint_preview(self.current_tool) {
+                if self.current_tool != Tool::Inspect
+                    && !Tool::uses_footprint_preview(self.current_tool)
+                {
                     self.place_current_tool(&context);
                 }
             }
@@ -346,13 +771,19 @@ impl Screen for InGameScreen {
                     self.open_budget(&context);
                     return None;
                 }
+                if c == 'P' {
+                    let next = theme::cycle_theme();
+                    let _ = config::persist_theme_preference(next);
+                    self.push_message(format!("Theme: {}", next.label()));
+                    return None;
+                }
                 if c == '\t' {
                     self.overlay_mode = self.overlay_mode.next();
                     return None;
                 }
                 let new_tool = match c {
                     'q' => {
-                        *context.running = false;
+                        self.open_confirm_prompt(ConfirmPromptAction::Quit);
                         None
                     }
                     ' ' => {
@@ -366,10 +797,7 @@ impl Screen for InGameScreen {
                     'r' => Some(Tool::Road),
                     'l' => Some(Tool::Rail),
                     'p' => Some(Tool::PowerLine),
-                    'e' => {
-                        self.desktop.toggle(WindowId::PowerPicker, true);
-                        Some(Tool::PowerPlantCoal)
-                    }
+                    'e' => Some(Tool::PowerPlantCoal),
                     'g' => Some(Tool::PowerPlantGas),
                     'k' => Some(Tool::Park),
                     's' => Some(Tool::Police),
@@ -428,7 +856,7 @@ impl Screen for InGameScreen {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::app::screens::BudgetFocus;
+    use crate::{app::screens::BudgetFocus, ui::runtime::ToolChooserKind};
     use std::sync::{Arc, RwLock};
 
     fn fresh_screen() -> InGameScreen {
@@ -490,6 +918,20 @@ mod tests {
         assert_eq!(screen.overlay_mode, OverlayMode::Power);
         screen.overlay_mode = screen.overlay_mode.next();
         assert_eq!(screen.overlay_mode, OverlayMode::Pollution);
+    }
+
+    #[test]
+    fn select_tool_updates_chooser_memory_and_closes_popup() {
+        let mut screen = fresh_screen();
+        screen.open_tool_chooser = Some(ToolChooserKind::Zones);
+        screen.desktop.open(WindowId::PowerPicker, false);
+
+        screen.select_tool(Tool::ZoneComm);
+
+        assert_eq!(screen.current_tool, Tool::ZoneComm);
+        assert_eq!(screen.zone_tool, Tool::ZoneComm);
+        assert_eq!(screen.open_tool_chooser, None);
+        assert!(!screen.desktop.is_open(WindowId::PowerPicker));
     }
 
     #[test]
@@ -555,9 +997,24 @@ mod tests {
     #[test]
     fn horizontal_scrollbar_increment_pans_right() {
         let mut screen = fresh_screen();
-        screen.ui_areas.map.viewport = crate::app::ClickArea { x: 0, y: 0, width: 20, height: 10 };
-        screen.ui_areas.map.horizontal_bar = crate::app::ClickArea { x: 0, y: 10, width: 20, height: 1 };
-        screen.ui_areas.map.horizontal_inc = crate::app::ClickArea { x: 19, y: 10, width: 1, height: 1 };
+        screen.ui_areas.map.viewport = crate::app::ClickArea {
+            x: 0,
+            y: 0,
+            width: 20,
+            height: 10,
+        };
+        screen.ui_areas.map.horizontal_bar = crate::app::ClickArea {
+            x: 0,
+            y: 10,
+            width: 20,
+            height: 1,
+        };
+        screen.ui_areas.map.horizontal_inc = crate::app::ClickArea {
+            x: 19,
+            y: 10,
+            width: 1,
+            height: 1,
+        };
 
         let engine = Arc::new(RwLock::new(crate::core::engine::SimulationEngine::new(
             crate::core::map::Map::new(100, 100),
@@ -574,6 +1031,184 @@ mod tests {
         let consumed = screen.handle_scrollbar_click(19, 10, &context);
         assert!(consumed);
         assert_eq!(screen.camera.offset_x, 1);
+    }
+
+    #[test]
+    fn outside_click_closes_open_tool_chooser() {
+        let mut screen = fresh_screen();
+        screen.toggle_tool_chooser(ToolChooserKind::Buildings);
+        screen.desktop.window_mut(WindowId::Panel).visible = false;
+        screen.desktop.window_mut(WindowId::Map).visible = false;
+
+        let engine = Arc::new(RwLock::new(crate::core::engine::SimulationEngine::new(
+            crate::core::map::Map::new(20, 20),
+            crate::core::sim::SimState::default(),
+        )));
+        let cmd_tx = None;
+        let mut running = true;
+        let context = AppContext {
+            engine: &engine,
+            cmd_tx: &cmd_tx,
+            running: &mut running,
+        };
+
+        let consumed = screen.handle_mouse_click_action(40, 20, &context);
+        assert!(consumed);
+        assert_eq!(screen.open_tool_chooser, None);
+        assert!(!screen.desktop.is_open(WindowId::PowerPicker));
+    }
+
+    #[test]
+    fn minimap_click_centers_camera_even_inside_panel() {
+        let mut screen = fresh_screen();
+        screen.camera.view_w = 20;
+        screen.camera.view_h = 10;
+        screen.ui_areas.minimap = crate::app::ClickArea {
+            x: 10,
+            y: 10,
+            width: 10,
+            height: 5,
+        };
+        let panel = screen.desktop.window_mut(WindowId::Panel);
+        panel.visible = true;
+        panel.x = 8;
+        panel.y = 8;
+        panel.width = 20;
+        panel.height = 12;
+
+        let engine = Arc::new(RwLock::new(crate::core::engine::SimulationEngine::new(
+            crate::core::map::Map::new(100, 100),
+            crate::core::sim::SimState::default(),
+        )));
+        let cmd_tx = None;
+        let mut running = true;
+        let context = AppContext {
+            engine: &engine,
+            cmd_tx: &cmd_tx,
+            running: &mut running,
+        };
+
+        let consumed = screen.handle_mouse_click_action(19, 14, &context);
+        assert!(consumed);
+        assert!(screen.camera.offset_x > 0);
+        assert!(screen.camera.offset_y > 0);
+    }
+
+    #[test]
+    fn inspect_click_updates_position_without_opening_window() {
+        let mut screen = fresh_screen();
+        screen.current_tool = Tool::Inspect;
+        screen.ui_areas.map.viewport = crate::app::ClickArea {
+            x: 0,
+            y: 0,
+            width: 20,
+            height: 10,
+        };
+        screen.desktop.window_mut(WindowId::Panel).visible = false;
+        screen.desktop.window_mut(WindowId::Map).visible = false;
+
+        let engine = Arc::new(RwLock::new(crate::core::engine::SimulationEngine::new(
+            crate::core::map::Map::new(100, 100),
+            crate::core::sim::SimState::default(),
+        )));
+        let cmd_tx = None;
+        let mut running = true;
+        let context = AppContext {
+            engine: &engine,
+            cmd_tx: &cmd_tx,
+            running: &mut running,
+        };
+
+        let consumed = screen.handle_mouse_click_action(6, 4, &context);
+
+        assert!(consumed);
+        assert_eq!(screen.inspect_pos, Some((3, 4)));
+        assert!(!screen.is_inspect_open());
+    }
+
+    #[test]
+    fn opening_inspect_window_seeds_current_cursor_tile() {
+        let mut screen = fresh_screen();
+        screen.camera.cursor_x = 7;
+        screen.camera.cursor_y = 9;
+
+        screen.open_inspect_window();
+
+        assert!(screen.is_inspect_open());
+        assert_eq!(screen.inspect_pos, Some((7, 9)));
+    }
+
+    #[test]
+    fn quit_action_opens_confirm_prompt_instead_of_quitting() {
+        let mut screen = fresh_screen();
+        let engine = Arc::new(RwLock::new(crate::core::engine::SimulationEngine::new(
+            crate::core::map::Map::new(10, 10),
+            crate::core::sim::SimState::default(),
+        )));
+        let cmd_tx = None;
+        let mut running = true;
+        let context = AppContext {
+            engine: &engine,
+            cmd_tx: &cmd_tx,
+            running: &mut running,
+        };
+
+        let transition = screen.on_action(Action::Quit, context);
+
+        assert!(transition.is_none());
+        assert_eq!(
+            screen.confirm_prompt_action,
+            Some(ConfirmPromptAction::Quit)
+        );
+        assert!(running);
+    }
+
+    #[test]
+    fn load_city_menu_action_opens_confirm_prompt() {
+        let mut screen = fresh_screen();
+        let engine = Arc::new(RwLock::new(crate::core::engine::SimulationEngine::new(
+            crate::core::map::Map::new(10, 10),
+            crate::core::sim::SimState::default(),
+        )));
+        let cmd_tx = None;
+        let mut running = true;
+        let context = AppContext {
+            engine: &engine,
+            cmd_tx: &cmd_tx,
+            running: &mut running,
+        };
+
+        let transition =
+            screen.handle_menu_action(super::super::ingame_menu::MenuAction::LoadCity, &context);
+
+        assert!(transition.is_none());
+        assert_eq!(
+            screen.confirm_prompt_action,
+            Some(ConfirmPromptAction::LoadCity)
+        );
+    }
+
+    #[test]
+    fn confirming_load_city_without_saving_pushes_screen_and_clears_prompt() {
+        let mut screen = fresh_screen();
+        let engine = Arc::new(RwLock::new(crate::core::engine::SimulationEngine::new(
+            crate::core::map::Map::new(10, 10),
+            crate::core::sim::SimState::default(),
+        )));
+        let cmd_tx = None;
+        let mut running = true;
+        let context = AppContext {
+            engine: &engine,
+            cmd_tx: &cmd_tx,
+            running: &mut running,
+        };
+        screen.open_confirm_prompt(ConfirmPromptAction::LoadCity);
+        screen.confirm_prompt_selected = ConfirmPromptChoice::ContinueWithoutSaving;
+
+        let transition = screen.confirm_prompt(&context);
+
+        assert!(matches!(transition, Some(ScreenTransition::Push(_))));
+        assert_eq!(screen.confirm_prompt_action, None);
     }
 
     #[test]
@@ -631,13 +1266,25 @@ mod tests {
             cmd_tx: &cmd_tx,
             running: &mut running,
         };
-        screen.on_action(Action::MouseClick { col: start_x + 2, row: start_y }, click_context);
+        screen.on_action(
+            Action::MouseClick {
+                col: start_x + 2,
+                row: start_y,
+            },
+            click_context,
+        );
         let drag_context = AppContext {
             engine: &engine,
             cmd_tx: &cmd_tx,
             running: &mut running,
         };
-        screen.on_action(Action::MouseDrag { col: start_x + 6, row: start_y + 3 }, drag_context);
+        screen.on_action(
+            Action::MouseDrag {
+                col: start_x + 6,
+                row: start_y + 3,
+            },
+            drag_context,
+        );
 
         assert_eq!(screen.desktop.window(WindowId::Budget).x, start_x + 4);
         assert_eq!(screen.desktop.window(WindowId::Budget).y, start_y + 3);
@@ -669,7 +1316,9 @@ mod tests {
             running: &mut running,
         };
         screen.on_action(Action::CharInput('4'), event_context);
-        let cmd = rx.try_recv().expect("budget text input should emit a tax update command");
+        let cmd = rx
+            .try_recv()
+            .expect("budget text input should emit a tax update command");
         engine.write().unwrap().execute_command(cmd).unwrap();
 
         let event_context = AppContext {
@@ -678,7 +1327,9 @@ mod tests {
             running: &mut running,
         };
         screen.on_action(Action::CharInput('2'), event_context);
-        let cmd = rx.try_recv().expect("budget text input should emit a second tax update command");
+        let cmd = rx
+            .try_recv()
+            .expect("budget text input should emit a second tax update command");
         engine.write().unwrap().execute_command(cmd).unwrap();
 
         assert_eq!(screen.budget_ui.commercial_tax_input, "42");
@@ -713,7 +1364,9 @@ mod tests {
                 running: &mut running,
             };
             screen.on_action(Action::CharInput(key), event_context);
-            let cmd = rx.try_recv().expect("typed tax input should emit a tax update command");
+            let cmd = rx
+                .try_recv()
+                .expect("typed tax input should emit a tax update command");
             engine.write().unwrap().execute_command(cmd).unwrap();
         }
 
@@ -749,11 +1402,22 @@ mod tests {
         };
         let transition = screen.on_action(Action::MoveCursor(-1, 0), event_context);
         assert!(transition.is_none());
-        let cmd = rx.try_recv().expect("left key adjustment should emit a tax update command");
+        let cmd = rx
+            .try_recv()
+            .expect("left key adjustment should emit a tax update command");
         engine.write().unwrap().execute_command(cmd).unwrap();
 
-        assert_eq!(screen.budget_ui.commercial_tax, start_value.saturating_sub(1));
-        assert_eq!(screen.budget_ui.commercial_tax_input, (start_value.saturating_sub(1)).to_string());
-        assert_eq!(engine.read().unwrap().sim.tax_rates.commercial as usize, start_value.saturating_sub(1));
+        assert_eq!(
+            screen.budget_ui.commercial_tax,
+            start_value.saturating_sub(1)
+        );
+        assert_eq!(
+            screen.budget_ui.commercial_tax_input,
+            (start_value.saturating_sub(1)).to_string()
+        );
+        assert_eq!(
+            engine.read().unwrap().sim.tax_rates.commercial as usize,
+            start_value.saturating_sub(1)
+        );
     }
 }

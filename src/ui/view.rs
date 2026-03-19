@@ -7,19 +7,36 @@ use crate::{
         sim::{MaintenanceBreakdown, SimState, TaxRates},
         tool::Tool,
     },
-    ui::theme::OverlayMode,
+    ui::{
+        runtime::{ConfirmPromptChoice, ToolChooserKind},
+        theme::{OverlayMode, ThemePreset},
+    },
 };
 
 #[derive(Clone, Debug)]
 pub struct StartViewModel {
     pub selected: usize,
-    pub options: [&'static str; 3],
+    pub options: [&'static str; 4],
 }
 
 #[derive(Clone, Debug)]
 pub struct LoadCityViewModel {
     pub saves: Vec<SaveEntry>,
     pub selected: usize,
+}
+
+#[derive(Clone, Debug)]
+pub struct ThemeSettingsViewModel {
+    pub themes: Vec<ThemePreset>,
+    pub selected: usize,
+    pub active: ThemePreset,
+}
+
+#[derive(Clone, Debug)]
+pub struct SettingsViewModel {
+    pub options: Vec<String>,
+    pub selected: usize,
+    pub current_theme_label: String,
 }
 
 #[derive(Clone, Debug)]
@@ -73,11 +90,58 @@ impl BudgetViewModel {
 }
 
 #[derive(Clone)]
+pub struct ToolbarPaletteViewModel {
+    pub current_tool: Tool,
+    pub zone_tool: Tool,
+    pub power_plant_tool: Tool,
+    pub building_tool: Tool,
+    pub amusement_tool: Tool,
+    pub chooser: Option<ToolChooserKind>,
+}
+
+#[derive(Clone)]
+pub struct ToolChooserViewModel {
+    pub selected_tool: Tool,
+    pub tools: Vec<Tool>,
+}
+
+#[derive(Clone)]
+pub struct ConfirmPromptViewModel {
+    pub title: String,
+    pub message: String,
+    pub selected: ConfirmPromptChoice,
+    pub primary_label: String,
+    pub secondary_label: String,
+}
+
+#[derive(Clone)]
+pub struct TextWindowViewModel {
+    pub lines: Vec<String>,
+}
+
+#[derive(Clone)]
+pub struct StatisticsWindowViewModel {
+    pub city_name: String,
+    pub current_population: u64,
+    pub current_treasury: i64,
+    pub current_income: i64,
+    pub current_power_produced: u32,
+    pub current_power_consumed: u32,
+    pub treasury_history: Vec<i64>,
+    pub population_history: Vec<u64>,
+    pub income_history: Vec<i64>,
+    pub power_balance_history: Vec<i32>,
+}
+
+#[derive(Clone)]
 pub struct InGameDesktopView {
     pub map: Map,
     pub sim: SimState,
     pub camera: Camera,
     pub current_tool: Tool,
+    pub toolbar: ToolbarPaletteViewModel,
+    pub tool_chooser: Option<ToolChooserViewModel>,
+    pub confirm_prompt: Option<ConfirmPromptViewModel>,
     pub paused: bool,
     pub overlay_mode: OverlayMode,
     pub menu_active: bool,
@@ -88,6 +152,9 @@ pub struct InGameDesktopView {
     pub rect_preview: Vec<(usize, usize)>,
     pub inspect_pos: Option<(usize, usize)>,
     pub budget: BudgetViewModel,
+    pub statistics: Option<StatisticsWindowViewModel>,
+    pub help: Option<TextWindowViewModel>,
+    pub about: Option<TextWindowViewModel>,
 }
 
 #[derive(Clone)]
@@ -95,5 +162,7 @@ pub enum ScreenView {
     Start(StartViewModel),
     LoadCity(LoadCityViewModel),
     NewCity(NewCityViewModel),
+    Settings(SettingsViewModel),
     InGame(InGameDesktopView),
+    ThemeSettings(ThemeSettingsViewModel),
 }

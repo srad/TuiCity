@@ -1,6 +1,9 @@
 use crate::{
-    app::{screens::StartState, ClickArea},
-    ui::{theme, view::StartViewModel},
+    app::{screens::ThemeSettingsState, ClickArea},
+    ui::{
+        theme,
+        view::ThemeSettingsViewModel,
+    },
 };
 use ratatui::{
     buffer::Buffer,
@@ -11,168 +14,68 @@ use ratatui::{
 };
 
 const AUTHOR_LINE: &str = "by Saman Sedighi Rad";
-const TITLE_ART: [&str; 4] = [
-    "████████╗██╗   ██╗██╗ ██████╗██╗████████╗██╗   ██╗",
-    "╚══██╔══╝██║   ██║██║██╔════╝██║╚══██╔══╝╚██╗ ██╔╝",
-    "   ██║   ██║   ██║██║██║     ██║   ██║    ╚████╔╝ ",
-    "   ██║   ╚██████╔╝██║╚██████╗██║   ██║      ██║   ",
-];
 
-pub fn render_start(frame: &mut Frame, area: Rect, view: &StartViewModel, state: &mut StartState) {
-    state.menu_areas = [ClickArea::default(); 4];
-
-    if area.width < 72 || area.height < 27 {
-        render_compact_start(frame, area, view, state);
-        return;
-    }
-
-    let ui = theme::ui_palette();
+pub fn render_theme_settings(
+    frame: &mut Frame,
+    area: Rect,
+    view: &ThemeSettingsViewModel,
+    state: &mut ThemeSettingsState,
+) {
+    state.row_areas.clear();
     paint_background(frame.buffer_mut(), area);
 
-    let title_y = area.y + 1;
-    render_title(frame.buffer_mut(), area, title_y);
+    let panel_w = area.width.saturating_sub(18).min(72).max(54);
+    let content_h = 5 + view.themes.len() as u16 * 3;
+    let available_h = area.height.saturating_sub(6).max(8);
+    let panel_h = content_h.min(available_h).max(available_h.min(16));
+    let panel_x = area.x + area.width.saturating_sub(panel_w) / 2;
+    let panel_y = area.y + 3;
 
-    let menu_w = area.width.saturating_sub(20).min(50).max(42);
-    let menu_h = 17u16;
-    let menu_x = area.x + area.width.saturating_sub(menu_w) / 2;
-    let menu_y = title_y + 6;
-    render_menu(
+    render_title(frame.buffer_mut(), area, area.y + 1);
+    render_panel(
         frame,
-        Rect::new(menu_x, menu_y, menu_w, menu_h),
+        Rect::new(panel_x, panel_y, panel_w, panel_h),
         view,
         state,
-        &ui,
     );
-
     render_footer(frame.buffer_mut(), area);
 }
 
-fn render_compact_start(
-    frame: &mut Frame,
-    area: Rect,
-    view: &StartViewModel,
-    state: &mut StartState,
-) {
-    let ui = theme::ui_palette();
-    paint_background(frame.buffer_mut(), area);
-
-    let rect = Rect::new(
-        area.x + 2,
-        area.y + area.height.saturating_sub(12) / 2,
-        area.width.saturating_sub(4),
-        10.min(area.height.saturating_sub(2)),
-    );
-    frame.render_widget(Clear, rect);
-    frame.render_widget(
-        Block::default()
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Rgb(106, 226, 225)))
-            .style(Style::default().bg(Color::Rgb(33, 35, 54))),
-        rect,
-    );
-
-    let buf = frame.buffer_mut();
-    set_centered_string(
-        buf,
-        rect.x,
-        rect.y + 1,
-        rect.width,
-        "TuiCity 2000",
-        Style::default()
-            .fg(Color::Rgb(255, 221, 119))
-            .bg(Color::Rgb(33, 35, 54))
-            .add_modifier(Modifier::BOLD),
-    );
-    set_centered_string(
-        buf,
-        rect.x,
-        rect.y + 2,
-        rect.width,
-        "terminal city builder",
-        Style::default()
-            .fg(Color::Rgb(162, 235, 228))
-            .bg(Color::Rgb(33, 35, 54)),
-    );
-
-    for (i, opt) in view.options.iter().enumerate() {
-        let y = rect.y + 4 + i as u16;
-        if y >= rect.y + rect.height.saturating_sub(1) {
-            break;
-        }
-        state.menu_areas[i] = ClickArea {
-            x: rect.x + 2,
-            y,
-            width: rect.width.saturating_sub(4),
-            height: 1,
-        };
-        let selected = i == view.selected;
-        let text = if selected {
-            format!("> {} <", opt)
-        } else {
-            opt.to_string()
-        };
-        let padded = format!("{:^width$}", text, width = rect.width.saturating_sub(4) as usize);
-        let style = if selected {
-            Style::default()
-                .fg(Color::Rgb(27, 27, 42))
-                .bg(Color::Rgb(255, 221, 119))
-                .add_modifier(Modifier::BOLD)
-        } else {
-            Style::default()
-                .fg(ui.text_primary)
-                .bg(Color::Rgb(33, 35, 54))
-        };
-        buf.set_string(rect.x + 2, y, padded, style);
-    }
-}
-
 fn render_title(buf: &mut Buffer, area: Rect, y: u16) {
-    let title_colors = [
-        Color::Rgb(255, 147, 94),
-        Color::Rgb(255, 183, 107),
-        Color::Rgb(164, 241, 219),
-        Color::Rgb(106, 226, 225),
-    ];
-
-    for (idx, line) in TITLE_ART.iter().enumerate() {
-        set_centered_string(
-            buf,
-            area.x,
-            y + idx as u16,
-            area.width,
-            line,
-            Style::default()
-                .fg(title_colors[idx])
-                .bg(Color::Reset)
-                .add_modifier(Modifier::BOLD),
-        );
-    }
-
     set_centered_string(
         buf,
         area.x,
-        y + TITLE_ART.len() as u16 + 1,
+        y,
         area.width,
-        "2 0 0 0",
+        "Theme Settings",
         Style::default()
             .fg(Color::Rgb(255, 221, 119))
             .bg(Color::Reset)
             .add_modifier(Modifier::BOLD),
     );
+    set_centered_string(
+        buf,
+        area.x,
+        y + 1,
+        area.width,
+        "preview palettes live",
+        Style::default()
+            .fg(Color::Rgb(170, 223, 219))
+            .bg(Color::Reset),
+    );
 }
 
-fn render_menu(
+fn render_panel(
     frame: &mut Frame,
     rect: Rect,
-    view: &StartViewModel,
-    state: &mut StartState,
-    ui: &theme::UiPalette,
+    view: &ThemeSettingsViewModel,
+    state: &mut ThemeSettingsState,
 ) {
     frame.render_widget(Clear, rect);
     frame.render_widget(
         Block::default()
             .borders(Borders::ALL)
-            .title(" MAIN MENU ")
+            .title(" PALETTE LAB ")
             .title_style(
                 Style::default()
                     .fg(Color::Rgb(255, 221, 119))
@@ -195,36 +98,88 @@ fn render_menu(
         return;
     }
 
-    for (i, opt) in view.options.iter().enumerate() {
-        let option_y = inner.y + i as u16 * 4;
-        if option_y + 2 >= inner.y + inner.height {
+    let hint = format!("Current: {}", view.active.label());
+    buf.set_string(
+        inner.x,
+        inner.y,
+        format!("{:<width$}", truncate(&hint, inner.width as usize), width = inner.width as usize),
+        Style::default()
+            .fg(Color::Rgb(170, 223, 219))
+            .bg(Color::Rgb(35, 34, 55))
+            .add_modifier(Modifier::BOLD),
+    );
+
+    for (idx, preset) in view.themes.iter().copied().enumerate() {
+        let row_y = inner.y + 2 + idx as u16 * 3;
+        if row_y + 1 >= inner.y + inner.height {
             break;
         }
-        state.menu_areas[i] = ClickArea {
+        state.row_areas.push(ClickArea {
             x: inner.x,
-            y: option_y,
+            y: row_y,
             width: inner.width,
-            height: 3,
-        };
+            height: 2,
+        });
 
-        let selected = i == view.selected;
-        let line_style = if selected {
+        let selected = idx == view.selected;
+        let palette = theme::palette_for(preset);
+        let row_style = if selected {
             Style::default()
                 .fg(Color::Rgb(28, 28, 42))
                 .bg(Color::Rgb(255, 221, 119))
                 .add_modifier(Modifier::BOLD)
         } else {
             Style::default()
-                .fg(ui.text_primary)
+                .fg(Color::Rgb(238, 232, 225))
                 .bg(Color::Rgb(56, 42, 78))
         };
 
         let blank = format!("{:^width$}", " ", width = inner.width as usize);
-        let label = format!("  {}  ", opt);
-        let mid = format!("{:^width$}", label, width = inner.width as usize);
-        buf.set_string(inner.x, option_y, blank.clone(), line_style);
-        buf.set_string(inner.x, option_y + 1, mid, line_style);
-        buf.set_string(inner.x, option_y + 2, blank, line_style);
+        buf.set_string(inner.x, row_y, blank.clone(), row_style);
+        buf.set_string(inner.x, row_y + 1, blank, row_style);
+
+        let name = if preset == view.active {
+            format!("{}  (ACTIVE)", preset.label())
+        } else {
+            preset.label().to_string()
+        };
+        buf.set_string(
+            inner.x + 2,
+            row_y,
+            truncate(&name, inner.width.saturating_sub(4) as usize),
+            row_style,
+        );
+
+        render_swatch(
+            buf,
+            inner.x + 2,
+            row_y + 1,
+            palette.title,
+            palette.selection_bg,
+            palette.accent,
+            palette.info,
+            palette.success,
+            palette.warning,
+            row_style.bg.unwrap_or(Color::Rgb(56, 42, 78)),
+        );
+    }
+}
+
+fn render_swatch(
+    buf: &mut Buffer,
+    x: u16,
+    y: u16,
+    a: Color,
+    b: Color,
+    c: Color,
+    d: Color,
+    e: Color,
+    f: Color,
+    bg: Color,
+) {
+    let colors = [a, b, c, d, e, f];
+    for (idx, color) in colors.iter().enumerate() {
+        buf.set_string(x + idx as u16 * 3, y, "██", Style::default().fg(*color).bg(bg));
     }
 }
 
@@ -232,7 +187,6 @@ fn render_footer(buf: &mut Buffer, area: Rect) {
     if area.height < 3 {
         return;
     }
-
     set_centered_string(
         buf,
         area.x,
@@ -249,7 +203,7 @@ fn render_footer(buf: &mut Buffer, area: Rect) {
         area.x,
         area.y + area.height.saturating_sub(2),
         area.width,
-        "Arrow Keys Move  •  Enter Select  •  Mouse Active",
+        "Arrow Keys Preview  •  Enter Back  •  Esc Back  •  Shift+P Cycle",
         Style::default()
             .fg(Color::Rgb(170, 223, 219))
             .bg(Color::Reset),
@@ -283,56 +237,9 @@ fn paint_background(buf: &mut Buffer, area: Rect) {
         }
     }
 
-    paint_sun(buf, area, sun_x, sun_y, horizon_y);
-    paint_clouds(buf, area);
     paint_grid(buf, area, horizon_y);
     paint_skyline(buf, area, horizon_y);
     paint_scanlines(buf, area);
-}
-
-fn paint_sun(buf: &mut Buffer, area: Rect, center_x: u16, center_y: u16, horizon_y: u16) {
-    let radius_x = (area.width / 7).max(8);
-    let radius_y = (area.height / 7).max(4);
-
-    for y in center_y.saturating_sub(radius_y)..=(center_y + radius_y).min(horizon_y) {
-        let dy = y as i32 - center_y as i32;
-        let ny = dy as f32 / radius_y.max(1) as f32;
-        for x in center_x.saturating_sub(radius_x)..=(center_x + radius_x).min(area.x + area.width - 1) {
-            let dx = x as i32 - center_x as i32;
-            let nx = dx as f32 / radius_x.max(1) as f32;
-            let dist = nx * nx + ny * ny;
-            if dist > 1.0 {
-                continue;
-            }
-            if dy > 0 && dy % 2 != 0 {
-                continue;
-            }
-            let color = lerp_color((255, 191, 98), (255, 237, 166), 1.0 - dist.min(1.0));
-            if let Some(cell) = buf.cell_mut((x, y)) {
-                cell.set_symbol(" ").set_fg(color).set_bg(color);
-            }
-        }
-    }
-}
-
-fn paint_clouds(buf: &mut Buffer, area: Rect) {
-    for y in area.y + 2..area.y + area.height / 2 {
-        for x in area.x..area.x + area.width {
-            let seed = hash_point(x, y);
-            if seed % 97 == 0 || seed % 131 == 0 {
-                let length = 3 + (seed % 7) as u16;
-                for dx in 0..length {
-                    let px = x + dx;
-                    if px >= area.x + area.width {
-                        break;
-                    }
-                    if let Some(cell) = buf.cell_mut((px, y)) {
-                        cell.set_symbol("~").set_fg(Color::Rgb(255, 196, 185));
-                    }
-                }
-            }
-        }
-    }
 }
 
 fn paint_grid(buf: &mut Buffer, area: Rect, horizon_y: u16) {
