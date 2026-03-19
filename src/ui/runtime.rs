@@ -38,45 +38,90 @@ pub struct MapUiAreas {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ToolChooserKind {
     Zones,
+    Transport,
+    Utilities,
     PowerPlants,
     Buildings,
-    Amusement,
 }
 
 impl ToolChooserKind {
     pub fn title(self) -> &'static str {
         match self {
             ToolChooserKind::Zones => " Zone Selection ",
+            ToolChooserKind::Transport => " Transport Selection ",
+            ToolChooserKind::Utilities => " Utility Selection ",
             ToolChooserKind::PowerPlants => " Power Plant Selection ",
-            ToolChooserKind::Buildings => " Civic Building Selection ",
-            ToolChooserKind::Amusement => " Amusement Selection ",
+            ToolChooserKind::Buildings => " Building Selection ",
         }
     }
 
     pub fn button_label(self) -> &'static str {
         match self {
             ToolChooserKind::Zones => "Zones",
+            ToolChooserKind::Transport => "Transport",
+            ToolChooserKind::Utilities => "Utilities",
             ToolChooserKind::PowerPlants => "Power Plants",
             ToolChooserKind::Buildings => "Buildings",
-            ToolChooserKind::Amusement => "Amusement",
         }
     }
 
     pub fn tools(self) -> &'static [Tool] {
         match self {
-            ToolChooserKind::Zones => &[Tool::ZoneRes, Tool::ZoneComm, Tool::ZoneInd],
+            ToolChooserKind::Zones => &[
+                Tool::ZoneResLight,
+                Tool::ZoneResDense,
+                Tool::ZoneCommLight,
+                Tool::ZoneCommDense,
+                Tool::ZoneIndLight,
+                Tool::ZoneIndDense,
+            ],
+            ToolChooserKind::Transport => &[
+                Tool::Road,
+                Tool::Highway,
+                Tool::Onramp,
+                Tool::Rail,
+                Tool::BusDepot,
+                Tool::RailDepot,
+            ],
+            ToolChooserKind::Utilities => &[
+                Tool::PowerLine,
+                Tool::WaterPipe,
+                Tool::Subway,
+                Tool::SubwayStation,
+                Tool::WaterPump,
+                Tool::WaterTower,
+                Tool::WaterTreatment,
+                Tool::Desalination,
+            ],
             ToolChooserKind::PowerPlants => &[Tool::PowerPlantCoal, Tool::PowerPlantGas],
-            ToolChooserKind::Buildings => &[Tool::Police, Tool::Fire],
-            ToolChooserKind::Amusement => &[Tool::Park],
+            ToolChooserKind::Buildings => &[Tool::Park, Tool::Police, Tool::Fire],
         }
     }
 
     pub fn for_tool(tool: Tool) -> Option<Self> {
         match tool {
-            Tool::ZoneRes | Tool::ZoneComm | Tool::ZoneInd => Some(ToolChooserKind::Zones),
+            Tool::ZoneResLight
+            | Tool::ZoneResDense
+            | Tool::ZoneCommLight
+            | Tool::ZoneCommDense
+            | Tool::ZoneIndLight
+            | Tool::ZoneIndDense => Some(ToolChooserKind::Zones),
+            Tool::Road
+            | Tool::Highway
+            | Tool::Onramp
+            | Tool::Rail
+            | Tool::BusDepot
+            | Tool::RailDepot => Some(ToolChooserKind::Transport),
+            Tool::PowerLine
+            | Tool::WaterPipe
+            | Tool::Subway
+            | Tool::SubwayStation
+            | Tool::WaterPump
+            | Tool::WaterTower
+            | Tool::WaterTreatment
+            | Tool::Desalination => Some(ToolChooserKind::Utilities),
             Tool::PowerPlantCoal | Tool::PowerPlantGas => Some(ToolChooserKind::PowerPlants),
-            Tool::Police | Tool::Fire => Some(ToolChooserKind::Buildings),
-            Tool::Park => Some(ToolChooserKind::Amusement),
+            Tool::Park | Tool::Police | Tool::Fire => Some(ToolChooserKind::Buildings),
             _ => None,
         }
     }
@@ -86,21 +131,6 @@ impl ToolChooserKind {
 pub enum ToolbarHitTarget {
     SelectTool(Tool),
     OpenChooser(ToolChooserKind),
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ConfirmPromptChoice {
-    SaveFirst,
-    ContinueWithoutSaving,
-    Cancel,
-}
-
-impl ConfirmPromptChoice {
-    pub const ORDER: [ConfirmPromptChoice; 3] = [
-        ConfirmPromptChoice::SaveFirst,
-        ConfirmPromptChoice::ContinueWithoutSaving,
-        ConfirmPromptChoice::Cancel,
-    ];
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -118,9 +148,11 @@ pub struct UiAreas {
     pub map: MapUiAreas,
     pub minimap: ClickArea,
     pub pause_btn: ClickArea,
+    pub layer_surface_btn: ClickArea,
+    pub layer_underground_btn: ClickArea,
     pub toolbar_items: Vec<ToolbarHitArea>,
     pub tool_chooser_items: Vec<ClickArea>,
-    pub exit_prompt_items: Vec<ClickArea>,
+    pub dialog_items: Vec<ClickArea>,
 }
 
 #[derive(Clone, Debug)]
@@ -245,6 +277,7 @@ pub struct WindowLayout {
 pub struct DesktopLayout {
     pub menu_bar: UiRect,
     pub status_bar: UiRect,
+    pub news_ticker: UiRect,
     windows: [WindowLayout; 8],
 }
 
@@ -413,11 +446,17 @@ impl DesktopState {
     pub fn layout(&mut self, full: UiRect) -> DesktopLayout {
         let menu_bar = UiRect::new(full.x, full.y, full.width, 1);
         let status_bar = UiRect::new(full.x, full.y.saturating_add(1), full.width, 1);
+        let news_ticker = UiRect::new(
+            full.x,
+            full.y + full.height.saturating_sub(1),
+            full.width,
+            full.height.min(1),
+        );
         let desktop = UiRect::new(
             full.x,
             full.y.saturating_add(2),
             full.width,
-            full.height.saturating_sub(2),
+            full.height.saturating_sub(3),
         );
         let mut windows = [WindowLayout::default(); 8];
 
@@ -459,6 +498,7 @@ impl DesktopState {
         DesktopLayout {
             menu_bar,
             status_bar,
+            news_ticker,
             windows,
         }
     }
@@ -548,7 +588,8 @@ mod tests {
 
         assert!(desktop.is_open(WindowId::Budget));
         assert!(budget.outer.width <= 100);
-        assert!(budget.outer.height <= 38);
+        assert!(budget.outer.height <= 37);
+        assert_eq!(layout.news_ticker.y, 39);
 
         desktop.close(WindowId::Budget);
         assert!(!desktop.is_open(WindowId::Budget));

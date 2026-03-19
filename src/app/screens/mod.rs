@@ -1,7 +1,9 @@
+mod confirm_dialog;
 mod ingame;
 mod ingame_budget;
 mod ingame_interaction;
 mod ingame_menu;
+mod ingame_news;
 mod load_city;
 mod new_city;
 mod settings;

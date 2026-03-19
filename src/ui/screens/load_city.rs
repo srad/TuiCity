@@ -1,16 +1,20 @@
 use crate::{
     app::{screens::LoadCityState, ClickArea},
+    ui::frontends::terminal::render_confirm_dialog,
     ui::{theme, view::LoadCityViewModel},
 };
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
     style::{Color, Modifier, Style},
-    widgets::{Block, Borders, Clear},
+    text::Line,
+    widgets::{Block, Borders, Clear, Widget},
     Frame,
 };
+use tui_big_text::{BigText, PixelSize};
 
 const AUTHOR_LINE: &str = "by Saman Sedighi Rad";
+const BIG_TITLE_HEIGHT: u16 = 4;
 
 pub fn render_load_city(
     frame: &mut Frame,
@@ -20,6 +24,7 @@ pub fn render_load_city(
 ) {
     let ui = theme::ui_palette();
     state.row_areas.clear();
+    state.dialog_items.clear();
 
     if area.width < 72 || area.height < 22 {
         render_compact_load_city(frame, area, view, state, &ui);
@@ -29,7 +34,7 @@ pub fn render_load_city(
     paint_background(frame.buffer_mut(), area);
 
     let title_y = area.y + 2;
-    render_title(frame.buffer_mut(), area, title_y);
+    render_title(frame.buffer_mut(), area, title_y, &ui);
 
     let panel_w = area.width.saturating_sub(14).min(78).max(58);
     let panel_h = area.height.saturating_sub(14).min(18).max(12);
@@ -44,6 +49,10 @@ pub fn render_load_city(
     );
 
     render_footer(frame.buffer_mut(), area);
+
+    if let Some(dialog) = &view.confirm_dialog {
+        state.dialog_items = render_confirm_dialog(frame, area, dialog);
+    }
 }
 
 fn render_compact_load_city(
@@ -100,6 +109,17 @@ fn render_compact_load_city(
             .add_modifier(Modifier::BOLD),
     );
 
+    if view.is_loading && view.saves.is_empty() {
+        render_loading_state(
+            buf,
+            inner,
+            ui,
+            view.loading_indicator,
+            Color::Rgb(35, 34, 55),
+        );
+        return;
+    }
+
     if view.saves.is_empty() {
         set_centered_string(
             buf,
@@ -154,29 +174,44 @@ fn render_compact_load_city(
             style,
         );
     }
+
+    if view.is_loading {
+        render_scan_status(
+            buf,
+            inner.x,
+            inner.y + inner.height.saturating_sub(1),
+            inner.width,
+            view.loading_indicator,
+            Color::Rgb(35, 34, 55),
+        );
+    }
+
+    if let Some(dialog) = &view.confirm_dialog {
+        state.dialog_items = render_confirm_dialog(frame, area, dialog);
+    }
 }
 
-fn render_title(buf: &mut Buffer, area: Rect, y: u16) {
+fn render_title(buf: &mut Buffer, area: Rect, y: u16, ui: &theme::UiPalette) {
+    BigText::builder()
+        .pixel_size(PixelSize::Quadrant)
+        .centered()
+        .lines(vec![Line::styled(
+            "LOAD CITY",
+            Style::default()
+                .fg(ui.title)
+                .bg(Color::Reset)
+                .add_modifier(Modifier::BOLD),
+        )])
+        .build()
+        .render(Rect::new(area.x, y, area.width, BIG_TITLE_HEIGHT), buf);
+
     set_centered_string(
         buf,
         area.x,
-        y,
-        area.width,
-        "Load City",
-        Style::default()
-            .fg(Color::Rgb(255, 221, 119))
-            .bg(Color::Reset)
-            .add_modifier(Modifier::BOLD),
-    );
-    set_centered_string(
-        buf,
-        area.x,
-        y + 1,
+        y + BIG_TITLE_HEIGHT,
         area.width,
         "city archive",
-        Style::default()
-            .fg(Color::Rgb(170, 223, 219))
-            .bg(Color::Reset),
+        Style::default().fg(ui.subtitle).bg(Color::Reset),
     );
 }
 
@@ -216,7 +251,7 @@ fn render_archive_panel(
     let buf = frame.buffer_mut();
     let header = format!(
         "{:<24} {:<10} {:>9} {:>13}",
-        "CITY", "DATE", "POPULATION", "TREASURY"
+        "CITY", "DATE", "POPULATION", "$ TREASURY"
     );
     buf.set_string(
         inner.x,
@@ -231,6 +266,22 @@ fn render_archive_panel(
             .bg(Color::Rgb(35, 34, 55))
             .add_modifier(Modifier::BOLD),
     );
+
+    if view.is_loading && view.saves.is_empty() {
+        render_loading_state(
+            buf,
+            Rect::new(
+                inner.x,
+                inner.y + 2,
+                inner.width,
+                inner.height.saturating_sub(2),
+            ),
+            ui,
+            view.loading_indicator,
+            Color::Rgb(35, 34, 55),
+        );
+        return;
+    }
 
     if view.saves.is_empty() {
         set_centered_string(
@@ -261,7 +312,7 @@ fn render_archive_panel(
         });
 
         let line = format!(
-            "{:<24} {:<3} {:>4} {:>9} ${:>12}",
+            "{:<24} {:<3} {:>4} {:>9} {:>13}",
             truncate(&entry.city_name, 24),
             month_name(entry.month),
             entry.year,
@@ -286,6 +337,76 @@ fn render_archive_panel(
         );
         buf.set_string(inner.x, row_y, padded, style);
     }
+
+    if view.is_loading {
+        render_scan_status(
+            buf,
+            inner.x,
+            list_bottom,
+            inner.width,
+            view.loading_indicator,
+            Color::Rgb(35, 34, 55),
+        );
+    }
+}
+
+fn render_loading_state(
+    buf: &mut Buffer,
+    area: Rect,
+    ui: &theme::UiPalette,
+    indicator: &str,
+    bg: Color,
+) {
+    if area.width == 0 || area.height == 0 {
+        return;
+    }
+
+    let mid_y = area.y + area.height / 2;
+    set_centered_string(
+        buf,
+        area.x,
+        mid_y.saturating_sub(1),
+        area.width,
+        indicator,
+        Style::default()
+            .fg(Color::Rgb(255, 221, 119))
+            .bg(bg)
+            .add_modifier(Modifier::BOLD),
+    );
+    set_centered_string(
+        buf,
+        area.x,
+        mid_y,
+        area.width,
+        "Loading saved cities...",
+        Style::default().fg(ui.text_primary).bg(bg),
+    );
+    set_centered_string(
+        buf,
+        area.x,
+        mid_y.saturating_add(1),
+        area.width,
+        "Large archives may take a moment.",
+        Style::default().fg(Color::Rgb(170, 223, 219)).bg(bg),
+    );
+}
+
+fn render_scan_status(buf: &mut Buffer, x: u16, y: u16, width: u16, indicator: &str, bg: Color) {
+    if width == 0 {
+        return;
+    }
+
+    let text = format!("{indicator} scanning archive...");
+    buf.set_string(
+        x,
+        y,
+        format!(
+            "{:<width$}",
+            truncate(&text, width as usize),
+            width = width as usize
+        ),
+        Style::default().fg(Color::Rgb(170, 223, 219)).bg(bg),
+    );
 }
 
 fn render_footer(buf: &mut Buffer, area: Rect) {
@@ -309,7 +430,7 @@ fn render_footer(buf: &mut Buffer, area: Rect) {
         area.x,
         area.y + area.height.saturating_sub(2),
         area.width,
-        "Arrow Keys Select  •  Enter Load  •  Esc Back  •  Mouse Active",
+        "Arrow Keys Select  •  Enter Load  •  D Delete  •  Esc Back  •  Mouse Active",
         Style::default()
             .fg(Color::Rgb(170, 223, 219))
             .bg(Color::Reset),

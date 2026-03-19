@@ -1,5 +1,5 @@
 use crate::core::{
-    map::{Tile, TileOverlay},
+    map::{Tile, TileOverlay, ZoneKind},
     sim::TaxSector,
     tool::Tool,
 };
@@ -14,6 +14,7 @@ use ratatui::{
 pub struct InfoPanel<'a> {
     pub tile: Tile,
     pub overlay: TileOverlay,
+    pub zone: Option<ZoneKind>,
     pub x: usize,
     pub y: usize,
     pub current_tool: Tool,
@@ -193,19 +194,45 @@ impl<'a> Widget for InfoPanel<'a> {
 
         print_row!(self.tile.name(), ui.accent);
 
+        if let Some(zone) = self.zone {
+            print_row!(&format!("Zone: {}", zone.label()), ui.text_secondary);
+        }
+        if self.overlay.water_service > 0 {
+            let level = self.overlay.water_service as u16 * 100 / 255;
+            print_row!(&format!("Water {}%", level), ui.info);
+        } else if matches!(self.tile, Tile::ZoneRes | Tile::ZoneComm | Tile::ZoneInd)
+            || self.tile.is_building()
+        {
+            print_row!("NO WATER", ui.danger);
+        }
+
         // Power info
         let surplus = self.power_produced as i32 - self.power_consumed as i32;
         let p_color = if surplus >= 0 { ui.success } else { ui.danger };
         print_row!(
-            &format!("⚡ Pwr: {}/{} MW", self.power_produced, self.power_consumed),
+            &format!("Pwr: {}/{} MW", self.power_produced, self.power_consumed),
             p_color
         );
 
         if self.overlay.is_powered() {
             let level = self.overlay.power_level as u16 * 100 / 255;
-            print_row!(&format!("⚡ Signal: {}%", level), ui.warning);
+            print_row!(&format!("Signal: {}%", level), ui.warning);
         } else if self.tile.receives_power() {
-            print_row!("⚡ NO POWER", ui.danger);
+            print_row!("NO POWER", ui.danger);
+        }
+
+        if self.overlay.trip_success {
+            let mode = self
+                .overlay
+                .trip_mode
+                .map(|mode| mode.label())
+                .unwrap_or("Unknown");
+            print_row!(
+                &format!("Trip {} ({})", mode, self.overlay.trip_cost),
+                ui.success
+            );
+        } else if let Some(failure) = self.overlay.trip_failure {
+            print_row!(&format!("Trip {}", failure.label()), ui.danger);
         }
 
         // Pollution indicator
@@ -217,7 +244,7 @@ impl<'a> Widget for InfoPanel<'a> {
                 121..=180 => " (High)",
                 _ => " (Severe)",
             };
-            let text = format!("💨 Pollut {}%{}", pct, level);
+            let text = format!("Pollut {}%{}", pct, level);
             let color = match self.overlay.pollution {
                 0..=50 => ui.text_secondary,
                 51..=120 => ui.warning,
@@ -230,7 +257,7 @@ impl<'a> Widget for InfoPanel<'a> {
         // Land value
         if self.overlay.land_value > 0 {
             let pct = self.overlay.land_value as u16 * 100 / 255;
-            let text = format!("🏡 LV {}%", pct);
+            let text = format!("LV {}%", pct);
             let color = if pct >= 60 {
                 ui.success
             } else if pct >= 30 {
@@ -244,7 +271,20 @@ impl<'a> Widget for InfoPanel<'a> {
         // Crime
         if self.overlay.crime > 5 {
             let pct = self.overlay.crime as u16 * 100 / 255;
-            let text = format!("🚨 Crime {}%", pct);
+            let text = format!("Crime {}%", pct);
+            let color = if pct >= 60 {
+                ui.danger
+            } else if pct >= 30 {
+                ui.warning
+            } else {
+                ui.text_secondary
+            };
+            print_row!(&text, color);
+        }
+
+        if self.overlay.traffic > 5 {
+            let pct = self.overlay.traffic as u16 * 100 / 255;
+            let text = format!("Traffic {}%", pct);
             let color = if pct >= 60 {
                 ui.danger
             } else if pct >= 30 {
@@ -273,5 +313,49 @@ fn truncate(s: &str, max: usize) -> String {
         s.to_string()
     } else {
         s.chars().take(max).collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ratatui::{buffer::Buffer, widgets::Widget};
+
+    #[test]
+    fn info_panel_uses_ascii_labels_for_narrow_rows() {
+        let mut buf = Buffer::empty(Rect::new(0, 0, 20, 12));
+
+        InfoPanel {
+            tile: Tile::Police,
+            overlay: TileOverlay {
+                water_service: 128,
+                power_level: 128,
+                traffic: 128,
+                ..TileOverlay::default()
+            },
+            zone: None,
+            x: 1,
+            y: 2,
+            current_tool: Tool::Inspect,
+            demand_res: 0.0,
+            demand_comm: 0.0,
+            demand_ind: 0.0,
+            demand_history_res: &[],
+            demand_history_comm: &[],
+            demand_history_ind: &[],
+            power_produced: 10,
+            power_consumed: 8,
+        }
+        .render(Rect::new(0, 0, 20, 12), &mut buf);
+
+        let rendered = (0..12)
+            .map(|y| (0..20).map(|x| buf[(x, y)].symbol()).collect::<String>())
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        assert!(rendered.contains("Water 50%"));
+        assert!(rendered.contains("Pwr: 10/8 MW"));
+        assert!(rendered.contains("Signal: 50%"));
+        assert!(rendered.contains("Traffic 50%"));
     }
 }

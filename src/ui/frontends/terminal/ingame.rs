@@ -9,8 +9,7 @@ use crate::{
     app::{ClickArea, MapUiAreas, UiRect, WindowId},
     game_info::GAME_NAME,
     ui::{
-        game,
-        runtime::{ConfirmPromptChoice, UiRect as RuntimeRect},
+        frontends::terminal::render_confirm_dialog, game, runtime::UiRect as RuntimeRect,
         view::InGameDesktopView,
     },
 };
@@ -75,91 +74,6 @@ fn render_window_shadow(frame: &mut Frame, rect: Rect) {
     }
 }
 
-fn render_confirm_prompt(
-    frame: &mut Frame,
-    area: Rect,
-    prompt: &crate::ui::view::ConfirmPromptViewModel,
-) -> Vec<ClickArea> {
-    let ui = crate::ui::theme::ui_palette();
-    let width = 30.min(area.width.saturating_sub(4)).max(18);
-    let height = 7.min(area.height.saturating_sub(2)).max(5);
-    let rect = Rect::new(
-        area.x + area.width.saturating_sub(width) / 2,
-        area.y + area.height.saturating_sub(height) / 2,
-        width,
-        height,
-    );
-
-    frame.render_widget(Clear, rect);
-    frame.render_widget(
-        Block::default()
-            .borders(Borders::ALL)
-            .title(prompt.title.as_str())
-            .title_style(Style::default().fg(ui.window_title))
-            .border_style(Style::default().fg(ui.window_border))
-            .style(Style::default().bg(ui.popup_bg)),
-        rect,
-    );
-
-    let inner = Rect::new(
-        rect.x + 1,
-        rect.y + 1,
-        rect.width.saturating_sub(2),
-        rect.height.saturating_sub(2),
-    );
-    let mut hits = Vec::new();
-    if inner.width == 0 || inner.height == 0 {
-        return hits;
-    }
-
-    frame.buffer_mut().set_string(
-        inner.x,
-        inner.y,
-        format!(
-            "{:<width$}",
-            truncate(&prompt.message, inner.width as usize),
-            width = inner.width as usize
-        ),
-        Style::default()
-            .fg(ui.text_primary)
-            .bg(ui.popup_bg)
-            .add_modifier(Modifier::BOLD),
-    );
-
-    for (index, choice) in ConfirmPromptChoice::ORDER.iter().copied().enumerate() {
-        let y = inner.y + 2 + index as u16;
-        if y >= inner.y + inner.height {
-            break;
-        }
-        let style = if choice == prompt.selected {
-            Style::default()
-                .fg(ui.selection_fg)
-                .bg(ui.selection_bg)
-                .add_modifier(Modifier::BOLD)
-        } else {
-            Style::default().fg(ui.button_fg).bg(ui.button_bg)
-        };
-        frame.buffer_mut().set_string(
-            inner.x,
-            y,
-            format!(
-                "{:<width$}",
-                truncate(prompt_label(prompt, choice), inner.width as usize),
-                width = inner.width as usize
-            ),
-            style,
-        );
-        hits.push(ClickArea {
-            x: inner.x,
-            y,
-            width: inner.width,
-            height: 1,
-        });
-    }
-
-    hits
-}
-
 fn render_text_window_content(
     frame: &mut Frame,
     inner: Rect,
@@ -176,17 +90,6 @@ fn render_text_window_content(
             .wrap(Wrap { trim: false }),
         inner,
     );
-}
-
-fn prompt_label<'a>(
-    prompt: &'a crate::ui::view::ConfirmPromptViewModel,
-    choice: ConfirmPromptChoice,
-) -> &'a str {
-    match choice {
-        ConfirmPromptChoice::SaveFirst => prompt.primary_label.as_str(),
-        ConfirmPromptChoice::ContinueWithoutSaving => prompt.secondary_label.as_str(),
-        ConfirmPromptChoice::Cancel => "Cancel",
-    }
 }
 
 fn darken_shadow_cell(cell: &mut ratatui::buffer::Cell, fallback: ratatui::style::Color) {
@@ -285,6 +188,7 @@ pub fn render_ingame(
 
     let menu_area = to_rect(desktop_layout.menu_bar);
     let status_area = to_rect(desktop_layout.status_bar);
+    let news_area = to_rect(desktop_layout.news_ticker);
     let map_outer = to_rect(desktop_layout.window(WindowId::Map).outer);
     let map_inner = to_rect(desktop_layout.window(WindowId::Map).inner);
     let panel_outer = to_rect(desktop_layout.window(WindowId::Panel).outer);
@@ -400,14 +304,18 @@ pub fn render_ingame(
         area,
     );
 
-    let pause_area = game::statusbar::render_statusbar(
+    let status_areas = game::statusbar::render_statusbar(
         status_area,
         frame.buffer_mut(),
         &view.sim,
         view.paused,
+        view.view_layer,
         view.status_message.as_deref(),
     );
-    screen.ui_areas.pause_btn = pause_area;
+    screen.ui_areas.pause_btn = status_areas.pause_btn;
+    screen.ui_areas.layer_surface_btn = status_areas.layer_surface_btn;
+    screen.ui_areas.layer_underground_btn = status_areas.layer_underground_btn;
+    game::news_ticker::render_news_ticker(news_area, frame.buffer_mut(), &view.news_ticker);
 
     if screen.desktop.window(WindowId::Map).shadowed {
         render_window_shadow(frame, map_outer);
@@ -448,7 +356,9 @@ pub fn render_ingame(
         let footprint_all_valid = footprint_tiles.iter().all(|&(x, y)| {
             x < view.map.width
                 && y < view.map.height
-                && view.current_tool.can_place(view.map.get(x, y))
+                && view
+                    .current_tool
+                    .can_place(view.map.view_tile(view.view_layer, x, y))
         });
         let (preview_tiles, preview_kind): (&[(usize, usize)], PreviewKind) =
             if !view.rect_preview.is_empty() {
@@ -477,6 +387,7 @@ pub fn render_ingame(
                 line_preview: preview_tiles,
                 preview_kind,
                 overlay_mode: view.overlay_mode,
+                view_layer: view.view_layer,
             },
             map_layout.viewport,
         );
@@ -485,7 +396,7 @@ pub fn render_ingame(
 
     screen.ui_areas.toolbar_items.clear();
     screen.ui_areas.tool_chooser_items.clear();
-    screen.ui_areas.exit_prompt_items.clear();
+    screen.ui_areas.dialog_items.clear();
     screen.ui_areas.minimap = ClickArea::default();
 
     if screen.desktop.is_open(WindowId::Panel) && panel_outer.width > 0 && panel_outer.height > 0 {
@@ -565,6 +476,7 @@ pub fn render_ingame(
                     map: &view.map,
                     camera: &view.camera,
                     overlay_mode: view.overlay_mode,
+                    view_layer: view.view_layer,
                 },
                 minimap_area,
             );
@@ -573,7 +485,7 @@ pub fn render_ingame(
         let cx = view.camera.cursor_x.min(view.map.width.saturating_sub(1));
         let cy = view.camera.cursor_y.min(view.map.height.saturating_sub(1));
         let tile = if view.map.width > 0 && view.map.height > 0 {
-            view.map.get(cx, cy)
+            view.map.surface_lot_tile(cx, cy)
         } else {
             crate::core::map::Tile::Grass
         };
@@ -588,6 +500,7 @@ pub fn render_ingame(
                 game::infopanel::InfoPanel {
                     tile,
                     overlay: tile_overlay,
+                    zone: view.map.effective_zone_kind(cx, cy),
                     x: cx,
                     y: cy,
                     current_tool: view.current_tool,
@@ -729,8 +642,8 @@ pub fn render_ingame(
 
     render_menu_bar(frame, menu_area, screen, view);
 
-    if let Some(prompt) = &view.confirm_prompt {
-        screen.ui_areas.exit_prompt_items = render_confirm_prompt(frame, area, prompt);
+    if let Some(dialog) = &view.confirm_dialog {
+        screen.ui_areas.dialog_items = render_confirm_dialog(frame, area, dialog);
     }
 }
 

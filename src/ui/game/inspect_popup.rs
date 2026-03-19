@@ -48,7 +48,7 @@ impl<'a> Widget for InspectContent<'a> {
         if x >= self.map.width || y >= self.map.height {
             return;
         }
-        let tile = self.map.get(x, y);
+        let tile = self.map.surface_lot_tile(x, y);
         let overlay = self.map.get_overlay(x, y);
 
         let ix = area.x;
@@ -69,6 +69,19 @@ impl<'a> Widget for InspectContent<'a> {
             format!("Tile:       {}", tile.name()),
             Style::default().fg(ui.text_primary).bold()
         );
+
+        if let Some(zone) = self.map.effective_zone_kind(x, y) {
+            put!(
+                format!("Zone:       {}", zone.label()),
+                Style::default().fg(ui.text_secondary)
+            );
+        }
+        if let Some(density) = self.map.zone_density(x, y) {
+            put!(
+                format!("Density:    {}", density.label()),
+                Style::default().fg(ui.text_secondary)
+            );
+        }
 
         if let Some((sector, amount)) = tile_sector_capacity(tile) {
             let label = match sector {
@@ -92,6 +105,33 @@ impl<'a> Widget for InspectContent<'a> {
             ("Power:      None".to_string(), ui.danger)
         };
         put!(powered_text, Style::default().fg(powered_color));
+        put!(
+            if overlay.has_water() {
+                format!("Water:      {}%", pct(overlay.water_service))
+            } else {
+                "Water:      None".to_string()
+            },
+            Style::default().fg(if overlay.has_water() {
+                ui.info
+            } else {
+                ui.danger
+            })
+        );
+        if overlay.trip_success {
+            let mode = overlay
+                .trip_mode
+                .map(|mode| mode.label())
+                .unwrap_or("Unknown");
+            put!(
+                format!("Trips:      {} ({})", mode, overlay.trip_cost),
+                Style::default().fg(ui.success)
+            );
+        } else if let Some(failure) = overlay.trip_failure {
+            put!(
+                format!("Trips:      {}", failure.label()),
+                Style::default().fg(ui.danger)
+            );
+        }
 
         if overlay.on_fire {
             put!("ON FIRE!", Style::default().fg(ui.danger).bold());
@@ -114,6 +154,10 @@ impl<'a> Widget for InspectContent<'a> {
         put!(
             format!("Crime:      {}%", pct(overlay.crime)),
             Style::default().fg(ui.danger)
+        );
+        put!(
+            format!("Traffic:    {}%", pct(overlay.traffic)),
+            Style::default().fg(ui.info)
         );
         put!(
             format!("Fire Risk:  {}%", pct(overlay.fire_risk)),

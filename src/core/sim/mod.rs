@@ -2,10 +2,16 @@ pub mod economy;
 pub mod growth;
 pub mod system;
 pub mod systems;
+pub mod transport;
 
 pub use economy::{TaxRates, TaxSector};
 
 use std::collections::HashMap;
+
+fn default_transport_rng_state() -> u64 {
+    // Fixed non-zero seed so deterministic tests and legacy saves start from a stable baseline.
+    0x00C0_FFEE_D15E_A5E5
+}
 
 // ── MaintenanceBreakdown ──────────────────────────────────────────────────────
 
@@ -53,6 +59,18 @@ pub struct PlantState {
     pub capacity_mw: u32,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum UnlockMode {
+    Historical,
+    Sandbox,
+}
+
+impl Default for UnlockMode {
+    fn default() -> Self {
+        Self::Historical
+    }
+}
+
 // ── SimState ──────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -95,6 +113,30 @@ pub struct SimState {
     pub power_produced_mw: u32,
     #[serde(default)]
     pub power_consumed_mw: u32,
+    #[serde(default)]
+    pub water_produced_units: u32,
+    #[serde(default)]
+    pub water_consumed_units: u32,
+    #[serde(default = "default_transport_rng_state")]
+    pub transport_rng_state: u64,
+    // Monthly transport summaries are persisted mainly for UI/debugging and to make save/load
+    // roundtrips exact; they are recalculated every simulation tick.
+    #[serde(default)]
+    pub trip_attempts: u32,
+    #[serde(default)]
+    pub trip_successes: u32,
+    #[serde(default)]
+    pub trip_failures: u32,
+    #[serde(default)]
+    pub road_share: u32,
+    #[serde(default)]
+    pub bus_share: u32,
+    #[serde(default)]
+    pub rail_share: u32,
+    #[serde(default)]
+    pub subway_share: u32,
+    #[serde(default)]
+    pub unlock_mode: UnlockMode,
     #[serde(default, with = "plant_map_serde")]
     pub plants: HashMap<(usize, usize), PlantState>,
 }
@@ -126,6 +168,17 @@ impl Default for SimState {
             last_breakdown: MaintenanceBreakdown::default(),
             power_produced_mw: 0,
             power_consumed_mw: 0,
+            water_produced_units: 0,
+            water_consumed_units: 0,
+            transport_rng_state: default_transport_rng_state(),
+            trip_attempts: 0,
+            trip_successes: 0,
+            trip_failures: 0,
+            road_share: 0,
+            bus_share: 0,
+            rail_share: 0,
+            subway_share: 0,
+            unlock_mode: UnlockMode::default(),
             plants: HashMap::new(),
         }
     }

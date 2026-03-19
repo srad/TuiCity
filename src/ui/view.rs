@@ -1,14 +1,16 @@
+use std::sync::Arc;
+
 use crate::{
     app::camera::Camera,
     app::save::SaveEntry,
     app::screens::{BudgetFocus, NewCityField},
     core::{
-        map::Map,
+        map::{Map, ViewLayer},
         sim::{MaintenanceBreakdown, SimState, TaxRates},
         tool::Tool,
     },
     ui::{
-        runtime::{ConfirmPromptChoice, ToolChooserKind},
+        runtime::ToolChooserKind,
         theme::{OverlayMode, ThemePreset},
     },
 };
@@ -21,8 +23,11 @@ pub struct StartViewModel {
 
 #[derive(Clone, Debug)]
 pub struct LoadCityViewModel {
-    pub saves: Vec<SaveEntry>,
+    pub saves: Arc<[SaveEntry]>,
     pub selected: usize,
+    pub is_loading: bool,
+    pub loading_indicator: &'static str,
+    pub confirm_dialog: Option<ConfirmDialogViewModel>,
 }
 
 #[derive(Clone, Debug)]
@@ -93,10 +98,12 @@ impl BudgetViewModel {
 pub struct ToolbarPaletteViewModel {
     pub current_tool: Tool,
     pub zone_tool: Tool,
+    pub transport_tool: Tool,
+    pub utility_tool: Tool,
     pub power_plant_tool: Tool,
     pub building_tool: Tool,
-    pub amusement_tool: Tool,
     pub chooser: Option<ToolChooserKind>,
+    pub view_layer: ViewLayer,
 }
 
 #[derive(Clone)]
@@ -105,13 +112,39 @@ pub struct ToolChooserViewModel {
     pub tools: Vec<Tool>,
 }
 
-#[derive(Clone)]
-pub struct ConfirmPromptViewModel {
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ConfirmDialogButtonRole {
+    Accept,
+    Alternate,
+    Cancel,
+}
+
+#[derive(Clone, Debug)]
+pub struct ConfirmDialogButtonViewModel {
+    pub label: String,
+    pub role: ConfirmDialogButtonRole,
+}
+
+#[derive(Clone, Debug)]
+pub struct ConfirmDialogViewModel {
     pub title: String,
     pub message: String,
-    pub selected: ConfirmPromptChoice,
-    pub primary_label: String,
-    pub secondary_label: String,
+    pub selected: usize,
+    pub buttons: Vec<ConfirmDialogButtonViewModel>,
+}
+
+impl ConfirmDialogViewModel {
+    pub fn button_count(&self) -> usize {
+        self.buttons.len()
+    }
+
+    pub fn index_for_role(&self, role: ConfirmDialogButtonRole) -> Option<usize> {
+        self.buttons.iter().position(|button| button.role == role)
+    }
+
+    pub fn selected_role(&self) -> Option<ConfirmDialogButtonRole> {
+        self.buttons.get(self.selected).map(|button| button.role)
+    }
 }
 
 #[derive(Clone)]
@@ -133,6 +166,13 @@ pub struct StatisticsWindowViewModel {
     pub power_balance_history: Vec<i32>,
 }
 
+#[derive(Clone, Debug, Default)]
+pub struct NewsTickerViewModel {
+    pub full_text: String,
+    pub scroll_offset: usize,
+    pub is_alerting: bool,
+}
+
 #[derive(Clone)]
 pub struct InGameDesktopView {
     pub map: Map,
@@ -141,13 +181,15 @@ pub struct InGameDesktopView {
     pub current_tool: Tool,
     pub toolbar: ToolbarPaletteViewModel,
     pub tool_chooser: Option<ToolChooserViewModel>,
-    pub confirm_prompt: Option<ConfirmPromptViewModel>,
+    pub confirm_dialog: Option<ConfirmDialogViewModel>,
     pub paused: bool,
     pub overlay_mode: OverlayMode,
+    pub view_layer: ViewLayer,
     pub menu_active: bool,
     pub menu_selected: usize,
     pub menu_item_selected: usize,
     pub status_message: Option<String>,
+    pub news_ticker: NewsTickerViewModel,
     pub line_preview: Vec<(usize, usize)>,
     pub rect_preview: Vec<(usize, usize)>,
     pub inspect_pos: Option<(usize, usize)>,

@@ -144,7 +144,10 @@ impl Screen for NewCityScreen {
     fn on_action(&mut self, action: Action, context: AppContext) -> Option<ScreenTransition> {
         match action {
             Action::MenuBack => Some(ScreenTransition::Pop),
-            Action::MoveCursor(_dx, dy) => {
+            Action::MoveCursor(dx, dy) => {
+                if dx != 0 && self.adjust_focused_slider(dx) {
+                    return None;
+                }
                 if dy != 0 {
                     if self.state.focused_field == NewCityField::SeedInput {
                         self.state.apply_seed_input();
@@ -219,28 +222,6 @@ impl Screen for NewCityScreen {
                             self.state.apply_seed_input();
                         }
                     }
-                    NewCityField::WaterSlider => {
-                        if c == '-' {
-                            self.state.water_pct = self.state.water_pct.saturating_sub(1);
-                            self.state.sync_sliders_to_seed();
-                            self.state.rebuild_map();
-                        } else if c == '+' {
-                            self.state.water_pct = (self.state.water_pct + 1).min(100);
-                            self.state.sync_sliders_to_seed();
-                            self.state.rebuild_map();
-                        }
-                    }
-                    NewCityField::TreesSlider => {
-                        if c == '-' {
-                            self.state.trees_pct = self.state.trees_pct.saturating_sub(1);
-                            self.state.sync_sliders_to_seed();
-                            self.state.rebuild_map();
-                        } else if c == '+' {
-                            self.state.trees_pct = (self.state.trees_pct + 1).min(100);
-                            self.state.sync_sliders_to_seed();
-                            self.state.rebuild_map();
-                        }
-                    }
                     _ => {}
                 }
                 None
@@ -275,6 +256,32 @@ impl Screen for NewCityScreen {
 }
 
 impl NewCityScreen {
+    fn adjust_focused_slider(&mut self, dx: i32) -> bool {
+        let delta = dx.signum();
+        if delta == 0 {
+            return false;
+        }
+
+        let updated = match self.state.focused_field {
+            NewCityField::WaterSlider => {
+                self.state.water_pct = adjust_slider_value(self.state.water_pct, delta);
+                true
+            }
+            NewCityField::TreesSlider => {
+                self.state.trees_pct = adjust_slider_value(self.state.trees_pct, delta);
+                true
+            }
+            _ => false,
+        };
+
+        if updated {
+            self.state.sync_sliders_to_seed();
+            self.state.rebuild_map();
+        }
+
+        updated
+    }
+
     fn start_city(&mut self, context: AppContext) -> Option<ScreenTransition> {
         let name = if self.state.city_name.trim().is_empty() {
             "New City".to_string()
@@ -293,6 +300,14 @@ impl NewCityScreen {
         } else {
             Some(ScreenTransition::Replace(Box::new(InGameScreen::new())))
         }
+    }
+}
+
+fn adjust_slider_value(current: usize, delta: i32) -> usize {
+    if delta < 0 {
+        current.saturating_sub(delta.unsigned_abs() as usize)
+    } else {
+        current.saturating_add(delta as usize).min(100)
     }
 }
 
@@ -370,5 +385,69 @@ mod tests {
             },
         );
         assert!(transition_start.is_some());
+    }
+
+    #[test]
+    fn left_right_keys_adjust_focused_sliders() {
+        let mut screen = NewCityScreen {
+            state: NewCityState::new(),
+        };
+        let engine = Arc::new(RwLock::new(crate::core::engine::SimulationEngine::new(
+            crate::core::map::Map::new(10, 10),
+            crate::core::sim::SimState::default(),
+        )));
+        let cmd_tx = None;
+        let mut running = true;
+        let context = AppContext {
+            engine: &engine,
+            cmd_tx: &cmd_tx,
+            running: &mut running,
+        };
+
+        screen.state.focused_field = NewCityField::WaterSlider;
+        let initial_water = screen.state.water_pct;
+        screen.on_action(Action::MoveCursor(1, 0), context);
+        assert_eq!(screen.state.water_pct, (initial_water + 1).min(100));
+
+        let context = AppContext {
+            engine: &engine,
+            cmd_tx: &cmd_tx,
+            running: &mut running,
+        };
+        screen.state.focused_field = NewCityField::TreesSlider;
+        let initial_trees = screen.state.trees_pct;
+        screen.on_action(Action::MoveCursor(-1, 0), context);
+        assert_eq!(screen.state.trees_pct, initial_trees.saturating_sub(1));
+    }
+
+    #[test]
+    fn plus_minus_no_longer_adjust_sliders() {
+        let mut screen = NewCityScreen {
+            state: NewCityState::new(),
+        };
+        let engine = Arc::new(RwLock::new(crate::core::engine::SimulationEngine::new(
+            crate::core::map::Map::new(10, 10),
+            crate::core::sim::SimState::default(),
+        )));
+        let cmd_tx = None;
+        let mut running = true;
+        let context = AppContext {
+            engine: &engine,
+            cmd_tx: &cmd_tx,
+            running: &mut running,
+        };
+
+        screen.state.focused_field = NewCityField::WaterSlider;
+        let initial_water = screen.state.water_pct;
+        screen.on_action(Action::CharInput('+'), context);
+        assert_eq!(screen.state.water_pct, initial_water);
+
+        let context = AppContext {
+            engine: &engine,
+            cmd_tx: &cmd_tx,
+            running: &mut running,
+        };
+        screen.on_action(Action::CharInput('-'), context);
+        assert_eq!(screen.state.water_pct, initial_water);
     }
 }

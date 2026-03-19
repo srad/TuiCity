@@ -1,4 +1,7 @@
-use crate::core::{map::Map, tool::Tool};
+use crate::core::{
+    map::{Map, ViewLayer},
+    tool::Tool,
+};
 use std::cmp::Reverse;
 use std::collections::{BinaryHeap, HashMap};
 
@@ -63,6 +66,7 @@ fn l_path(sx: usize, sy: usize, ex: usize, ey: usize) -> Vec<(usize, usize)> {
 pub fn line_shortest_path(
     map: &Map,
     tool: Tool,
+    layer: ViewLayer,
     sx: usize,
     sy: usize,
     ex: usize,
@@ -95,7 +99,8 @@ pub fn line_shortest_path(
         if g > *g_score.get(&(x, y)).unwrap_or(&usize::MAX) {
             continue;
         }
-        for (nx, ny, tile) in map.neighbors4(x, y) {
+        for (nx, ny, _) in map.neighbors4(x, y) {
+            let tile = map.view_tile(layer, nx, ny);
             if !tool.can_place(tile) && !tool.is_traversable(tile) {
                 continue;
             }

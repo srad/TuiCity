@@ -78,9 +78,12 @@ fn marker(is_selected: bool) -> &'static str {
 
 fn popup_label(tool: Tool) -> &'static str {
     match tool {
-        Tool::ZoneRes => "Residential",
-        Tool::ZoneComm => "Commercial",
-        Tool::ZoneInd => "Industrial",
+        Tool::ZoneResLight => "Res Light",
+        Tool::ZoneResDense => "Res Dense",
+        Tool::ZoneCommLight => "Comm Light",
+        Tool::ZoneCommDense => "Comm Dense",
+        Tool::ZoneIndLight => "Ind Light",
+        Tool::ZoneIndDense => "Ind Dense",
         Tool::PowerPlantCoal => "Coal Plant",
         Tool::PowerPlantGas => "Gas Plant",
         Tool::Park => "Park",
@@ -109,8 +112,8 @@ mod tests {
     #[test]
     fn chooser_renders_one_hit_area_per_tool() {
         let chooser = ToolChooserViewModel {
-            selected_tool: Tool::ZoneRes,
-            tools: vec![Tool::ZoneRes, Tool::ZoneComm, Tool::ZoneInd],
+            selected_tool: Tool::ZoneResLight,
+            tools: vec![Tool::ZoneResLight, Tool::ZoneCommLight, Tool::ZoneIndLight],
         };
         let mut buf = Buffer::empty(Rect::new(0, 0, 28, 8));
 

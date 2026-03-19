@@ -12,7 +12,7 @@ use ratatui::{
     style::{Modifier, Style},
 };
 
-const TOOLBAR_ROWS: u16 = 9;
+const TOOLBAR_ROWS: u16 = 7;
 
 pub fn toolbar_height(_: &ToolbarPaletteViewModel) -> u16 {
     TOOLBAR_ROWS
@@ -46,12 +46,16 @@ pub fn render_toolbar(
 
     let rows = row_rects(area, TOOLBAR_ROWS);
 
+    let inspect_label = match toolbar.view_layer {
+        crate::core::map::ViewLayer::Surface => "Inspect Surface",
+        crate::core::map::ViewLayer::Underground => "Inspect Underground",
+    };
     render_tool_button(
         buf,
         rows[0],
         Tool::Inspect,
         toolbar.current_tool == Tool::Inspect,
-        "Query",
+        inspect_label,
     );
     hit_areas.push(hit_area(
         rows[0],
@@ -70,62 +74,22 @@ pub fn render_toolbar(
         ToolbarHitTarget::SelectTool(Tool::Bulldoze),
     ));
 
-    render_chooser_button(
-        buf,
-        rows[2],
-        ToolChooserKind::Zones,
-        toolbar.zone_tool,
-        toolbar.chooser == Some(ToolChooserKind::Zones),
-    );
-    hit_areas.push(hit_area(
-        rows[2],
-        ToolbarHitTarget::OpenChooser(ToolChooserKind::Zones),
-    ));
+    let chooser_rows = [
+        (rows[2], ToolChooserKind::Zones, toolbar.zone_tool),
+        (rows[3], ToolChooserKind::Transport, toolbar.transport_tool),
+        (rows[4], ToolChooserKind::Utilities, toolbar.utility_tool),
+        (
+            rows[5],
+            ToolChooserKind::PowerPlants,
+            toolbar.power_plant_tool,
+        ),
+        (rows[6], ToolChooserKind::Buildings, toolbar.building_tool),
+    ];
 
-    for (row, tool) in rows[3..6]
-        .iter()
-        .copied()
-        .zip([Tool::Road, Tool::Rail, Tool::PowerLine])
-    {
-        render_tool_button(buf, row, tool, toolbar.current_tool == tool, tool.label());
-        hit_areas.push(hit_area(row, ToolbarHitTarget::SelectTool(tool)));
+    for (row, kind, selected_tool) in chooser_rows {
+        render_chooser_button(buf, row, kind, selected_tool, toolbar.chooser == Some(kind));
+        hit_areas.push(hit_area(row, ToolbarHitTarget::OpenChooser(kind)));
     }
-
-    render_chooser_button(
-        buf,
-        rows[6],
-        ToolChooserKind::PowerPlants,
-        toolbar.power_plant_tool,
-        toolbar.chooser == Some(ToolChooserKind::PowerPlants),
-    );
-    hit_areas.push(hit_area(
-        rows[6],
-        ToolbarHitTarget::OpenChooser(ToolChooserKind::PowerPlants),
-    ));
-
-    render_chooser_button(
-        buf,
-        rows[7],
-        ToolChooserKind::Buildings,
-        toolbar.building_tool,
-        toolbar.chooser == Some(ToolChooserKind::Buildings),
-    );
-    hit_areas.push(hit_area(
-        rows[7],
-        ToolbarHitTarget::OpenChooser(ToolChooserKind::Buildings),
-    ));
-
-    render_chooser_button(
-        buf,
-        rows[8],
-        ToolChooserKind::Amusement,
-        toolbar.amusement_tool,
-        toolbar.chooser == Some(ToolChooserKind::Amusement),
-    );
-    hit_areas.push(hit_area(
-        rows[8],
-        ToolbarHitTarget::OpenChooser(ToolChooserKind::Amusement),
-    ));
 
     hit_areas
 }
@@ -232,9 +196,9 @@ fn hit_area(area: Rect, target: ToolbarHitTarget) -> ToolbarHitArea {
 
 fn tool_sector(tool: Tool) -> Option<TaxSector> {
     match tool {
-        Tool::ZoneRes => Some(TaxSector::Residential),
-        Tool::ZoneComm => Some(TaxSector::Commercial),
-        Tool::ZoneInd => Some(TaxSector::Industrial),
+        Tool::ZoneResLight | Tool::ZoneResDense => Some(TaxSector::Residential),
+        Tool::ZoneCommLight | Tool::ZoneCommDense => Some(TaxSector::Commercial),
+        Tool::ZoneIndLight | Tool::ZoneIndDense => Some(TaxSector::Industrial),
         _ => None,
     }
 }
@@ -245,10 +209,11 @@ fn tool_key(tool: Tool) -> String {
 
 fn chooser_key(kind: ToolChooserKind) -> &'static str {
     match kind {
-        ToolChooserKind::Zones => "[1-3]",
+        ToolChooserKind::Zones => "[1-6]",
+        ToolChooserKind::Transport => "[R/H/O/L]",
+        ToolChooserKind::Utilities => "[P/W/M]",
         ToolChooserKind::PowerPlants => "[E/G]",
-        ToolChooserKind::Buildings => "[S/F]",
-        ToolChooserKind::Amusement => "[K]",
+        ToolChooserKind::Buildings => "[S/F/K]",
     }
 }
 
@@ -266,45 +231,26 @@ mod tests {
     use crate::ui::view::ToolbarPaletteViewModel;
 
     #[test]
-    fn toolbar_height_matches_full_button_stack() {
+    fn toolbar_renders_hit_areas_for_new_choosers() {
         let toolbar = ToolbarPaletteViewModel {
             current_tool: Tool::Inspect,
-            zone_tool: Tool::ZoneRes,
+            zone_tool: Tool::ZoneResLight,
+            transport_tool: Tool::Road,
+            utility_tool: Tool::PowerLine,
             power_plant_tool: Tool::PowerPlantCoal,
             building_tool: Tool::Police,
-            amusement_tool: Tool::Park,
             chooser: None,
+            view_layer: crate::core::map::ViewLayer::Surface,
         };
+        let mut buf = Buffer::empty(Rect::new(0, 0, 26, 10));
 
-        assert_eq!(toolbar_height(&toolbar), 9);
-        assert_eq!(minimum_toolbar_height(&toolbar), 9);
-    }
-
-    #[test]
-    fn chooser_buttons_map_to_all_split_groups() {
-        let toolbar = ToolbarPaletteViewModel {
-            current_tool: Tool::Inspect,
-            zone_tool: Tool::ZoneRes,
-            power_plant_tool: Tool::PowerPlantCoal,
-            building_tool: Tool::Police,
-            amusement_tool: Tool::Park,
-            chooser: Some(ToolChooserKind::Buildings),
-        };
-        let mut buf = Buffer::empty(Rect::new(0, 0, 24, 9));
-
-        let hits = render_toolbar(Rect::new(0, 0, 24, 9), &mut buf, &toolbar);
+        let hits = render_toolbar(Rect::new(0, 0, 26, 10), &mut buf, &toolbar);
 
         assert!(hits
             .iter()
-            .any(|hit| hit.target == ToolbarHitTarget::OpenChooser(ToolChooserKind::Zones)));
+            .any(|hit| hit.target == ToolbarHitTarget::OpenChooser(ToolChooserKind::Transport)));
         assert!(hits
             .iter()
-            .any(|hit| hit.target == ToolbarHitTarget::OpenChooser(ToolChooserKind::PowerPlants)));
-        assert!(hits
-            .iter()
-            .any(|hit| hit.target == ToolbarHitTarget::OpenChooser(ToolChooserKind::Buildings)));
-        assert!(hits
-            .iter()
-            .any(|hit| hit.target == ToolbarHitTarget::OpenChooser(ToolChooserKind::Amusement)));
+            .any(|hit| hit.target == ToolbarHitTarget::OpenChooser(ToolChooserKind::Utilities)));
     }
 }

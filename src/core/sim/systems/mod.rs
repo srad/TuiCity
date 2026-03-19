@@ -1,6 +1,7 @@
-use crate::core::map::{Map, Tile};
+use crate::core::map::{Map, Tile, ZoneDensity, ZoneKind};
 use crate::core::sim::economy::{annual_tax_from_base, compute_sector_stats};
 use crate::core::sim::system::SimSystem;
+use crate::core::sim::transport::TransportSystem;
 use crate::core::sim::{growth, MaintenanceBreakdown, SimState};
 use rand::Rng;
 
@@ -22,6 +23,11 @@ impl PowerSystem {
             Tile::Police => 50,
             Tile::Fire => 50,
             Tile::Hospital => 200,
+            Tile::BusDepot | Tile::RailDepot | Tile::SubwayStation => 25,
+            Tile::WaterPump => 25,
+            Tile::WaterTower => 15,
+            Tile::WaterTreatment => 60,
+            Tile::Desalination => 90,
             Tile::ZoneRes | Tile::ZoneComm | Tile::ZoneInd => 2, // Minimal for zones
             _ => 0,
         }
@@ -70,16 +76,16 @@ impl SimSystem for PowerSystem {
         let mut plant_positions = Vec::new();
         for (&(x, y), state) in sim.plants.iter() {
             total_capacity += state.capacity_mw;
-            plant_positions.push((x, y, state.capacity_mw));
+            plant_positions.push((x, y));
         }
         sim.power_produced_mw = total_capacity;
 
-        // BFS distribution from each plant
-        // We use a multi-source BFS where we track "available power" which drops over distance.
-        // For simplicity, we'll start with 255 at the plant and drop by X per tile.
+        // SC2000-style conduction:
+        // - plants, power lines and developed buildings conduct power
+        // - empty zones can receive power, but do not relay it onward
+        // - roads do not conduct unless there is a power line on the tile
         let mut queue = std::collections::VecDeque::new();
-        for (px, py, _cap) in plant_positions {
-            // Power plants are 4x4. Mark all 16 tiles as source.
+        for (px, py) in plant_positions {
             for dy in 0..4 {
                 for dx in 0..4 {
                     let sx = px + dx as usize;
@@ -101,65 +107,224 @@ impl SimSystem for PowerSystem {
 
             for (nx, ny, tile) in map.neighbors4(x, y) {
                 let n_idx = ny * map.width + nx;
-                // Only spread through power lines (and road-power-lines)
-                if tile.power_connects() {
-                    if map.overlays[n_idx].power_level < next_level {
-                        map.overlays[n_idx].power_level = next_level;
-                        queue.push_back((nx, ny, next_level));
-                    }
+                let lot_tile = map.surface_lot_tile(nx, ny);
+                let conductive = tile.power_connects()
+                    || lot_tile == Tile::PowerPlantCoal
+                    || lot_tile == Tile::PowerPlantGas
+                    || lot_tile.is_conductive_structure();
+                let receivable = conductive || lot_tile.receives_power();
+
+                if !receivable || map.overlays[n_idx].power_level >= next_level {
+                    continue;
+                }
+
+                map.overlays[n_idx].power_level = next_level;
+                if conductive {
+                    queue.push_back((nx, ny, next_level));
                 }
             }
         }
 
-        // 4. One-step spread to consumers
-        let mut total_demand = 0;
-        let mut consumer_idxs = Vec::new();
+        // Brownouts depend on connected demand, not disconnected buildings elsewhere on the map.
+        let mut connected_demand = 0;
+        let mut connected_consumers = Vec::new();
         for y in 0..map.height {
             for x in 0..map.width {
-                let tile = map.get(x, y);
-                let consumption = Self::get_consumption(tile);
-                if consumption > 0 {
-                    total_demand += consumption;
-                    consumer_idxs.push((x, y, consumption));
+                let lot_tile = map.surface_lot_tile(x, y);
+                let consumption = Self::get_consumption(lot_tile);
+                if consumption == 0 {
+                    continue;
+                }
+
+                let idx = y * map.width + x;
+                let raw_level = map.overlays[idx].power_level;
+                if raw_level > 0 {
+                    connected_demand += consumption;
+                    connected_consumers.push((idx, raw_level));
                 }
             }
         }
-        sim.power_consumed_mw = total_demand;
+        sim.power_consumed_mw = connected_demand;
 
-        // Spread from power lines to adjacent consumers
-        let mut final_consumers = Vec::new();
-        for (cx, cy, _consumption) in consumer_idxs {
-            let mut max_adj_power = 0;
-            for (nx, ny, tile) in map.neighbors4(cx, cy) {
-                if tile.power_connects()
-                    || tile == Tile::PowerPlantCoal
-                    || tile == Tile::PowerPlantGas
-                {
-                    let p = map.get_overlay(nx, ny).power_level;
-                    if p > max_adj_power {
-                        max_adj_power = p;
-                    }
-                }
-            }
-            if max_adj_power > 5 {
-                // Threshold to be "powered"
-                final_consumers.push((cy * map.width + cx, max_adj_power.saturating_sub(1)));
-            }
-        }
-
-        // Brownout logic: if total demand > total capacity, scale down all power levels
         let brownout_factor = if total_capacity == 0 {
             0.0
-        } else if total_demand > total_capacity {
-            total_capacity as f32 / total_demand as f32
+        } else if connected_demand > total_capacity {
+            total_capacity as f32 / connected_demand as f32
         } else {
             1.0
         };
 
-        for (idx, level) in final_consumers {
+        for (idx, level) in connected_consumers {
             let actual_level = (level as f32 * brownout_factor) as u8;
             map.overlays[idx].power_level = actual_level;
         }
+    }
+}
+
+// ── WaterSystem ───────────────────────────────────────────────────────────────
+
+#[derive(Debug)]
+pub struct WaterSystem;
+
+impl WaterSystem {
+    fn production_for_tile(map: &Map, x: usize, y: usize, tile: Tile, powered: bool) -> u32 {
+        if !powered {
+            return 0;
+        }
+        match tile {
+            Tile::WaterPump => {
+                let adjacent_water = map
+                    .neighbors4(x, y)
+                    .into_iter()
+                    .any(|(_, _, neighbor)| neighbor == Tile::Water);
+                if adjacent_water {
+                    200
+                } else {
+                    120
+                }
+            }
+            Tile::WaterTower => 150,
+            Tile::WaterTreatment => 250,
+            Tile::Desalination => 320,
+            _ => 0,
+        }
+    }
+
+    fn demand_for_tile(
+        tile: Tile,
+        zone_kind: Option<ZoneKind>,
+        zone_density: Option<ZoneDensity>,
+    ) -> u32 {
+        match tile {
+            Tile::ResLow | Tile::CommLow | Tile::IndLight => 6,
+            Tile::ResMed | Tile::CommHigh | Tile::IndHeavy => 18,
+            Tile::ResHigh => 40,
+            Tile::Police | Tile::Fire | Tile::Hospital => 10,
+            Tile::BusDepot | Tile::RailDepot | Tile::SubwayStation => 8,
+            Tile::ZoneRes | Tile::ZoneComm | Tile::ZoneInd => match (zone_kind, zone_density) {
+                (Some(_), Some(ZoneDensity::Dense)) => 4,
+                (Some(_), _) => 2,
+                _ => 0,
+            },
+            _ => 0,
+        }
+    }
+}
+
+impl SimSystem for WaterSystem {
+    fn name(&self) -> &str {
+        "Water"
+    }
+
+    fn tick(&mut self, map: &mut Map, sim: &mut SimState) {
+        for overlay in &mut map.overlays {
+            overlay.water_service = 0;
+        }
+
+        let mut queue = std::collections::VecDeque::new();
+        let mut total_capacity = 0;
+
+        for y in 0..map.height {
+            for x in 0..map.width {
+                let tile = map.get(x, y);
+                let production =
+                    Self::production_for_tile(map, x, y, tile, map.get_overlay(x, y).is_powered());
+                if production == 0 {
+                    continue;
+                }
+                total_capacity += production;
+                let idx = y * map.width + x;
+                map.overlays[idx].water_service = 255;
+                queue.push_back((x, y, 255u8));
+            }
+        }
+
+        while let Some((x, y, level)) = queue.pop_front() {
+            if level <= 1 {
+                continue;
+            }
+            let next_level = level.saturating_sub(3);
+
+            for (nx, ny, _tile) in map.neighbors4(x, y) {
+                let idx = ny * map.width + nx;
+                let underground = map.underground_at(nx, ny);
+                let lot_tile = map.surface_lot_tile(nx, ny);
+                let conductive = underground.water_pipe
+                    || lot_tile.is_building()
+                    || matches!(
+                        lot_tile,
+                        Tile::Police
+                            | Tile::Fire
+                            | Tile::Hospital
+                            | Tile::WaterPump
+                            | Tile::WaterTower
+                            | Tile::WaterTreatment
+                            | Tile::Desalination
+                    );
+                let receivable = conductive || lot_tile.is_zone();
+                if !receivable || map.overlays[idx].water_service >= next_level {
+                    continue;
+                }
+                map.overlays[idx].water_service = next_level;
+                if conductive {
+                    queue.push_back((nx, ny, next_level));
+                }
+            }
+        }
+
+        let mut connected_demand = 0;
+        let mut connected_consumers = Vec::new();
+        for y in 0..map.height {
+            for x in 0..map.width {
+                let tile = map.surface_lot_tile(x, y);
+                let demand = Self::demand_for_tile(
+                    tile,
+                    map.effective_zone_kind(x, y),
+                    map.zone_density(x, y),
+                );
+                if demand == 0 {
+                    continue;
+                }
+                let idx = y * map.width + x;
+                if map.overlays[idx].water_service > 0 {
+                    connected_demand += demand;
+                    connected_consumers.push((idx, map.overlays[idx].water_service));
+                }
+            }
+        }
+
+        sim.water_produced_units = total_capacity;
+        sim.water_consumed_units = connected_demand;
+
+        let shortage_factor = if total_capacity == 0 {
+            0.0
+        } else if connected_demand > total_capacity {
+            total_capacity as f32 / connected_demand as f32
+        } else {
+            1.0
+        };
+
+        for (idx, level) in connected_consumers {
+            map.overlays[idx].water_service = (level as f32 * shortage_factor) as u8;
+        }
+    }
+}
+
+// ── TrafficSystem ─────────────────────────────────────────────────────────────
+// Legacy name retained for tests and isolated system calls. The engine now runs the
+// stateful TransportSystem directly so monthly cooldowns persist across ticks.
+
+#[derive(Debug, Default)]
+pub struct TrafficSystem;
+
+impl SimSystem for TrafficSystem {
+    fn name(&self) -> &str {
+        "Traffic"
+    }
+
+    fn tick(&mut self, map: &mut Map, sim: &mut SimState) {
+        let mut transport = TransportSystem::default();
+        transport.tick(map, sim);
     }
 }
 
@@ -186,6 +351,8 @@ impl SimSystem for PollutionSystem {
                     Tile::IndLight => 120,
                     Tile::PowerPlantCoal => 250,
                     Tile::PowerPlantGas => 80,
+                    Tile::Highway => 35,
+                    Tile::Road | Tile::RoadPowerLine => map.get_overlay(x, y).traffic / 4,
                     _ => 0,
                 };
                 if strength > 0 {
@@ -466,9 +633,32 @@ impl SimSystem for FinanceSystem {
         sim.population = stats.residential_population;
 
         // Monthly maintenance costs
-        let road_tiles = count_tiles(map, |t| matches!(t, Tile::Road | Tile::RoadPowerLine)) as i64;
+        let road_tiles = count_tiles(map, |t| {
+            matches!(t, Tile::Road | Tile::RoadPowerLine | Tile::Onramp)
+        }) as i64;
+        let highway_tiles = count_tiles(map, |t| t == Tile::Highway) as i64;
         let power_line_tiles =
             count_tiles(map, |t| matches!(t, Tile::PowerLine | Tile::RoadPowerLine)) as i64;
+        let rail_tiles = count_tiles(map, |t| t == Tile::Rail) as i64;
+        let bus_depot_tiles = count_tiles(map, |t| t == Tile::BusDepot) as i64;
+        let rail_depot_tiles = count_tiles(map, |t| t == Tile::RailDepot) as i64;
+        let subway_station_tiles = count_tiles(map, |t| t == Tile::SubwayStation) as i64;
+        let water_structure_tiles = count_tiles(map, |t| {
+            matches!(
+                t,
+                Tile::WaterPump | Tile::WaterTower | Tile::WaterTreatment | Tile::Desalination
+            )
+        }) as i64;
+        let water_pipe_tiles = map
+            .underground
+            .iter()
+            .filter(|tile| tile.unwrap_or_default().water_pipe)
+            .count() as i64;
+        let subway_tiles = map
+            .underground
+            .iter()
+            .filter(|tile| tile.unwrap_or_default().subway)
+            .count() as i64;
         let coal_plant_tiles = count_tiles(map, |t| t == Tile::PowerPlantCoal) as i64;
         let gas_plant_tiles = count_tiles(map, |t| t == Tile::PowerPlantGas) as i64;
         let police_tiles = count_tiles(map, |t| t == Tile::Police) as i64;
@@ -476,14 +666,25 @@ impl SimSystem for FinanceSystem {
         let park_tiles = count_tiles(map, |t| t == Tile::Park) as i64;
 
         let road_monthly = road_tiles * 1;
+        let highway_monthly = highway_tiles * 3;
+        let rail_monthly = rail_tiles * 2;
         let power_line_monthly = power_line_tiles * 1;
+        let water_monthly = water_pipe_tiles + water_structure_tiles * 6;
+        let transit_monthly = subway_tiles * 3
+            + bus_depot_tiles * 8
+            + rail_depot_tiles * 12
+            + subway_station_tiles * 10;
         let power_plant_monthly = (coal_plant_tiles / 16) * 100 + (gas_plant_tiles / 16) * 150;
         let police_monthly = police_tiles * 10;
         let fire_monthly = fire_tiles * 10;
         let park_monthly = park_tiles * 2;
 
         let maintenance = road_monthly
+            + highway_monthly
+            + rail_monthly
             + power_line_monthly
+            + water_monthly
+            + transit_monthly
             + power_plant_monthly
             + police_monthly
             + fire_monthly
@@ -666,7 +867,7 @@ impl SimSystem for FireSpreadSystem {
                 _ => Some(Tile::Grass),
             };
             if let Some(t) = downgraded {
-                map.tiles[y * w + x] = t;
+                map.set(x, y, t);
                 map.overlays[y * w + x].on_fire = false; // fire consumes the building
             }
         }
@@ -734,7 +935,10 @@ impl SimSystem for FloodSystem {
                 if map.get(x, y) == Tile::Water {
                     continue;
                 }
-                if matches!(map.get(x, y), Tile::Road | Tile::Rail | Tile::RoadPowerLine) {
+                if matches!(
+                    map.get(x, y),
+                    Tile::Road | Tile::Rail | Tile::RoadPowerLine | Tile::Highway | Tile::Onramp
+                ) {
                     continue;
                 }
                 let near_water = map
@@ -848,7 +1052,7 @@ fn count_tiles(map: &Map, pred: impl Fn(Tile) -> bool) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::map::Map;
+    use crate::core::map::{Map, ZoneSpec};
     use crate::core::sim::system::SimSystem;
     use crate::core::sim::{PlantState, SimState};
 
@@ -1033,5 +1237,160 @@ mod tests {
             "Power level should be scaled down during brownout (got {})",
             level
         );
+    }
+
+    #[test]
+    fn power_buildings_relay_to_adjacent_zones_but_empty_zones_do_not_chain() {
+        let mut map = Map::new(10, 10);
+        let mut sim = SimState::default();
+
+        sim.plants.insert(
+            (0, 0),
+            PlantState {
+                age_months: 0,
+                max_life_months: 600,
+                capacity_mw: 500,
+            },
+        );
+        for dy in 0..4 {
+            for dx in 0..4 {
+                map.set(dx, dy, Tile::PowerPlantCoal);
+            }
+        }
+
+        map.set(4, 0, Tile::PowerLine);
+        map.set(5, 0, Tile::ResLow);
+        map.set(6, 0, Tile::ZoneRes);
+        map.set(7, 0, Tile::ZoneRes);
+
+        PowerSystem.tick(&mut map, &mut sim);
+
+        assert!(
+            map.get_overlay(5, 0).is_powered(),
+            "Building should receive power"
+        );
+        assert!(
+            map.get_overlay(6, 0).is_powered(),
+            "Adjacent empty zone should receive power from a powered building"
+        );
+        assert!(
+            !map.get_overlay(7, 0).is_powered(),
+            "Empty zones should not relay power onward without a building or power line"
+        );
+    }
+
+    #[test]
+    fn disconnected_load_does_not_brown_out_connected_grid() {
+        let mut map = Map::new(12, 12);
+        let mut sim = SimState::default();
+
+        sim.plants.insert(
+            (0, 0),
+            PlantState {
+                age_months: 0,
+                max_life_months: 600,
+                capacity_mw: 500,
+            },
+        );
+        for dy in 0..4 {
+            for dx in 0..4 {
+                map.set(dx, dy, Tile::PowerPlantCoal);
+            }
+        }
+
+        map.set(4, 0, Tile::PowerLine);
+        map.set(5, 0, Tile::IndHeavy);
+        map.set(10, 10, Tile::IndHeavy);
+
+        PowerSystem.tick(&mut map, &mut sim);
+
+        assert_eq!(
+            sim.power_consumed_mw, 400,
+            "Only connected demand should count toward load"
+        );
+        assert!(
+            map.get_overlay(5, 0).power_level > 200,
+            "Connected load should stay at full strength when capacity exceeds connected demand"
+        );
+        assert_eq!(
+            map.get_overlay(10, 10).power_level,
+            0,
+            "Disconnected load should remain unpowered"
+        );
+    }
+
+    #[test]
+    fn water_buildings_relay_to_adjacent_zones_but_empty_zones_do_not_chain() {
+        let mut map = Map::new(6, 1);
+        let mut sim = SimState::default();
+
+        map.set(0, 0, Tile::WaterTower);
+        map.overlays[0].power_level = 255;
+        map.set(1, 0, Tile::ResLow);
+        map.set(2, 0, Tile::ZoneRes);
+        map.set(3, 0, Tile::ZoneRes);
+
+        WaterSystem.tick(&mut map, &mut sim);
+
+        assert!(map.get_overlay(1, 0).has_water());
+        assert!(map.get_overlay(2, 0).has_water());
+        assert_eq!(map.get_overlay(3, 0).water_service, 0);
+    }
+
+    #[test]
+    fn water_reaches_zone_hidden_under_powerline() {
+        let mut map = Map::new(3, 1);
+        let mut sim = SimState::default();
+
+        map.set(0, 0, Tile::WaterTower);
+        map.overlays[0].power_level = 255;
+        map.set_zone_spec(
+            1,
+            0,
+            Some(ZoneSpec {
+                kind: ZoneKind::Residential,
+                density: ZoneDensity::Dense,
+            }),
+        );
+        map.set_power_line(1, 0, true);
+
+        WaterSystem.tick(&mut map, &mut sim);
+
+        assert_eq!(map.get(1, 0), Tile::PowerLine);
+        assert_eq!(map.surface_lot_tile(1, 0), Tile::ZoneRes);
+        assert!(map.get_overlay(1, 0).has_water());
+    }
+
+    #[test]
+    fn disconnected_water_load_does_not_reduce_connected_network() {
+        let mut map = Map::new(8, 1);
+        let mut sim = SimState::default();
+
+        map.set(0, 0, Tile::WaterPump);
+        map.overlays[0].power_level = 255;
+        map.set_water_pipe(1, 0, true);
+        map.set(2, 0, Tile::ResHigh);
+        map.set(7, 0, Tile::ResHigh);
+
+        WaterSystem.tick(&mut map, &mut sim);
+
+        assert_eq!(sim.water_consumed_units, 40);
+        assert!(map.get_overlay(2, 0).has_water());
+        assert_eq!(map.get_overlay(7, 0).water_service, 0);
+    }
+
+    #[test]
+    fn traffic_system_ignores_empty_zones() {
+        let mut map = Map::new(5, 1);
+        let mut sim = SimState::default();
+
+        map.set_zone(0, 0, Some(ZoneKind::Residential));
+        map.set(1, 0, Tile::Road);
+        map.set(2, 0, Tile::Road);
+        map.set_zone(3, 0, Some(ZoneKind::Commercial));
+
+        TrafficSystem.tick(&mut map, &mut sim);
+
+        assert!(map.overlays.iter().all(|overlay| overlay.traffic == 0));
     }
 }

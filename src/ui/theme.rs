@@ -12,6 +12,8 @@ pub enum OverlayMode {
     #[default]
     None,
     Power,
+    Water,
+    Traffic,
     Pollution,
     LandValue,
     Crime,
@@ -22,7 +24,9 @@ impl OverlayMode {
     pub fn next(self) -> Self {
         match self {
             OverlayMode::None => OverlayMode::Power,
-            OverlayMode::Power => OverlayMode::Pollution,
+            OverlayMode::Power => OverlayMode::Water,
+            OverlayMode::Water => OverlayMode::Traffic,
+            OverlayMode::Traffic => OverlayMode::Pollution,
             OverlayMode::Pollution => OverlayMode::LandValue,
             OverlayMode::LandValue => OverlayMode::Crime,
             OverlayMode::Crime => OverlayMode::FireRisk,
@@ -34,6 +38,8 @@ impl OverlayMode {
         match self {
             OverlayMode::None => "",
             OverlayMode::Power => "[Overlay: Power Grid]",
+            OverlayMode::Water => "[Overlay: Water Service]",
+            OverlayMode::Traffic => "[Overlay: Traffic]",
             OverlayMode::Pollution => "[Overlay: Pollution]",
             OverlayMode::LandValue => "[Overlay: Land Value]",
             OverlayMode::Crime => "[Overlay: Crime Rate]",
@@ -151,6 +157,11 @@ pub struct UiPalette {
     pub status_button_run_fg: Color,
     pub status_button_pause_bg: Color,
     pub status_button_pause_fg: Color,
+    pub news_ticker_bg: Color,
+    pub news_ticker_label_bg: Color,
+    pub news_ticker_label_fg: Color,
+    pub news_ticker_text: Color,
+    pub news_ticker_alert: Color,
     pub input_bg: Color,
     pub input_fg: Color,
     pub input_focus_bg: Color,
@@ -276,6 +287,11 @@ pub fn palette_for(theme: ThemePreset) -> UiPalette {
             status_button_run_fg: Color::Rgb(236, 247, 244),
             status_button_pause_bg: Color::Rgb(84, 121, 146),
             status_button_pause_fg: Color::Rgb(224, 241, 248),
+            news_ticker_bg: Color::Rgb(13, 25, 34),
+            news_ticker_label_bg: Color::Rgb(57, 105, 129),
+            news_ticker_label_fg: Color::Rgb(236, 248, 250),
+            news_ticker_text: Color::Rgb(230, 241, 244),
+            news_ticker_alert: Color::Rgb(255, 205, 124),
             input_bg: Color::Rgb(43, 60, 71),
             input_fg: Color::Rgb(236, 244, 245),
             input_focus_bg: Color::Rgb(112, 214, 223),
@@ -367,6 +383,11 @@ pub fn palette_for(theme: ThemePreset) -> UiPalette {
             status_button_run_fg: Color::Rgb(247, 245, 230),
             status_button_pause_bg: Color::Rgb(161, 87, 73),
             status_button_pause_fg: Color::Rgb(255, 232, 183),
+            news_ticker_bg: Color::Rgb(45, 18, 34),
+            news_ticker_label_bg: Color::Rgb(255, 134, 121),
+            news_ticker_label_fg: Color::Rgb(255, 245, 235),
+            news_ticker_text: Color::Rgb(255, 232, 220),
+            news_ticker_alert: Color::Rgb(255, 204, 107),
             input_bg: Color::Rgb(88, 44, 70),
             input_fg: Color::Rgb(255, 237, 228),
             input_focus_bg: Color::Rgb(255, 204, 107),
@@ -458,6 +479,11 @@ pub fn palette_for(theme: ThemePreset) -> UiPalette {
             status_button_run_fg: Color::Rgb(239, 248, 241),
             status_button_pause_bg: Color::Rgb(61, 109, 116),
             status_button_pause_fg: Color::Rgb(205, 243, 244),
+            news_ticker_bg: Color::Rgb(12, 28, 24),
+            news_ticker_label_bg: Color::Rgb(69, 135, 105),
+            news_ticker_label_fg: Color::Rgb(239, 248, 241),
+            news_ticker_text: Color::Rgb(220, 243, 226),
+            news_ticker_alert: Color::Rgb(233, 201, 108),
             input_bg: Color::Rgb(36, 60, 52),
             input_fg: Color::Rgb(229, 244, 232),
             input_focus_bg: Color::Rgb(113, 225, 164),
@@ -777,6 +803,11 @@ fn apply_vivid_palette(
     ui.status_button_run_fg = scale_tuple(bg, 0.25);
     ui.status_button_pause_bg = rgb(accent_soft);
     ui.status_button_pause_fg = scale_tuple(bg, 0.25);
+    ui.news_ticker_bg = scale_tuple(bg, 0.7);
+    ui.news_ticker_label_bg = rgb(accent);
+    ui.news_ticker_label_fg = scale_tuple(bg, 0.22);
+    ui.news_ticker_text = rgb(text);
+    ui.news_ticker_alert = rgb(selection);
     ui.input_bg = scale_tuple(bg, 0.72);
     ui.input_fg = rgb(text);
     ui.input_focus_bg = rgb(selection);
@@ -883,6 +914,11 @@ fn copper_palette() -> UiPalette {
         status_button_run_fg: Color::Rgb(244, 239, 224),
         status_button_pause_bg: Color::Rgb(90, 66, 26),
         status_button_pause_fg: Color::Rgb(243, 215, 136),
+        news_ticker_bg: Color::Rgb(27, 21, 18),
+        news_ticker_label_bg: Color::Rgb(111, 70, 28),
+        news_ticker_label_fg: Color::Rgb(249, 238, 214),
+        news_ticker_text: Color::Rgb(236, 223, 196),
+        news_ticker_alert: Color::Rgb(243, 208, 117),
         input_bg: Color::Rgb(55, 42, 32),
         input_fg: Color::Rgb(243, 229, 181),
         input_focus_bg: Color::Rgb(224, 189, 101),
@@ -958,6 +994,8 @@ pub fn overlay_tint(mode: OverlayMode, o: TileOverlay) -> Option<Color> {
                 Some(lerp_color(o.power_level, (100, 40, 0), (0, 150, 40)))
             }
         }
+        OverlayMode::Water => Some(lerp_color(o.water_service, (35, 25, 10), (40, 140, 200))),
+        OverlayMode::Traffic => Some(lerp_color(o.traffic, (20, 40, 20), (160, 30, 0))),
         OverlayMode::Pollution => Some(lerp_color(o.pollution, (20, 50, 20), (120, 40, 0))),
         OverlayMode::LandValue => Some(lerp_color(o.land_value, (10, 20, 10), (0, 120, 60))),
         OverlayMode::Crime => Some(lerp_color(o.crime, (20, 20, 20), (100, 0, 0))),
@@ -1025,7 +1063,7 @@ pub fn tile_glyph(tile: Tile, overlay: TileOverlay) -> TileGlyph {
     let ui = ui_palette();
     if overlay.on_fire {
         return TileGlyph {
-            ch: '🔥',
+            ch: '*',
             fg: Color::Rgb(255, 200, 0),
             bg: Color::Rgb(150, 40, 0),
         };
@@ -1057,6 +1095,16 @@ pub fn tile_glyph(tile: Tile, overlay: TileOverlay) -> TileGlyph {
             fg: Color::Rgb(180, 180, 180),
             bg: Color::Rgb(40, 40, 45),
         },
+        Tile::Highway => TileGlyph {
+            ch: ' ',
+            fg: Color::Rgb(240, 220, 140),
+            bg: Color::Rgb(55, 50, 30),
+        },
+        Tile::Onramp => TileGlyph {
+            ch: ' ',
+            fg: Color::Rgb(220, 210, 130),
+            bg: Color::Rgb(50, 45, 30),
+        },
         Tile::Rail => TileGlyph {
             ch: ' ',
             fg: Color::Rgb(150, 130, 100),
@@ -1066,6 +1114,16 @@ pub fn tile_glyph(tile: Tile, overlay: TileOverlay) -> TileGlyph {
             ch: ' ',
             fg: Color::Rgb(255, 255, 100),
             bg: Color::Rgb(30, 30, 40),
+        },
+        Tile::WaterPipe => TileGlyph {
+            ch: ' ',
+            fg: Color::Rgb(120, 210, 255),
+            bg: Color::Rgb(18, 42, 60),
+        },
+        Tile::SubwayTunnel => TileGlyph {
+            ch: ' ',
+            fg: Color::Rgb(220, 220, 220),
+            bg: Color::Rgb(28, 28, 28),
         },
         Tile::ZoneRes => TileGlyph {
             ch: '▒',
@@ -1083,37 +1141,37 @@ pub fn tile_glyph(tile: Tile, overlay: TileOverlay) -> TileGlyph {
             bg: ui.sector_industrial_bg,
         },
         Tile::ResLow => TileGlyph {
-            ch: '⌂',
+            ch: 'h',
             fg: ui.sector_residential,
             bg: ui.sector_residential_bg,
         },
         Tile::ResMed => TileGlyph {
-            ch: '⌂',
+            ch: 'H',
             fg: ui.sector_residential,
             bg: ui.sector_residential_bg,
         },
         Tile::ResHigh => TileGlyph {
-            ch: '🏢',
+            ch: 'A',
             fg: Color::Rgb(208, 245, 202),
             bg: ui.sector_residential_bg,
         },
         Tile::CommLow => TileGlyph {
-            ch: '◊',
+            ch: 'c',
             fg: ui.sector_commercial,
             bg: ui.sector_commercial_bg,
         },
         Tile::CommHigh => TileGlyph {
-            ch: '⌂',
+            ch: 'C',
             fg: Color::Rgb(204, 232, 250),
             bg: ui.sector_commercial_bg,
         },
         Tile::IndLight => TileGlyph {
-            ch: '⌂',
+            ch: 'i',
             fg: ui.sector_industrial,
             bg: ui.sector_industrial_bg,
         },
         Tile::IndHeavy => TileGlyph {
-            ch: '⌂',
+            ch: 'I',
             fg: Color::Rgb(245, 225, 172),
             bg: ui.sector_industrial_bg,
         },
@@ -1142,6 +1200,41 @@ pub fn tile_glyph(tile: Tile, overlay: TileOverlay) -> TileGlyph {
             fg: Color::Rgb(255, 100, 100),
             bg: Color::White,
         },
+        Tile::BusDepot => TileGlyph {
+            ch: 'B',
+            fg: Color::Rgb(250, 240, 170),
+            bg: Color::Rgb(90, 65, 15),
+        },
+        Tile::RailDepot => TileGlyph {
+            ch: 'R',
+            fg: Color::Rgb(230, 210, 185),
+            bg: Color::Rgb(75, 50, 35),
+        },
+        Tile::SubwayStation => TileGlyph {
+            ch: 'U',
+            fg: Color::Rgb(215, 230, 250),
+            bg: Color::Rgb(25, 55, 95),
+        },
+        Tile::WaterPump => TileGlyph {
+            ch: 'W',
+            fg: Color::Rgb(200, 250, 255),
+            bg: Color::Rgb(20, 70, 90),
+        },
+        Tile::WaterTower => TileGlyph {
+            ch: 'T',
+            fg: Color::Rgb(210, 250, 255),
+            bg: Color::Rgb(30, 65, 78),
+        },
+        Tile::WaterTreatment => TileGlyph {
+            ch: 'C',
+            fg: Color::Rgb(220, 255, 240),
+            bg: Color::Rgb(25, 85, 60),
+        },
+        Tile::Desalination => TileGlyph {
+            ch: 'D',
+            fg: Color::Rgb(220, 250, 255),
+            bg: Color::Rgb(25, 70, 110),
+        },
         Tile::Rubble => TileGlyph {
             ch: '░',
             fg: Color::Rgb(80, 80, 80),
@@ -1164,7 +1257,7 @@ fn network_sprite_chars(tile: Tile, n: bool, e: bool, s: bool, w: bool) -> (char
         | (if w { 8 } else { 0 });
 
     match tile {
-        Tile::Road | Tile::RoadPowerLine => [
+        Tile::Road | Tile::RoadPowerLine | Tile::Onramp => [
             (' ', ' '),
             (' ', '║'),
             ('═', '═'),
@@ -1181,6 +1274,24 @@ fn network_sprite_chars(tile: Tile, n: bool, e: bool, s: bool, w: bool) -> (char
             ('═', '╣'),
             ('═', '╦'),
             ('═', '╬'),
+        ][idx],
+        Tile::Highway => [
+            (' ', ' '),
+            (' ', '║'),
+            ('█', '█'),
+            (' ', '╚'),
+            (' ', '║'),
+            (' ', '║'),
+            (' ', '╔'),
+            (' ', '╠'),
+            ('█', '█'),
+            ('█', '╝'),
+            ('█', '█'),
+            ('█', '╩'),
+            ('█', '╗'),
+            ('█', '╣'),
+            ('█', '╦'),
+            ('█', '╬'),
         ][idx],
         Tile::Rail => [
             (' ', ' '),
@@ -1217,6 +1328,42 @@ fn network_sprite_chars(tile: Tile, n: bool, e: bool, s: bool, w: bool) -> (char
             ('╌', '┫'),
             ('╌', '┳'),
             ('╌', '╋'),
+        ][idx],
+        Tile::WaterPipe => [
+            (' ', ' '),
+            (' ', '│'),
+            ('─', '─'),
+            (' ', '└'),
+            (' ', '│'),
+            (' ', '│'),
+            (' ', '┌'),
+            (' ', '├'),
+            ('─', '─'),
+            ('─', '┘'),
+            ('─', '─'),
+            ('─', '┴'),
+            ('─', '┐'),
+            ('─', '┤'),
+            ('─', '┬'),
+            ('─', '┼'),
+        ][idx],
+        Tile::SubwayTunnel => [
+            (' ', ' '),
+            (' ', '║'),
+            ('═', '═'),
+            (' ', '╚'),
+            (' ', '║'),
+            (' ', '║'),
+            (' ', '╔'),
+            (' ', '╠'),
+            ('═', '═'),
+            ('═', '╝'),
+            ('═', '═'),
+            ('═', '╩'),
+            ('═', '╗'),
+            ('═', '╣'),
+            ('═', '╦'),
+            ('═', '╬'),
         ][idx],
         _ => (' ', ' '),
     }
@@ -1262,7 +1409,7 @@ mod tests {
     #[test]
     fn overlay_mode_cycles_through_all_variants() {
         let mut m = OverlayMode::None;
-        for _ in 0..6 {
+        for _ in 0..8 {
             m = m.next();
         }
         assert_eq!(m, OverlayMode::None);
@@ -1336,5 +1483,33 @@ mod tests {
         );
         assert_eq!(sprite.left.ch, '╌');
         assert_eq!(sprite.right.ch, '╋');
+    }
+
+    #[test]
+    fn fire_and_tower_glyphs_use_single_cell_markers() {
+        let fire = tile_glyph(
+            Tile::Grass,
+            TileOverlay {
+                on_fire: true,
+                ..TileOverlay::default()
+            },
+        );
+        let tower = tile_glyph(Tile::ResHigh, TileOverlay::default());
+
+        assert_eq!(fire.ch, '*');
+        assert_eq!(tower.ch, 'A');
+    }
+
+    #[test]
+    fn developed_zone_glyphs_are_ascii_and_distinct_from_empty_zones() {
+        let empty_res = tile_glyph(Tile::ZoneRes, TileOverlay::default());
+        let low_res = tile_glyph(Tile::ResLow, TileOverlay::default());
+        let low_comm = tile_glyph(Tile::CommLow, TileOverlay::default());
+        let light_ind = tile_glyph(Tile::IndLight, TileOverlay::default());
+
+        assert_eq!(empty_res.ch, '▒');
+        assert_eq!(low_res.ch, 'h');
+        assert_eq!(low_comm.ch, 'c');
+        assert_eq!(light_ind.ch, 'i');
     }
 }

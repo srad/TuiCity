@@ -1,40 +1,29 @@
-use std::collections::HashSet;
 use std::fs;
-use std::io;
+use std::fs::File;
+use std::io::{self, BufReader, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
+use std::sync::mpsc::Sender;
+use std::time::SystemTime;
 
 use crate::core::{
-    map::{Map, Tile, TileOverlay},
+    map::{
+        Map, TerrainTile, Tile, TileOverlay, TransportTile, TripFailure, TripMode, UndergroundTile,
+        ZoneDensity, ZoneKind,
+    },
     sim::SimState,
 };
-use crate::game_info::{LEGACY_SAVE_DIR_NAMES, SAVE_DIR_NAME};
+use crate::game_info::SAVE_DIR_NAME;
 
-const CURRENT_SAVE_VERSION: u32 = 2;
-
-#[derive(serde::Serialize, serde::Deserialize)]
-pub struct SaveFile {
-    #[serde(default = "current_save_version")]
-    pub version: u32,
-    pub sim: SimState,
-    pub map: Map,
-}
-
+const CURRENT_SAVE_VERSION: u32 = 5;
+const BINARY_SAVE_MAGIC: [u8; 4] = *b"TC2S";
+const BINARY_SAVE_EXTENSION: &str = "tc2";
 #[derive(serde::Deserialize)]
-struct LegacySaveFile {
-    #[allow(dead_code)]
-    version: u32,
-    sim: SimState,
-    width: usize,
-    height: usize,
-    tiles: Vec<u8>,
-    overlays: Vec<(u8, bool, u8)>,
-}
-
-#[derive(serde::Deserialize)]
-#[serde(untagged)]
-enum SaveFileCompat {
-    Current(SaveFile),
-    Legacy(LegacySaveFile),
+struct SaveListingSim {
+    city_name: String,
+    year: i32,
+    month: u8,
+    population: u64,
+    treasury: i64,
 }
 
 #[derive(Clone, Debug)]
@@ -45,37 +34,12 @@ pub struct SaveEntry {
     pub month: u8,
     pub population: u64,
     pub treasury: i64,
+    pub modified_at: Option<SystemTime>,
 }
 
-fn current_save_version() -> u32 {
-    CURRENT_SAVE_VERSION
-}
-
-impl From<LegacySaveFile> for SaveFile {
-    fn from(value: LegacySaveFile) -> Self {
-        let mut map = Map::new(value.width, value.height);
-        for (index, tile) in value.tiles.into_iter().enumerate() {
-            if index < map.tiles.len() {
-                map.tiles[index] = Tile::from_u8(tile);
-            }
-        }
-        for (index, (power_level, on_fire, crime)) in value.overlays.into_iter().enumerate() {
-            if index < map.overlays.len() {
-                map.overlays[index] = TileOverlay {
-                    power_level,
-                    on_fire,
-                    crime,
-                    ..TileOverlay::default()
-                };
-            }
-        }
-
-        Self {
-            version: 1,
-            sim: value.sim,
-            map,
-        }
-    }
+pub enum SaveDiscoveryUpdate {
+    Entry(SaveEntry),
+    Finished,
 }
 
 pub fn app_data_dir() -> PathBuf {
@@ -104,8 +68,15 @@ pub fn save_city(sim: &SimState, map: &Map) -> io::Result<()> {
 pub fn save_city_in_dir(sim: &SimState, map: &Map, dir: &Path) -> io::Result<PathBuf> {
     fs::create_dir_all(dir)?;
 
-    let safe_name: String = sim
-        .city_name
+    let path = dir.join(save_filename(&sim.city_name));
+    write_binary_save_file(&path, sim, map)?;
+    Ok(path)
+}
+
+fn save_filename(city_name: &str) -> String {
+    // Save names are also user-visible in the load menu, so keep them readable while still
+    // stripping filesystem-hostile characters.
+    let safe_name: String = city_name
         .chars()
         .map(|c| {
             if c.is_alphanumeric() || c == '_' || c == '-' {
@@ -115,41 +86,27 @@ pub fn save_city_in_dir(sim: &SimState, map: &Map, dir: &Path) -> io::Result<Pat
             }
         })
         .collect();
-    let filename = format!("{}_{}{:02}.json", safe_name, sim.year, sim.month);
-    let path = dir.join(filename);
 
-    let save = SaveFile {
-        version: CURRENT_SAVE_VERSION,
-        sim: sim.clone(),
-        map: map.clone(),
-    };
-
-    let json = serde_json::to_string_pretty(&save).map_err(io::Error::other)?;
-    fs::write(&path, json)?;
-    Ok(path)
+    format!("{safe_name}.{BINARY_SAVE_EXTENSION}")
 }
 
 pub fn load_city(path: &Path) -> io::Result<(Map, SimState)> {
-    let json = fs::read_to_string(path)?;
-    let save = parse_save_file(&json)?;
-    Ok((save.map, save.sim))
+    load_binary_save(path)
 }
 
-pub fn list_saves() -> Vec<SaveEntry> {
-    let base = user_home_dir();
-    let mut seen_paths = HashSet::new();
-    let mut entries = Vec::new();
+pub fn delete_city(path: &Path) -> io::Result<()> {
+    fs::remove_file(path)
+}
 
-    for dir_name in std::iter::once(SAVE_DIR_NAME).chain(LEGACY_SAVE_DIR_NAMES.iter().copied()) {
-        for entry in list_saves_in_dir(&save_dir_from_base(&base, dir_name)) {
-            if seen_paths.insert(entry.path.clone()) {
-                entries.push(entry);
-            }
+pub fn discover_saves(tx: Sender<SaveDiscoveryUpdate>) {
+    let base = user_home_dir();
+    for entry in list_saves_in_dir(&save_dir_from_base(&base, SAVE_DIR_NAME)) {
+        if tx.send(SaveDiscoveryUpdate::Entry(entry)).is_err() {
+            return;
         }
     }
 
-    entries.sort_by(|a, b| a.city_name.cmp(&b.city_name).then(a.year.cmp(&b.year)));
-    entries
+    let _ = tx.send(SaveDiscoveryUpdate::Finished);
 }
 
 pub fn list_saves_in_dir(dir: &Path) -> Vec<SaveEntry> {
@@ -161,33 +118,394 @@ pub fn list_saves_in_dir(dir: &Path) -> Vec<SaveEntry> {
 
     for entry in read_dir.flatten() {
         let path = entry.path();
-        if path.extension().and_then(|e| e.to_str()) != Some("json") {
+        if !is_supported_save_path(&path) {
             continue;
         }
-        if let Ok(json) = fs::read_to_string(&path) {
-            if let Ok(save) = parse_save_file(&json) {
-                entries.push(SaveEntry {
-                    path,
-                    city_name: save.sim.city_name.clone(),
-                    year: save.sim.year,
-                    month: save.sim.month,
-                    population: save.sim.population,
-                    treasury: save.sim.treasury,
-                });
-            }
+        let modified_at = entry
+            .metadata()
+            .ok()
+            .and_then(|metadata| metadata.modified().ok());
+        if let Ok(save) = read_save_listing(&path) {
+            entries.push(SaveEntry {
+                path,
+                city_name: save.city_name,
+                year: save.year,
+                month: save.month,
+                population: save.population,
+                treasury: save.treasury,
+                modified_at,
+            });
         }
     }
 
-    entries.sort_by(|a, b| a.city_name.cmp(&b.city_name).then(a.year.cmp(&b.year)));
+    sort_save_entries(&mut entries);
     entries
 }
 
-fn parse_save_file(json: &str) -> io::Result<SaveFile> {
-    let save = serde_json::from_str::<SaveFileCompat>(json).map_err(io::Error::other)?;
-    Ok(match save {
-        SaveFileCompat::Current(save) => save,
-        SaveFileCompat::Legacy(save) => save.into(),
-    })
+pub(crate) fn sort_save_entries(entries: &mut [SaveEntry]) {
+    entries.sort_by(|a, b| {
+        b.modified_at
+            .cmp(&a.modified_at)
+            .then_with(|| b.year.cmp(&a.year))
+            .then_with(|| b.month.cmp(&a.month))
+            .then_with(|| a.city_name.cmp(&b.city_name))
+            .then_with(|| a.path.cmp(&b.path))
+    });
+}
+
+fn is_supported_save_path(path: &Path) -> bool {
+    path.extension().and_then(|ext| ext.to_str()) == Some(BINARY_SAVE_EXTENSION)
+}
+
+fn write_binary_save_file(path: &Path, sim: &SimState, map: &Map) -> io::Result<()> {
+    let file = File::create(path)?;
+    let mut writer = BufWriter::new(file);
+    let sim_json = serde_json::to_vec(sim).map_err(io::Error::other)?;
+
+    writer.write_all(&BINARY_SAVE_MAGIC)?;
+    write_u32(&mut writer, CURRENT_SAVE_VERSION)?;
+    write_u32(&mut writer, sim_json.len() as u32)?;
+    writer.write_all(&sim_json)?;
+    write_u32(&mut writer, map.width as u32)?;
+    write_u32(&mut writer, map.height as u32)?;
+    writer.write_all(
+        &map.terrain
+            .iter()
+            .copied()
+            .map(encode_terrain)
+            .collect::<Vec<_>>(),
+    )?;
+    writer.write_all(
+        &map.transport
+            .iter()
+            .copied()
+            .map(encode_transport)
+            .collect::<Vec<_>>(),
+    )?;
+    write_packed_bools(&mut writer, &map.power_lines)?;
+    writer.write_all(
+        &map.underground
+            .iter()
+            .copied()
+            .map(|cell| encode_underground(cell.unwrap_or_default()))
+            .collect::<Vec<_>>(),
+    )?;
+    writer.write_all(
+        &map.occupants
+            .iter()
+            .copied()
+            .map(encode_tile_option)
+            .collect::<Vec<_>>(),
+    )?;
+    writer.write_all(
+        &map.zones
+            .iter()
+            .copied()
+            .map(encode_zone_kind)
+            .collect::<Vec<_>>(),
+    )?;
+    writer.write_all(
+        &map.zone_densities
+            .iter()
+            .copied()
+            .map(encode_zone_density)
+            .collect::<Vec<_>>(),
+    )?;
+    for overlay in &map.overlays {
+        writer.write_all(&[
+            overlay.power_level,
+            overlay.on_fire as u8,
+            overlay.crime,
+            overlay.pollution,
+            overlay.land_value,
+            overlay.fire_risk,
+            overlay.traffic,
+            overlay.water_service,
+            overlay.trip_success as u8,
+            overlay.trip_cost,
+            encode_trip_mode(overlay.trip_mode),
+            encode_trip_failure(overlay.trip_failure),
+        ])?;
+    }
+    writer.flush()?;
+    Ok(())
+}
+
+fn load_binary_save(path: &Path) -> io::Result<(Map, SimState)> {
+    let file = File::open(path)?;
+    let mut reader = BufReader::new(file);
+
+    let mut magic = [0u8; 4];
+    reader.read_exact(&mut magic)?;
+    if magic != BINARY_SAVE_MAGIC {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "unsupported save magic",
+        ));
+    }
+
+    let _version = read_u32(&mut reader)?;
+    let sim_len = read_u32(&mut reader)? as usize;
+    let sim_json = read_exact_vec(&mut reader, sim_len)?;
+    let sim = serde_json::from_slice::<SimState>(&sim_json).map_err(io::Error::other)?;
+
+    let width = read_u32(&mut reader)? as usize;
+    let height = read_u32(&mut reader)? as usize;
+    let len = width
+        .checked_mul(height)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "save dimensions overflow"))?;
+
+    let terrain = read_exact_vec(&mut reader, len)?
+        .into_iter()
+        .map(decode_terrain)
+        .collect::<Vec<_>>();
+    let transport = read_exact_vec(&mut reader, len)?
+        .into_iter()
+        .map(decode_transport)
+        .collect::<Vec<_>>();
+    let power_lines = read_packed_bools(&mut reader, len)?;
+    let underground = read_exact_vec(&mut reader, len)?
+        .into_iter()
+        .map(|value| {
+            let cell = decode_underground(value);
+            (!cell.is_empty()).then_some(cell)
+        })
+        .collect::<Vec<_>>();
+    let occupants = read_exact_vec(&mut reader, len)?
+        .into_iter()
+        .map(decode_tile_option)
+        .collect::<Vec<_>>();
+    let zones = read_exact_vec(&mut reader, len)?
+        .into_iter()
+        .map(decode_zone_kind)
+        .collect::<Vec<_>>();
+    let zone_densities = read_exact_vec(&mut reader, len)?
+        .into_iter()
+        .map(decode_zone_density)
+        .collect::<Vec<_>>();
+
+    let mut overlays = Vec::with_capacity(len);
+    for _ in 0..len {
+        let bytes = read_exact_array::<12, _>(&mut reader)?;
+        overlays.push(TileOverlay {
+            power_level: bytes[0],
+            on_fire: bytes[1] != 0,
+            crime: bytes[2],
+            zone: None,
+            pollution: bytes[3],
+            land_value: bytes[4],
+            fire_risk: bytes[5],
+            traffic: bytes[6],
+            water_service: bytes[7],
+            trip_success: bytes[8] != 0,
+            trip_cost: bytes[9],
+            trip_mode: decode_trip_mode(bytes[10]),
+            trip_failure: decode_trip_failure(bytes[11]),
+        });
+    }
+
+    let mut map = Map::new(width, height);
+    map.terrain = terrain;
+    map.transport = transport;
+    map.power_lines = power_lines;
+    map.underground = underground;
+    map.occupants = occupants;
+    map.zones = zones;
+    map.zone_densities = zone_densities;
+    map.overlays = overlays;
+    map.normalize_layers();
+
+    Ok((map, sim))
+}
+
+fn write_u32(writer: &mut impl Write, value: u32) -> io::Result<()> {
+    writer.write_all(&value.to_le_bytes())
+}
+
+fn read_u32(reader: &mut impl Read) -> io::Result<u32> {
+    Ok(u32::from_le_bytes(read_exact_array::<4, _>(reader)?))
+}
+
+fn read_exact_array<const N: usize, R: Read>(reader: &mut R) -> io::Result<[u8; N]> {
+    let mut buffer = [0u8; N];
+    reader.read_exact(&mut buffer)?;
+    Ok(buffer)
+}
+
+fn read_exact_vec(reader: &mut impl Read, len: usize) -> io::Result<Vec<u8>> {
+    let mut buffer = vec![0u8; len];
+    reader.read_exact(&mut buffer)?;
+    Ok(buffer)
+}
+
+fn write_packed_bools(writer: &mut impl Write, values: &[bool]) -> io::Result<()> {
+    let mut bytes = vec![0u8; values.len().div_ceil(8)];
+    for (index, value) in values.iter().copied().enumerate() {
+        if value {
+            bytes[index / 8] |= 1 << (index % 8);
+        }
+    }
+    writer.write_all(&bytes)
+}
+
+fn read_packed_bools(reader: &mut impl Read, len: usize) -> io::Result<Vec<bool>> {
+    let bytes = read_exact_vec(reader, len.div_ceil(8))?;
+    Ok((0..len)
+        .map(|index| (bytes[index / 8] & (1 << (index % 8))) != 0)
+        .collect())
+}
+
+fn encode_terrain(tile: TerrainTile) -> u8 {
+    match tile {
+        TerrainTile::Grass => 0,
+        TerrainTile::Water => 1,
+        TerrainTile::Trees => 2,
+        TerrainTile::Dirt => 3,
+    }
+}
+
+fn decode_terrain(value: u8) -> TerrainTile {
+    match value {
+        1 => TerrainTile::Water,
+        2 => TerrainTile::Trees,
+        3 => TerrainTile::Dirt,
+        _ => TerrainTile::Grass,
+    }
+}
+
+fn encode_transport(tile: Option<TransportTile>) -> u8 {
+    match tile {
+        Some(TransportTile::Road) => 0,
+        Some(TransportTile::Rail) => 1,
+        Some(TransportTile::Highway) => 2,
+        Some(TransportTile::Onramp) => 3,
+        None => u8::MAX,
+    }
+}
+
+fn decode_transport(value: u8) -> Option<TransportTile> {
+    match value {
+        0 => Some(TransportTile::Road),
+        1 => Some(TransportTile::Rail),
+        2 => Some(TransportTile::Highway),
+        3 => Some(TransportTile::Onramp),
+        _ => None,
+    }
+}
+
+fn encode_underground(tile: UndergroundTile) -> u8 {
+    (tile.water_pipe as u8) | ((tile.subway as u8) << 1)
+}
+
+fn decode_underground(value: u8) -> UndergroundTile {
+    UndergroundTile {
+        water_pipe: (value & 0b01) != 0,
+        subway: (value & 0b10) != 0,
+    }
+}
+
+fn encode_tile_option(tile: Option<Tile>) -> u8 {
+    tile.map(|tile| tile as u8).unwrap_or(u8::MAX)
+}
+
+fn decode_tile_option(value: u8) -> Option<Tile> {
+    (value != u8::MAX).then(|| Tile::from_u8(value))
+}
+
+fn encode_zone_kind(zone: Option<ZoneKind>) -> u8 {
+    match zone {
+        Some(ZoneKind::Residential) => 0,
+        Some(ZoneKind::Commercial) => 1,
+        Some(ZoneKind::Industrial) => 2,
+        None => u8::MAX,
+    }
+}
+
+fn decode_zone_kind(value: u8) -> Option<ZoneKind> {
+    match value {
+        0 => Some(ZoneKind::Residential),
+        1 => Some(ZoneKind::Commercial),
+        2 => Some(ZoneKind::Industrial),
+        _ => None,
+    }
+}
+
+fn encode_zone_density(density: Option<ZoneDensity>) -> u8 {
+    match density {
+        Some(ZoneDensity::Light) => 0,
+        Some(ZoneDensity::Dense) => 1,
+        None => u8::MAX,
+    }
+}
+
+fn decode_zone_density(value: u8) -> Option<ZoneDensity> {
+    match value {
+        0 => Some(ZoneDensity::Light),
+        1 => Some(ZoneDensity::Dense),
+        _ => None,
+    }
+}
+
+fn encode_trip_mode(mode: Option<TripMode>) -> u8 {
+    match mode {
+        Some(TripMode::Road) => 0,
+        Some(TripMode::Bus) => 1,
+        Some(TripMode::Rail) => 2,
+        Some(TripMode::Subway) => 3,
+        None => u8::MAX,
+    }
+}
+
+fn decode_trip_mode(value: u8) -> Option<TripMode> {
+    match value {
+        0 => Some(TripMode::Road),
+        1 => Some(TripMode::Bus),
+        2 => Some(TripMode::Rail),
+        3 => Some(TripMode::Subway),
+        _ => None,
+    }
+}
+
+fn encode_trip_failure(failure: Option<TripFailure>) -> u8 {
+    match failure {
+        Some(TripFailure::NoLocalAccess) => 0,
+        Some(TripFailure::NoDestination) => 1,
+        Some(TripFailure::NoRoute) => 2,
+        Some(TripFailure::TooLong) => 3,
+        None => u8::MAX,
+    }
+}
+
+fn decode_trip_failure(value: u8) -> Option<TripFailure> {
+    match value {
+        0 => Some(TripFailure::NoLocalAccess),
+        1 => Some(TripFailure::NoDestination),
+        2 => Some(TripFailure::NoRoute),
+        3 => Some(TripFailure::TooLong),
+        _ => None,
+    }
+}
+
+fn read_save_listing(path: &Path) -> io::Result<SaveListingSim> {
+    read_binary_save_listing(path)
+}
+
+fn read_binary_save_listing(path: &Path) -> io::Result<SaveListingSim> {
+    let file = File::open(path)?;
+    let mut reader = BufReader::new(file);
+    let mut magic = [0u8; 4];
+    reader.read_exact(&mut magic)?;
+    if magic != BINARY_SAVE_MAGIC {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "unsupported save magic",
+        ));
+    }
+
+    let _version = read_u32(&mut reader)?;
+    let sim_len = read_u32(&mut reader)? as usize;
+    let sim_json = read_exact_vec(&mut reader, sim_len)?;
+    serde_json::from_slice::<SaveListingSim>(&sim_json).map_err(io::Error::other)
 }
 
 #[cfg(test)]
@@ -197,7 +515,7 @@ mod tests {
         map::{Map, Tile, TileOverlay},
         sim::{DisasterConfig, MaintenanceBreakdown, PlantState, SimState, TaxRates},
     };
-    use std::time::{SystemTime, UNIX_EPOCH};
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
     struct TestDir {
         path: PathBuf,
@@ -243,9 +561,13 @@ mod tests {
                 power_level: 200,
                 on_fire: false,
                 crime: 17,
+                zone: Some(crate::core::map::ZoneKind::Residential),
                 pollution: 23,
                 land_value: 145,
                 fire_risk: 88,
+                traffic: 0,
+                water_service: 0,
+                ..TileOverlay::default()
             },
         );
         map.set_overlay(
@@ -255,9 +577,13 @@ mod tests {
                 power_level: 255,
                 on_fire: true,
                 crime: 92,
+                zone: Some(crate::core::map::ZoneKind::Industrial),
                 pollution: 211,
                 land_value: 34,
                 fire_risk: 144,
+                traffic: 0,
+                water_service: 0,
+                ..TileOverlay::default()
             },
         );
         map
@@ -309,6 +635,17 @@ mod tests {
             },
             power_produced_mw: 500,
             power_consumed_mw: 420,
+            water_produced_units: 300,
+            water_consumed_units: 180,
+            transport_rng_state: 0x0123_4567_89AB_CDEF,
+            trip_attempts: 70,
+            trip_successes: 54,
+            trip_failures: 16,
+            road_share: 20,
+            bus_share: 12,
+            rail_share: 14,
+            subway_share: 8,
+            unlock_mode: crate::core::sim::UnlockMode::Historical,
             plants: std::collections::HashMap::new(),
         };
         sim.plants.insert(
@@ -329,10 +666,61 @@ mod tests {
         let sim = sample_sim();
 
         let path = save_city_in_dir(&sim, &map, &dir.path).expect("save should succeed");
+        assert_eq!(
+            path.extension().and_then(|ext| ext.to_str()),
+            Some(BINARY_SAVE_EXTENSION)
+        );
         let (loaded_map, loaded_sim) = load_city(&path).expect("load should succeed");
 
         assert_eq!(loaded_map, map);
         assert_eq!(loaded_sim, sim);
+    }
+
+    #[test]
+    fn save_and_load_roundtrip_preserves_layered_map_state() {
+        let dir = TestDir::new("layered-roundtrip");
+        let mut map = Map::new(6, 4);
+        map.set(0, 0, Tile::Water);
+        map.set_zone(1, 1, Some(crate::core::map::ZoneKind::Residential));
+        map.set_transport(1, 1, Some(crate::core::map::TransportTile::Road));
+        map.set_zone(2, 1, Some(crate::core::map::ZoneKind::Commercial));
+        map.set_power_line(2, 1, true);
+        map.set_zone(3, 1, Some(crate::core::map::ZoneKind::Industrial));
+        map.set_occupant(3, 1, Some(Tile::IndLight));
+        map.set_power_line(3, 1, true);
+        map.set_transport(4, 1, Some(crate::core::map::TransportTile::Rail));
+        map.set_overlay(
+            2,
+            1,
+            TileOverlay {
+                power_level: 180,
+                on_fire: false,
+                crime: 9,
+                zone: Some(crate::core::map::ZoneKind::Commercial),
+                pollution: 12,
+                land_value: 140,
+                fire_risk: 7,
+                traffic: 0,
+                water_service: 0,
+                ..TileOverlay::default()
+            },
+        );
+
+        let sim = sample_sim();
+        let path = save_city_in_dir(&sim, &map, &dir.path).expect("save should succeed");
+        let (loaded_map, loaded_sim) = load_city(&path).expect("load should succeed");
+
+        assert_eq!(loaded_sim, sim);
+        assert_eq!(loaded_map, map);
+        assert_eq!(
+            loaded_map.zone_kind(1, 1),
+            Some(crate::core::map::ZoneKind::Residential)
+        );
+        assert_eq!(loaded_map.get(1, 1), Tile::Road);
+        assert!(loaded_map.has_power_line(2, 1));
+        assert_eq!(loaded_map.get(2, 1), Tile::PowerLine);
+        assert_eq!(loaded_map.occupant_at(3, 1), Some(Tile::IndLight));
+        assert_eq!(loaded_map.get(3, 1), Tile::IndLight);
     }
 
     #[test]
@@ -350,69 +738,57 @@ mod tests {
         assert_eq!(saves[0].month, sim.month);
         assert_eq!(saves[0].population, sim.population);
         assert_eq!(saves[0].treasury, sim.treasury);
+        assert!(saves[0].modified_at.is_some());
     }
 
     #[test]
-    fn load_city_accepts_unknown_future_fields() {
-        let dir = TestDir::new("future");
+    fn saving_same_city_reuses_the_same_file() {
+        let dir = TestDir::new("overwrite");
         let map = sample_map();
-        let sim = sample_sim();
+        let mut initial = sample_sim();
+        let first_path =
+            save_city_in_dir(&initial, &map, &dir.path).expect("first save should succeed");
 
-        let path = save_city_in_dir(&sim, &map, &dir.path).expect("save should succeed");
-        let mut json = fs::read_to_string(&path).expect("saved file should be readable");
-        json = json.replacen(
-            "\"version\": 2,",
-            "\"version\": 2,\n  \"future_top_level\": {\"enabled\": true},",
-            1,
-        );
-        json = json.replacen(
-            "\"city_name\": \"Test City\",",
-            "\"city_name\": \"Test City\",\n    \"future_sim_field\": 42,",
-            1,
-        );
-        json = json.replacen(
-            "\"width\": 4,",
-            "\"width\": 4,\n    \"future_map_field\": \"hello\",",
-            1,
-        );
-        fs::write(&path, json).expect("modified save should be writable");
+        initial.year += 1;
+        initial.month = 1;
+        initial.population += 100;
+        let second_path =
+            save_city_in_dir(&initial, &map, &dir.path).expect("second save should succeed");
 
-        let (loaded_map, loaded_sim) = load_city(&path).expect("load should tolerate new fields");
+        assert_eq!(first_path, second_path);
+        assert_eq!(
+            first_path.file_name().and_then(|name| name.to_str()),
+            Some("Test_City.tc2")
+        );
 
-        assert_eq!(loaded_map, map);
-        assert_eq!(loaded_sim, sim);
+        let saves = list_saves_in_dir(&dir.path);
+        assert_eq!(saves.len(), 1);
+        assert_eq!(saves[0].year, initial.year);
+        assert_eq!(saves[0].month, initial.month);
+        assert_eq!(saves[0].population, initial.population);
     }
 
     #[test]
-    fn load_city_keeps_support_for_legacy_save_format() {
-        let dir = TestDir::new("legacy");
-        let path = dir.path.join("legacy.json");
-        let sim = sample_sim();
-        let legacy = serde_json::json!({
-            "version": 1,
-            "sim": sim,
-            "width": 2,
-            "height": 2,
-            "tiles": [10, 60, 62, 64],
-            "overlays": [
-                [120, false, 3],
-                [255, false, 0],
-                [0, false, 2],
-                [0, true, 8]
-            ]
-        });
-        fs::write(&path, serde_json::to_string_pretty(&legacy).unwrap())
-            .expect("legacy file should be writable");
+    fn list_saves_orders_most_recently_saved_first() {
+        let dir = TestDir::new("recent-first");
+        let map = sample_map();
 
-        let (map, loaded_sim) = load_city(&path).expect("legacy save should load");
+        let mut older = sample_sim();
+        older.city_name = "Older City".to_string();
+        let _ = save_city_in_dir(&older, &map, &dir.path).expect("older save should succeed");
 
-        assert_eq!(map.width, 2);
-        assert_eq!(map.height, 2);
-        assert_eq!(map.get(0, 0), Tile::Road);
-        assert_eq!(map.get(1, 0), Tile::PowerPlantCoal);
-        assert_eq!(map.get_overlay(0, 0).power_level, 120);
-        assert_eq!(map.get_overlay(1, 1).on_fire, true);
-        assert_eq!(map.get_overlay(0, 0).pollution, 0);
-        assert_eq!(loaded_sim, sample_sim());
+        std::thread::sleep(Duration::from_millis(1100));
+
+        let mut newer = sample_sim();
+        newer.city_name = "Newer City".to_string();
+        newer.year = 1962;
+        newer.month = 4;
+        let _ = save_city_in_dir(&newer, &map, &dir.path).expect("newer save should succeed");
+
+        let saves = list_saves_in_dir(&dir.path);
+
+        assert_eq!(saves.len(), 2);
+        assert_eq!(saves[0].city_name, newer.city_name);
+        assert_eq!(saves[1].city_name, older.city_name);
     }
 }

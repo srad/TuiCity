@@ -1,6 +1,6 @@
 use crate::core::engine::{EngineCommand, SimulationEngine};
-use crate::core::map::{Map, Tile};
-use crate::core::sim::SimState;
+use crate::core::map::{Map, Tile, ViewLayer, ZoneDensity, ZoneKind, ZoneSpec};
+use crate::core::sim::{PlantState, SimState};
 use crate::core::tool::Tool;
 
 #[cfg(test)]
@@ -23,6 +23,7 @@ mod tests {
         // Place a road
         let cmd = EngineCommand::PlaceTool {
             tool: Tool::Road,
+            layer: ViewLayer::Surface,
             x: 5,
             y: 5,
         };
@@ -49,6 +50,7 @@ mod tests {
         // Try to place a road outside the map (map is 10x10)
         let cmd = EngineCommand::PlaceTool {
             tool: Tool::Road,
+            layer: ViewLayer::Surface,
             x: 10,
             y: 10,
         };
@@ -71,6 +73,7 @@ mod tests {
 
         let cmd = EngineCommand::PlaceTool {
             tool: Tool::PowerPlantCoal,
+            layer: ViewLayer::Surface,
             x: 5,
             y: 5,
         };
@@ -97,6 +100,7 @@ mod tests {
         let path = vec![(1, 1), (1, 2), (1, 3)];
         let cmd = EngineCommand::PlaceLine {
             tool: Tool::Road,
+            layer: ViewLayer::Surface,
             path: path.clone(),
         };
         let result = engine.execute_command(cmd);
@@ -122,6 +126,7 @@ mod tests {
         let path = vec![(1, 1), (1, 2), (1, 3)];
         let cmd = EngineCommand::PlaceLine {
             tool: Tool::Road,
+            layer: ViewLayer::Surface,
             path: path.clone(),
         };
 
@@ -155,11 +160,12 @@ mod tests {
     fn test_place_rect() {
         let mut engine = setup_engine();
         let initial_funds = engine.sim.treasury;
-        let cost = Tool::ZoneRes.cost();
+        let cost = Tool::ZoneResLight.cost();
 
         let tiles = vec![(2, 2), (2, 3), (3, 2), (3, 3)];
         let cmd = EngineCommand::PlaceRect {
-            tool: Tool::ZoneRes,
+            tool: Tool::ZoneResLight,
+            layer: ViewLayer::Surface,
             tiles,
         };
         let result = engine.execute_command(cmd);
@@ -181,6 +187,7 @@ mod tests {
         // Place a road
         let cmd1 = EngineCommand::PlaceTool {
             tool: Tool::Road,
+            layer: ViewLayer::Surface,
             x: 5,
             y: 5,
         };
@@ -189,6 +196,7 @@ mod tests {
         // Place a powerline over it
         let cmd2 = EngineCommand::PlaceTool {
             tool: Tool::PowerLine,
+            layer: ViewLayer::Surface,
             x: 5,
             y: 5,
         };
@@ -202,21 +210,6 @@ mod tests {
     }
 
     #[test]
-    fn test_power_plant_picker_not_placeable() {
-        let mut engine = setup_engine();
-        let cmd = EngineCommand::PlaceTool {
-            tool: Tool::PowerPlantPicker,
-            x: 5,
-            y: 5,
-        };
-        let result = engine.execute_command(cmd);
-        assert!(
-            result.is_err(),
-            "PowerPlantPicker is a UI trigger and should not be placeable on the map"
-        );
-    }
-
-    #[test]
     fn test_set_city_name() {
         let mut engine = setup_engine();
         let cmd = EngineCommand::SetCityName("Testville".to_string());
@@ -224,5 +217,261 @@ mod tests {
 
         assert!(result.is_ok());
         assert_eq!(engine.sim.city_name, "Testville");
+    }
+
+    #[test]
+    fn test_zoning_over_road_preserves_road_surface() {
+        let mut engine = setup_engine();
+
+        engine
+            .execute_command(EngineCommand::PlaceTool {
+                tool: Tool::Road,
+                layer: ViewLayer::Surface,
+                x: 4,
+                y: 4,
+            })
+            .unwrap();
+
+        engine
+            .execute_command(EngineCommand::PlaceRect {
+                tool: Tool::ZoneResLight,
+                layer: ViewLayer::Surface,
+                tiles: vec![(4, 4)],
+            })
+            .unwrap();
+
+        assert_eq!(engine.map.get(4, 4), Tile::Road);
+        assert_eq!(engine.map.zone_kind(4, 4), Some(ZoneKind::Residential));
+    }
+
+    #[test]
+    fn test_road_through_zone_dezones_land_when_bulldozed() {
+        let mut engine = setup_engine();
+
+        engine
+            .execute_command(EngineCommand::PlaceRect {
+                tool: Tool::ZoneResLight,
+                layer: ViewLayer::Surface,
+                tiles: vec![(3, 3)],
+            })
+            .unwrap();
+        engine
+            .execute_command(EngineCommand::PlaceTool {
+                tool: Tool::Road,
+                layer: ViewLayer::Surface,
+                x: 3,
+                y: 3,
+            })
+            .unwrap();
+
+        assert_eq!(engine.map.get(3, 3), Tile::Road);
+        assert_eq!(engine.map.zone_kind(3, 3), None);
+
+        engine
+            .execute_command(EngineCommand::PlaceTool {
+                tool: Tool::Bulldoze,
+                layer: ViewLayer::Surface,
+                x: 3,
+                y: 3,
+            })
+            .unwrap();
+
+        assert_eq!(engine.map.get(3, 3), Tile::Grass);
+        assert_eq!(engine.map.zone_kind(3, 3), None);
+    }
+
+    #[test]
+    fn test_single_tile_building_replaces_power_line() {
+        let mut engine = setup_engine();
+
+        engine
+            .execute_command(EngineCommand::PlaceTool {
+                tool: Tool::PowerLine,
+                layer: ViewLayer::Surface,
+                x: 2,
+                y: 2,
+            })
+            .unwrap();
+        let treasury_after_line = engine.sim.treasury;
+
+        engine
+            .execute_command(EngineCommand::PlaceTool {
+                tool: Tool::WaterPump,
+                layer: ViewLayer::Surface,
+                x: 2,
+                y: 2,
+            })
+            .unwrap();
+
+        assert_eq!(engine.map.get(2, 2), Tile::WaterPump);
+        assert!(!engine.map.has_power_line(2, 2));
+        assert_eq!(
+            engine.sim.treasury,
+            treasury_after_line - Tool::WaterPump.cost()
+        );
+    }
+
+    #[test]
+    fn test_footprint_building_replaces_power_lines() {
+        let mut engine = setup_engine();
+
+        for (x, y) in [(1, 1), (1, 2), (2, 1), (2, 2)] {
+            engine
+                .execute_command(EngineCommand::PlaceTool {
+                    tool: Tool::PowerLine,
+                    layer: ViewLayer::Surface,
+                    x,
+                    y,
+                })
+                .unwrap();
+        }
+        let treasury_after_lines = engine.sim.treasury;
+
+        engine
+            .execute_command(EngineCommand::PlaceTool {
+                tool: Tool::Park,
+                layer: ViewLayer::Surface,
+                x: 2,
+                y: 2,
+            })
+            .unwrap();
+
+        for (x, y) in [(1, 1), (1, 2), (2, 1), (2, 2)] {
+            assert_eq!(engine.map.get(x, y), Tile::Park);
+            assert!(!engine.map.has_power_line(x, y));
+        }
+        assert_eq!(
+            engine.sim.treasury,
+            treasury_after_lines - Tool::Park.cost()
+        );
+    }
+
+    #[test]
+    fn test_building_cannot_replace_road_powerline() {
+        let mut engine = setup_engine();
+
+        engine
+            .execute_command(EngineCommand::PlaceTool {
+                tool: Tool::Road,
+                layer: ViewLayer::Surface,
+                x: 4,
+                y: 4,
+            })
+            .unwrap();
+        engine
+            .execute_command(EngineCommand::PlaceTool {
+                tool: Tool::PowerLine,
+                layer: ViewLayer::Surface,
+                x: 4,
+                y: 4,
+            })
+            .unwrap();
+
+        let err = engine
+            .execute_command(EngineCommand::PlaceTool {
+                tool: Tool::WaterPump,
+                layer: ViewLayer::Surface,
+                x: 4,
+                y: 4,
+            })
+            .unwrap_err();
+
+        assert_eq!(err, "Cannot place tool here");
+        assert_eq!(engine.map.get(4, 4), Tile::RoadPowerLine);
+        assert!(engine.map.has_power_line(4, 4));
+    }
+
+    #[test]
+    fn test_powerline_through_zone_preserves_underlying_zone() {
+        let mut engine = setup_engine();
+
+        engine
+            .execute_command(EngineCommand::PlaceRect {
+                tool: Tool::ZoneResDense,
+                layer: ViewLayer::Surface,
+                tiles: vec![(3, 3)],
+            })
+            .unwrap();
+        engine
+            .execute_command(EngineCommand::PlaceTool {
+                tool: Tool::PowerLine,
+                layer: ViewLayer::Surface,
+                x: 3,
+                y: 3,
+            })
+            .unwrap();
+
+        assert_eq!(engine.map.get(3, 3), Tile::PowerLine);
+        assert_eq!(engine.map.zone_kind(3, 3), Some(ZoneKind::Residential));
+    }
+
+    #[test]
+    fn test_building_over_powerline_clears_underlying_zone() {
+        let mut engine = setup_engine();
+
+        engine
+            .execute_command(EngineCommand::PlaceRect {
+                tool: Tool::ZoneResDense,
+                layer: ViewLayer::Surface,
+                tiles: vec![(3, 3)],
+            })
+            .unwrap();
+        engine
+            .execute_command(EngineCommand::PlaceTool {
+                tool: Tool::PowerLine,
+                layer: ViewLayer::Surface,
+                x: 3,
+                y: 3,
+            })
+            .unwrap();
+        engine
+            .execute_command(EngineCommand::PlaceTool {
+                tool: Tool::WaterPump,
+                layer: ViewLayer::Surface,
+                x: 3,
+                y: 3,
+            })
+            .unwrap();
+
+        assert_eq!(engine.map.get(3, 3), Tile::WaterPump);
+        assert!(!engine.map.has_power_line(3, 3));
+        assert_eq!(engine.map.zone_kind(3, 3), None);
+    }
+
+    #[test]
+    fn test_advance_month_builds_house_over_powerline_on_zone() {
+        let mut engine = setup_engine();
+
+        engine.map.set(0, 0, Tile::PowerPlantCoal);
+        engine.sim.plants.insert(
+            (0, 0),
+            PlantState {
+                age_months: 0,
+                max_life_months: 600,
+                capacity_mw: 500,
+            },
+        );
+        engine.map.set(1, 0, Tile::PowerLine);
+        engine.map.set_zone_spec(
+            2,
+            0,
+            Some(ZoneSpec {
+                kind: ZoneKind::Residential,
+                density: ZoneDensity::Light,
+            }),
+        );
+        engine.map.set_power_line(2, 0, true);
+        engine.map.set(3, 0, Tile::Road);
+        engine.sim.demand_res = 1.0;
+
+        for _ in 0..6 {
+            engine.execute_command(EngineCommand::AdvanceMonth).unwrap();
+            if engine.map.get(2, 0) == Tile::ResLow {
+                break;
+            }
+        }
+
+        assert_eq!(engine.map.get(2, 0), Tile::ResLow);
+        assert!(!engine.map.has_power_line(2, 0));
     }
 }

@@ -62,6 +62,7 @@ impl InGameScreen {
         if let Some(tx) = context.cmd_tx {
             let _ = tx.send(EngineCommand::PlaceTool {
                 tool: self.current_tool,
+                layer: self.view_layer,
                 x,
                 y,
             });
@@ -93,6 +94,7 @@ impl InGameScreen {
         if let Some(tx) = context.cmd_tx {
             let _ = tx.send(EngineCommand::PlaceLine {
                 tool: drag.tool,
+                layer: self.view_layer,
                 path: drag.path,
             });
         }
@@ -107,6 +109,7 @@ impl InGameScreen {
         if let Some(tx) = context.cmd_tx {
             let _ = tx.send(EngineCommand::PlaceRect {
                 tool: drag.tool,
+                layer: self.view_layer,
                 tiles: drag.tiles_cache,
             });
         }
@@ -256,7 +259,7 @@ impl InGameScreen {
                 .filter(|&&(x, y)| {
                     x < engine.map.width
                         && y < engine.map.height
-                        && tool.can_place(engine.map.get(x, y))
+                        && tool.can_place(engine.map.view_tile(self.view_layer, x, y))
                 })
                 .count();
             let blocked = drag.path.len() - placeable;
@@ -280,7 +283,7 @@ impl InGameScreen {
                 .filter(|&&(x, y)| {
                     x < engine.map.width
                         && y < engine.map.height
-                        && tool.can_place(engine.map.get(x, y))
+                        && tool.can_place(engine.map.view_tile(self.view_layer, x, y))
                 })
                 .count();
             let blocked = drag.tiles_cache.len() - placeable;
@@ -316,6 +319,26 @@ impl InGameScreen {
                 if let Some(tx) = context.cmd_tx {
                     let _ = tx.send(EngineCommand::SetPaused(self.paused));
                 }
+            }
+            return;
+        }
+
+        if self.ui_areas.layer_surface_btn.contains(col, row) {
+            if is_click {
+                self.switch_view_layer(
+                    crate::core::map::ViewLayer::Surface,
+                    Some("View layer: Surface".to_string()),
+                );
+            }
+            return;
+        }
+
+        if self.ui_areas.layer_underground_btn.contains(col, row) {
+            if is_click {
+                self.switch_view_layer(
+                    crate::core::map::ViewLayer::Underground,
+                    Some("View layer: Underground".to_string()),
+                );
             }
             return;
         }
@@ -508,7 +531,15 @@ impl InGameScreen {
                 .unwrap();
             let new_path = {
                 let engine = context.engine.read().unwrap();
-                crate::app::line_drag::line_shortest_path(&engine.map, tool, sx, sy, mx, my)
+                crate::app::line_drag::line_shortest_path(
+                    &engine.map,
+                    tool,
+                    self.view_layer,
+                    sx,
+                    sy,
+                    mx,
+                    my,
+                )
             };
             if let Some(ref mut drag) = self.line_drag {
                 drag.end_x = mx;
@@ -547,7 +578,15 @@ impl InGameScreen {
                     .unwrap();
                 let final_path = {
                     let engine = context.engine.read().unwrap();
-                    crate::app::line_drag::line_shortest_path(&engine.map, tool, sx, sy, mx, my)
+                    crate::app::line_drag::line_shortest_path(
+                        &engine.map,
+                        tool,
+                        self.view_layer,
+                        sx,
+                        sy,
+                        mx,
+                        my,
+                    )
                 };
                 if let Some(ref mut drag) = self.line_drag {
                     drag.end_x = mx;

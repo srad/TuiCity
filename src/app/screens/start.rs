@@ -1,4 +1,4 @@
-use crate::app::{input::Action, save, ClickArea};
+use crate::app::{input::Action, ClickArea};
 
 use super::{AppContext, LoadCityScreen, NewCityScreen, Screen, ScreenTransition, SettingsScreen};
 
@@ -70,16 +70,7 @@ impl Screen for StartScreen {
 impl StartScreen {
     fn activate_selected(&self) -> Option<ScreenTransition> {
         match self.state.selected {
-            0 => {
-                let saves = save::list_saves();
-                Some(ScreenTransition::Push(Box::new(LoadCityScreen {
-                    state: super::load_city::LoadCityState {
-                        saves,
-                        selected: 0,
-                        row_areas: Vec::new(),
-                    },
-                })))
-            }
+            0 => Some(ScreenTransition::Push(Box::new(LoadCityScreen::new()))),
             1 => Some(ScreenTransition::Push(Box::new(NewCityScreen {
                 state: super::new_city::NewCityState::new(),
             }))),

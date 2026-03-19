@@ -224,7 +224,7 @@ fn render_controls(
     }
 
     if row < area.y + area.height {
-        let hint = "↑↓ Focus  +/- Adjust  Enter Select";
+        let hint = "↑↓ Focus  ←→ Adjust  Enter Select";
         let trimmed: String = hint.chars().take(w as usize).collect();
         buf.set_string(
             area.x,

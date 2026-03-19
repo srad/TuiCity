@@ -1,6 +1,6 @@
 use crate::{
     app::camera::Camera,
-    core::{map::Map, map::Tile, map::TileOverlay, tool::Tool},
+    core::{map::Map, map::Tile, map::TileOverlay, map::ViewLayer, tool::Tool},
     ui::theme::{self, OverlayMode},
 };
 use ratatui::{buffer::Buffer, layout::Rect, style::Color, widgets::Widget};
@@ -22,7 +22,13 @@ pub struct MapView<'a> {
     pub preview_kind: PreviewKind,
     /// Current heat-map overlay mode.
     pub overlay_mode: OverlayMode,
+    pub view_layer: ViewLayer,
 }
+
+const UNPOWERED_WARNING_MARKER: char = '!';
+const TRAFFIC_ANIMATION_THRESHOLD: u8 = 24;
+const TRAFFIC_ANIMATION_PERIOD: u32 = 8;
+const TRAFFIC_ANIMATION_STEP_MS: u128 = 280;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct ScrollbarMetrics {
@@ -301,29 +307,38 @@ pub fn render_scrollbars(layout: &MapChromeLayout, buf: &mut Buffer) {
 }
 
 /// N/E/S/W connectivity flags for a committed map tile.
-fn map_connectivity(map: &Map, tile: Tile, x: usize, y: usize) -> (bool, bool, bool, bool) {
+fn map_connectivity(
+    map: &Map,
+    layer: ViewLayer,
+    tile: Tile,
+    x: usize,
+    y: usize,
+) -> (bool, bool, bool, bool) {
     let matches_tile = |t: Tile| match tile {
-        Tile::Road | Tile::RoadPowerLine => t.road_connects(),
+        Tile::Road | Tile::RoadPowerLine | Tile::Onramp => t.road_connects(),
+        Tile::Highway => t == Tile::Highway || t == Tile::Onramp,
         Tile::PowerLine => t.power_connects(),
+        Tile::WaterPipe => t.water_connects(),
+        Tile::SubwayTunnel => t.subway_connects() || t == Tile::SubwayStation,
         _ => t == tile,
     };
     let n = y
         .checked_sub(1)
-        .map(|ny| matches_tile(map.get(x, ny)))
+        .map(|ny| matches_tile(map.view_tile(layer, x, ny)))
         .unwrap_or(false);
     let e = if x + 1 < map.width {
-        matches_tile(map.get(x + 1, y))
+        matches_tile(map.view_tile(layer, x + 1, y))
     } else {
         false
     };
     let s = if y + 1 < map.height {
-        matches_tile(map.get(x, y + 1))
+        matches_tile(map.view_tile(layer, x, y + 1))
     } else {
         false
     };
     let w = x
         .checked_sub(1)
-        .map(|wx| matches_tile(map.get(wx, y)))
+        .map(|wx| matches_tile(map.view_tile(layer, wx, y)))
         .unwrap_or(false);
     (n, e, s, w)
 }
@@ -332,6 +347,7 @@ fn map_connectivity(map: &Map, tile: Tile, x: usize, y: usize) -> (bool, bool, b
 /// AND already-committed matching tiles, so the preview shows accurate junctions.
 fn preview_connectivity(
     map: &Map,
+    layer: ViewLayer,
     target: Tile,
     x: usize,
     y: usize,
@@ -344,10 +360,13 @@ fn preview_connectivity(
         if nx >= map.width || ny >= map.height {
             return false;
         }
-        let t = map.get(nx, ny);
+        let t = map.view_tile(layer, nx, ny);
         match target {
-            Tile::Road => t.road_connects(),
+            Tile::Road | Tile::Onramp => t.road_connects(),
+            Tile::Highway => t == Tile::Highway || t == Tile::Onramp,
             Tile::PowerLine => t.power_connects(),
+            Tile::WaterPipe => t.water_connects(),
+            Tile::SubwayTunnel => t.subway_connects() || t == Tile::SubwayStation,
             _ => t == target,
         }
     };
@@ -368,6 +387,7 @@ fn preview_connectivity(
 
 pub(crate) fn committed_tile_sprite(
     map: &Map,
+    layer: ViewLayer,
     tile: Tile,
     overlay: TileOverlay,
     x: usize,
@@ -376,12 +396,357 @@ pub(crate) fn committed_tile_sprite(
     let glyph = theme::tile_glyph(tile, overlay);
     if matches!(
         tile,
-        Tile::Road | Tile::Rail | Tile::PowerLine | Tile::RoadPowerLine
+        Tile::Road
+            | Tile::Rail
+            | Tile::PowerLine
+            | Tile::RoadPowerLine
+            | Tile::Highway
+            | Tile::Onramp
+            | Tile::WaterPipe
+            | Tile::SubwayTunnel
     ) {
-        let (n, e, s, w) = map_connectivity(map, tile, x, y);
+        let (n, e, s, w) = map_connectivity(map, layer, tile, x, y);
         theme::network_sprite(tile, n, e, s, w, glyph.fg, glyph.bg)
     } else {
         theme::tile_sprite(tile, overlay)
+    }
+}
+
+fn traffic_animation_phase() -> u32 {
+    (std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis()
+        / TRAFFIC_ANIMATION_STEP_MS
+        % TRAFFIC_ANIMATION_PERIOD as u128) as u32
+}
+
+fn traffic_marker_char(tile: Tile, traffic: u8) -> char {
+    match tile {
+        Tile::Highway => {
+            if traffic >= 160 {
+                '■'
+            } else {
+                '▪'
+            }
+        }
+        _ => {
+            if traffic >= 160 {
+                '•'
+            } else {
+                '·'
+            }
+        }
+    }
+}
+
+fn traffic_marker_color(tile: Tile, traffic: u8) -> Color {
+    match tile {
+        Tile::Highway => {
+            if traffic >= 160 {
+                Color::Rgb(255, 238, 170)
+            } else {
+                Color::Rgb(255, 208, 120)
+            }
+        }
+        _ => {
+            if traffic >= 160 {
+                Color::Rgb(215, 245, 255)
+            } else {
+                Color::Rgb(255, 228, 170)
+            }
+        }
+    }
+}
+
+fn add_traffic_marker(
+    mut sprite: theme::TileSprite,
+    slot: usize,
+    marker: char,
+    fg: Color,
+) -> theme::TileSprite {
+    let cell = if slot == 0 {
+        &mut sprite.left
+    } else {
+        &mut sprite.right
+    };
+    cell.ch = marker;
+    cell.fg = fg;
+    sprite
+}
+
+fn animate_transport_sprite(
+    map: &Map,
+    view_layer: ViewLayer,
+    tile: Tile,
+    overlay: TileOverlay,
+    x: usize,
+    y: usize,
+    sprite: theme::TileSprite,
+    phase: u32,
+) -> theme::TileSprite {
+    if view_layer != ViewLayer::Surface
+        || !tile.is_drive_network()
+        || overlay.traffic < TRAFFIC_ANIMATION_THRESHOLD
+    {
+        return sprite;
+    }
+
+    let (n, e, s, w) = map_connectivity(map, view_layer, tile, x, y);
+    if !(n || e || s || w) {
+        return sprite;
+    }
+
+    let local_phase = (phase + ((x as u32 * 3 + y as u32 * 5) % TRAFFIC_ANIMATION_PERIOD))
+        % TRAFFIC_ANIMATION_PERIOD;
+    let marker = traffic_marker_char(tile, overlay.traffic);
+    let marker_fg = traffic_marker_color(tile, overlay.traffic);
+    let has_horizontal = e || w;
+    let has_vertical = n || s;
+    let lane_slot = ((local_phase / 4) % 2) as usize;
+
+    match (has_horizontal, has_vertical) {
+        (true, false) => add_traffic_marker(sprite, lane_slot, marker, marker_fg),
+        (false, true) => {
+            if lane_slot == 1 {
+                add_traffic_marker(sprite, 1, marker, marker_fg)
+            } else {
+                sprite
+            }
+        }
+        (true, true) => add_traffic_marker(sprite, lane_slot, marker, marker_fg),
+        (false, false) => sprite,
+    }
+}
+
+fn orientation_landmark_tile(tile: Tile) -> bool {
+    tile.is_transport()
+        || tile.is_service_building()
+        || matches!(
+            tile,
+            Tile::PowerLine
+                | Tile::WaterPipe
+                | Tile::SubwayTunnel
+                | Tile::SubwayStation
+                | Tile::PowerPlantCoal
+                | Tile::PowerPlantGas
+                | Tile::Water
+                | Tile::Trees
+                | Tile::Dirt
+        )
+}
+
+fn orientation_network_fallback(tile: Tile) -> Option<char> {
+    match tile {
+        Tile::Road | Tile::RoadPowerLine => Some('·'),
+        Tile::Highway | Tile::Onramp => Some('█'),
+        Tile::Rail => Some('┄'),
+        Tile::PowerLine => Some('┆'),
+        Tile::WaterPipe => Some('┈'),
+        Tile::SubwayTunnel => Some('╍'),
+        _ => None,
+    }
+}
+
+fn water_overlay_mass_marker(tile: Tile) -> char {
+    match tile {
+        Tile::ZoneRes | Tile::ResLow | Tile::ResMed | Tile::ResHigh => '•',
+        Tile::ZoneComm | Tile::CommLow | Tile::CommHigh => '▪',
+        Tile::ZoneInd | Tile::IndLight | Tile::IndHeavy => '■',
+        Tile::Rubble => '░',
+        _ => '·',
+    }
+}
+
+fn water_overlay_sprite(
+    map: &Map,
+    layer: ViewLayer,
+    tile: Tile,
+    overlay: TileOverlay,
+    x: usize,
+    y: usize,
+) -> theme::TileSprite {
+    let glyph = theme::tile_glyph(tile, overlay);
+    let bg = theme::overlay_tint(OverlayMode::Water, overlay).unwrap_or(glyph.bg);
+
+    if overlay.on_fire || orientation_landmark_tile(tile) {
+        let mut sprite = committed_tile_sprite(map, layer, tile, overlay, x, y).with_bg(bg);
+        if sprite.left.ch == ' ' && sprite.right.ch == ' ' {
+            if let Some(marker) = orientation_network_fallback(tile) {
+                sprite = theme::TileSprite::uniform(marker, glyph.fg, bg);
+            }
+        }
+        return sprite;
+    }
+
+    theme::TileSprite::uniform(water_overlay_mass_marker(tile), glyph.fg, bg)
+}
+
+fn underground_context_tile(tile: Tile) -> bool {
+    orientation_landmark_tile(tile)
+}
+
+fn underground_active_sprite(
+    map: &Map,
+    tile: Tile,
+    overlay: TileOverlay,
+    x: usize,
+    y: usize,
+) -> theme::TileSprite {
+    let glyph = theme::tile_glyph(tile, overlay);
+    let mut sprite = committed_tile_sprite(map, ViewLayer::Underground, tile, overlay, x, y);
+    if sprite.left.ch == ' ' && sprite.right.ch == ' ' {
+        if let Some(marker) = orientation_network_fallback(tile) {
+            sprite = theme::TileSprite::uniform(marker, glyph.fg, glyph.bg);
+        }
+    }
+    sprite
+}
+
+fn dim_color(color: Color, fallback: Color, factor: f32) -> Color {
+    let (r, g, b) =
+        color_to_rgb(color).unwrap_or_else(|| color_to_rgb(fallback).unwrap_or((0, 0, 0)));
+    Color::Rgb(
+        ((r as f32) * factor).round() as u8,
+        ((g as f32) * factor).round() as u8,
+        ((b as f32) * factor).round() as u8,
+    )
+}
+
+fn color_to_rgb(color: Color) -> Option<(u8, u8, u8)> {
+    match color {
+        Color::Reset => None,
+        Color::Black => Some((0, 0, 0)),
+        Color::Red => Some((128, 0, 0)),
+        Color::Green => Some((0, 128, 0)),
+        Color::Yellow => Some((128, 128, 0)),
+        Color::Blue => Some((0, 0, 128)),
+        Color::Magenta => Some((128, 0, 128)),
+        Color::Cyan => Some((0, 128, 128)),
+        Color::Gray => Some((192, 192, 192)),
+        Color::DarkGray => Some((128, 128, 128)),
+        Color::LightRed => Some((255, 0, 0)),
+        Color::LightGreen => Some((0, 255, 0)),
+        Color::LightYellow => Some((255, 255, 0)),
+        Color::LightBlue => Some((0, 0, 255)),
+        Color::LightMagenta => Some((255, 0, 255)),
+        Color::LightCyan => Some((0, 255, 255)),
+        Color::White => Some((255, 255, 255)),
+        Color::Rgb(r, g, b) => Some((r, g, b)),
+        Color::Indexed(idx) => Some(indexed_color_to_rgb(idx)),
+    }
+}
+
+fn indexed_color_to_rgb(idx: u8) -> (u8, u8, u8) {
+    const ANSI: [(u8, u8, u8); 16] = [
+        (0, 0, 0),
+        (128, 0, 0),
+        (0, 128, 0),
+        (128, 128, 0),
+        (0, 0, 128),
+        (128, 0, 128),
+        (0, 128, 128),
+        (192, 192, 192),
+        (128, 128, 128),
+        (255, 0, 0),
+        (0, 255, 0),
+        (255, 255, 0),
+        (0, 0, 255),
+        (255, 0, 255),
+        (0, 255, 255),
+        (255, 255, 255),
+    ];
+
+    match idx {
+        0..=15 => ANSI[idx as usize],
+        16..=231 => {
+            let value = idx - 16;
+            let r = value / 36;
+            let g = (value % 36) / 6;
+            let b = value % 6;
+            let level = |n: u8| if n == 0 { 0 } else { 55 + n * 40 };
+            (level(r), level(g), level(b))
+        }
+        232..=255 => {
+            let gray = 8 + (idx - 232) * 10;
+            (gray, gray, gray)
+        }
+    }
+}
+
+fn ghost_surface_sprite(
+    map: &Map,
+    tile: Tile,
+    overlay: TileOverlay,
+    x: usize,
+    y: usize,
+) -> Option<theme::TileSprite> {
+    if !underground_context_tile(tile) {
+        return None;
+    }
+
+    let backdrop = theme::tile_glyph(Tile::Dirt, TileOverlay::default()).bg;
+    let base = committed_tile_sprite(map, ViewLayer::Surface, tile, overlay, x, y);
+    let fg_fallback = theme::ui_palette().text_dim;
+    let recolor_cell = |cell: theme::SpriteCell| theme::SpriteCell {
+        ch: cell.ch,
+        fg: dim_color(cell.fg, fg_fallback, 0.55),
+        bg: dim_color(cell.bg, backdrop, 0.5),
+    };
+    let mut sprite = theme::TileSprite {
+        left: recolor_cell(base.left),
+        right: recolor_cell(base.right),
+    };
+
+    if sprite.left.ch == ' ' && sprite.right.ch == ' ' {
+        if let Some(marker) = orientation_network_fallback(tile) {
+            let glyph = theme::tile_glyph(tile, overlay);
+            sprite = theme::TileSprite::uniform(
+                marker,
+                dim_color(glyph.fg, fg_fallback, 0.55),
+                dim_color(glyph.bg, backdrop, 0.5),
+            );
+        }
+    }
+
+    Some(sprite)
+}
+
+fn merge_sprite_cell(base: theme::SpriteCell, overlay: theme::SpriteCell) -> theme::SpriteCell {
+    if overlay.ch == ' ' {
+        base
+    } else {
+        theme::SpriteCell {
+            ch: overlay.ch,
+            fg: overlay.fg,
+            bg: base.bg,
+        }
+    }
+}
+
+fn underground_view_sprite(
+    map: &Map,
+    overlay: TileOverlay,
+    x: usize,
+    y: usize,
+) -> theme::TileSprite {
+    let underground_tile = map.view_tile(ViewLayer::Underground, x, y);
+    let surface_tile = map.view_tile(ViewLayer::Surface, x, y);
+    let backdrop = ghost_surface_sprite(map, surface_tile, overlay, x, y);
+
+    match (backdrop, underground_tile != Tile::Dirt) {
+        (Some(surface), true) => {
+            let active = underground_active_sprite(map, underground_tile, overlay, x, y);
+            theme::TileSprite {
+                left: merge_sprite_cell(surface.left, active.left),
+                right: merge_sprite_cell(surface.right, active.right),
+            }
+        }
+        (Some(surface), false) => surface,
+        (None, true) => underground_active_sprite(map, underground_tile, overlay, x, y),
+        (None, false) => {
+            committed_tile_sprite(map, ViewLayer::Underground, underground_tile, overlay, x, y)
+        }
     }
 }
 
@@ -415,6 +780,7 @@ impl<'a> Widget for MapView<'a> {
 
         let ui = theme::ui_palette();
         let (cursor_fg, cursor_bg) = theme::cursor_style();
+        let animation_phase = traffic_animation_phase();
 
         let preview_set: std::collections::HashSet<(usize, usize)> =
             self.line_preview.iter().copied().collect();
@@ -428,14 +794,26 @@ impl<'a> Widget for MapView<'a> {
                 let buf_y = area.y + row;
 
                 if map_x < self.map.width && map_y < self.map.height {
-                    let tile = self.map.get(map_x, map_y);
+                    let tile = self.map.view_tile(self.view_layer, map_x, map_y);
+                    let lot_tile = if self.view_layer == ViewLayer::Surface {
+                        self.map.surface_lot_tile(map_x, map_y)
+                    } else {
+                        tile
+                    };
                     let overlay = self.map.get_overlay(map_x, map_y);
                     let is_cursor = map_x == self.camera.cursor_x && map_y == self.camera.cursor_y;
                     let is_preview = !is_cursor && preview_set.contains(&(map_x, map_y));
 
                     let sprite = if is_cursor {
-                        committed_tile_sprite(self.map, tile, overlay, map_x, map_y)
-                            .recolor(cursor_fg, cursor_bg)
+                        committed_tile_sprite(
+                            self.map,
+                            self.view_layer,
+                            tile,
+                            overlay,
+                            map_x,
+                            map_y,
+                        )
+                        .recolor(cursor_fg, cursor_bg)
                     } else if is_preview {
                         match &self.preview_kind {
                             PreviewKind::Line(tool) => {
@@ -455,6 +833,7 @@ impl<'a> Widget for MapView<'a> {
                                     ) {
                                         let (n, e, s, w) = preview_connectivity(
                                             self.map,
+                                            self.view_layer,
                                             target,
                                             map_x,
                                             map_y,
@@ -510,27 +889,72 @@ impl<'a> Widget for MapView<'a> {
                                     )
                                 }
                             }
-                            PreviewKind::None => {
-                                committed_tile_sprite(self.map, tile, overlay, map_x, map_y)
-                            }
+                            PreviewKind::None => committed_tile_sprite(
+                                self.map,
+                                self.view_layer,
+                                tile,
+                                overlay,
+                                map_x,
+                                map_y,
+                            ),
                         }
                     } else {
-                        let mut sprite =
-                            committed_tile_sprite(self.map, tile, overlay, map_x, map_y);
-                        let bg = theme::overlay_tint(self.overlay_mode, overlay)
-                            .unwrap_or(sprite.left.bg);
-                        sprite = sprite.with_bg(bg);
+                        let sprite = if self.overlay_mode == OverlayMode::Water {
+                            let surface_tile = self.map.view_tile(ViewLayer::Surface, map_x, map_y);
+                            water_overlay_sprite(
+                                self.map,
+                                ViewLayer::Surface,
+                                surface_tile,
+                                overlay,
+                                map_x,
+                                map_y,
+                            )
+                        } else {
+                            let mut sprite = if self.view_layer == ViewLayer::Underground {
+                                underground_view_sprite(self.map, overlay, map_x, map_y)
+                            } else {
+                                committed_tile_sprite(
+                                    self.map,
+                                    self.view_layer,
+                                    tile,
+                                    overlay,
+                                    map_x,
+                                    map_y,
+                                )
+                            };
+                            let bg = theme::overlay_tint(self.overlay_mode, overlay)
+                                .unwrap_or(sprite.left.bg);
+                            sprite = sprite.with_bg(bg);
+                            sprite
+                        };
+                        let sprite = animate_transport_sprite(
+                            self.map,
+                            self.view_layer,
+                            tile,
+                            overlay,
+                            map_x,
+                            map_y,
+                            sprite,
+                            animation_phase,
+                        );
 
-                        if tile.receives_power() && !overlay.is_powered() {
+                        if lot_tile.receives_power() && !overlay.is_powered() {
                             let ms = std::time::SystemTime::now()
                                 .duration_since(std::time::UNIX_EPOCH)
                                 .unwrap()
                                 .as_millis();
                             if (ms / 500) % 2 == 0 {
-                                sprite = theme::TileSprite::uniform('⚡', ui.warning, bg);
+                                theme::TileSprite::uniform(
+                                    UNPOWERED_WARNING_MARKER,
+                                    ui.warning,
+                                    sprite.left.bg,
+                                )
+                            } else {
+                                sprite
                             }
+                        } else {
+                            sprite
                         }
-                        sprite
                     };
 
                     write_tile_sprite(buf, area, buf_x, buf_y, sprite);
@@ -611,7 +1035,14 @@ impl<'a> Widget for MapPreview<'a> {
 
                 let tile = self.map.get(map_x, map_y);
                 let overlay = self.map.get_overlay(map_x, map_y);
-                let sprite = committed_tile_sprite(self.map, tile, overlay, map_x, map_y);
+                let sprite = committed_tile_sprite(
+                    self.map,
+                    ViewLayer::Surface,
+                    tile,
+                    overlay,
+                    map_x,
+                    map_y,
+                );
                 let bx = render_area.x + (v_col as u16 * 2);
                 let by = render_area.y + v_row as u16;
                 write_tile_sprite(buf, area, bx, by, sprite);
@@ -663,11 +1094,74 @@ mod tests {
             line_preview: &[],
             preview_kind: PreviewKind::None,
             overlay_mode: OverlayMode::None,
+            view_layer: ViewLayer::Surface,
         }
         .render(area, &mut buf);
 
         assert_eq!(buf.cell((0, 0)).unwrap().symbol(), " ");
         assert_eq!(buf.cell((1, 0)).unwrap().symbol(), "║");
+    }
+
+    #[test]
+    fn traffic_animation_moves_marker_across_horizontal_roads() {
+        let mut map = Map::new(3, 1);
+        map.set(0, 0, Tile::Road);
+        map.set(1, 0, Tile::Road);
+        map.set(2, 0, Tile::Road);
+        map.set_overlay(
+            1,
+            0,
+            TileOverlay {
+                traffic: 180,
+                ..TileOverlay::default()
+            },
+        );
+
+        let overlay = map.get_overlay(1, 0);
+        let base = committed_tile_sprite(&map, ViewLayer::Surface, Tile::Road, overlay, 1, 0);
+        let first =
+            animate_transport_sprite(&map, ViewLayer::Surface, Tile::Road, overlay, 1, 0, base, 0);
+        let second =
+            animate_transport_sprite(&map, ViewLayer::Surface, Tile::Road, overlay, 1, 0, base, 1);
+
+        assert_eq!(first.left.ch, '•');
+        assert_eq!(first.right.ch, '═');
+        assert_eq!(second.left.ch, '═');
+        assert_eq!(second.right.ch, '•');
+    }
+
+    #[test]
+    fn traffic_animation_only_runs_on_surface_drive_tiles() {
+        let mut map = Map::new(1, 3);
+        map.set(0, 0, Tile::Road);
+        map.set(0, 1, Tile::Road);
+        map.set(0, 2, Tile::Road);
+        map.set_overlay(
+            0,
+            1,
+            TileOverlay {
+                traffic: 200,
+                ..TileOverlay::default()
+            },
+        );
+
+        let overlay = map.get_overlay(0, 1);
+        let base = committed_tile_sprite(&map, ViewLayer::Surface, Tile::Road, overlay, 0, 1);
+        let surface =
+            animate_transport_sprite(&map, ViewLayer::Surface, Tile::Road, overlay, 0, 1, base, 1);
+        let underground = animate_transport_sprite(
+            &map,
+            ViewLayer::Underground,
+            Tile::Road,
+            overlay,
+            0,
+            1,
+            base,
+            1,
+        );
+
+        assert_eq!(surface.right.ch, '•');
+        assert_eq!(underground, base);
     }
 
     #[test]
@@ -687,10 +1181,251 @@ mod tests {
             line_preview: &[(0, 0), (1, 0)],
             preview_kind: PreviewKind::Line(Tool::Road),
             overlay_mode: OverlayMode::None,
+            view_layer: ViewLayer::Surface,
         }
         .render(area, &mut buf);
 
         assert_eq!(buf.cell((0, 0)).unwrap().symbol(), "═");
         assert_eq!(buf.cell((1, 0)).unwrap().symbol(), "═");
+    }
+
+    #[test]
+    fn water_overlay_keeps_isolated_roads_visible() {
+        let mut map = Map::new(1, 1);
+        map.set(0, 0, Tile::Road);
+        map.set_overlay(
+            0,
+            0,
+            TileOverlay {
+                water_service: 200,
+                ..TileOverlay::default()
+            },
+        );
+        let camera = Camera {
+            cursor_x: usize::MAX,
+            cursor_y: usize::MAX,
+            ..Camera::default()
+        };
+        let area = Rect::new(0, 0, 2, 1);
+        let mut buf = Buffer::empty(area);
+
+        MapView {
+            map: &map,
+            camera: &camera,
+            line_preview: &[],
+            preview_kind: PreviewKind::None,
+            overlay_mode: OverlayMode::Water,
+            view_layer: ViewLayer::Surface,
+        }
+        .render(area, &mut buf);
+
+        assert_eq!(buf.cell((0, 0)).unwrap().symbol(), "·");
+        assert_eq!(buf.cell((1, 0)).unwrap().symbol(), "·");
+    }
+
+    #[test]
+    fn water_overlay_keeps_landmark_buildings_recognizable() {
+        let mut map = Map::new(1, 1);
+        map.set(0, 0, Tile::Police);
+        map.set_overlay(
+            0,
+            0,
+            TileOverlay {
+                water_service: 200,
+                power_level: 255,
+                ..TileOverlay::default()
+            },
+        );
+        let camera = Camera {
+            cursor_x: usize::MAX,
+            cursor_y: usize::MAX,
+            ..Camera::default()
+        };
+        let area = Rect::new(0, 0, 2, 1);
+        let mut buf = Buffer::empty(area);
+
+        MapView {
+            map: &map,
+            camera: &camera,
+            line_preview: &[],
+            preview_kind: PreviewKind::None,
+            overlay_mode: OverlayMode::Water,
+            view_layer: ViewLayer::Surface,
+        }
+        .render(area, &mut buf);
+
+        assert_eq!(buf.cell((0, 0)).unwrap().symbol(), "P");
+        assert_eq!(buf.cell((1, 0)).unwrap().symbol(), "P");
+    }
+
+    #[test]
+    fn water_overlay_simplifies_generic_buildings() {
+        let mut map = Map::new(1, 1);
+        map.set(0, 0, Tile::ResLow);
+        map.set_overlay(
+            0,
+            0,
+            TileOverlay {
+                water_service: 200,
+                power_level: 255,
+                ..TileOverlay::default()
+            },
+        );
+        let camera = Camera {
+            cursor_x: usize::MAX,
+            cursor_y: usize::MAX,
+            ..Camera::default()
+        };
+        let area = Rect::new(0, 0, 2, 1);
+        let mut buf = Buffer::empty(area);
+
+        MapView {
+            map: &map,
+            camera: &camera,
+            line_preview: &[],
+            preview_kind: PreviewKind::None,
+            overlay_mode: OverlayMode::Water,
+            view_layer: ViewLayer::Surface,
+        }
+        .render(area, &mut buf);
+
+        assert_eq!(buf.cell((0, 0)).unwrap().symbol(), "•");
+        assert_eq!(buf.cell((1, 0)).unwrap().symbol(), "•");
+    }
+
+    #[test]
+    fn underground_view_keeps_isolated_roads_visible() {
+        let mut map = Map::new(1, 1);
+        map.set(0, 0, Tile::Road);
+        let camera = Camera {
+            cursor_x: usize::MAX,
+            cursor_y: usize::MAX,
+            ..Camera::default()
+        };
+        let area = Rect::new(0, 0, 2, 1);
+        let mut buf = Buffer::empty(area);
+
+        MapView {
+            map: &map,
+            camera: &camera,
+            line_preview: &[],
+            preview_kind: PreviewKind::None,
+            overlay_mode: OverlayMode::None,
+            view_layer: ViewLayer::Underground,
+        }
+        .render(area, &mut buf);
+
+        assert_eq!(buf.cell((0, 0)).unwrap().symbol(), "·");
+        assert_eq!(buf.cell((1, 0)).unwrap().symbol(), "·");
+    }
+
+    #[test]
+    fn water_overlay_stays_surface_oriented_in_underground_layer() {
+        let mut map = Map::new(1, 1);
+        map.set(0, 0, Tile::Road);
+        map.set_water_pipe(0, 0, true);
+        map.set_overlay(
+            0,
+            0,
+            TileOverlay {
+                water_service: 200,
+                ..TileOverlay::default()
+            },
+        );
+        let camera = Camera {
+            cursor_x: usize::MAX,
+            cursor_y: usize::MAX,
+            ..Camera::default()
+        };
+        let area = Rect::new(0, 0, 2, 1);
+        let mut buf = Buffer::empty(area);
+
+        MapView {
+            map: &map,
+            camera: &camera,
+            line_preview: &[],
+            preview_kind: PreviewKind::None,
+            overlay_mode: OverlayMode::Water,
+            view_layer: ViewLayer::Underground,
+        }
+        .render(area, &mut buf);
+
+        assert_eq!(buf.cell((0, 0)).unwrap().symbol(), "·");
+        assert_eq!(buf.cell((1, 0)).unwrap().symbol(), "·");
+    }
+
+    #[test]
+    fn underground_view_keeps_landmark_buildings_visible() {
+        let mut map = Map::new(1, 1);
+        map.set(0, 0, Tile::Police);
+        let camera = Camera {
+            cursor_x: usize::MAX,
+            cursor_y: usize::MAX,
+            ..Camera::default()
+        };
+        let area = Rect::new(0, 0, 2, 1);
+        let mut buf = Buffer::empty(area);
+
+        MapView {
+            map: &map,
+            camera: &camera,
+            line_preview: &[],
+            preview_kind: PreviewKind::None,
+            overlay_mode: OverlayMode::None,
+            view_layer: ViewLayer::Underground,
+        }
+        .render(area, &mut buf);
+
+        assert_eq!(buf.cell((0, 0)).unwrap().symbol(), "P");
+        assert_eq!(buf.cell((1, 0)).unwrap().symbol(), "P");
+    }
+
+    #[test]
+    fn underground_view_uses_surface_context_under_pipes() {
+        let camera = Camera {
+            cursor_x: usize::MAX,
+            cursor_y: usize::MAX,
+            ..Camera::default()
+        };
+        let area = Rect::new(0, 0, 2, 1);
+
+        let mut road_map = Map::new(1, 1);
+        road_map.set(0, 0, Tile::Road);
+        road_map.set_water_pipe(0, 0, true);
+        let mut road_buf = Buffer::empty(area);
+        MapView {
+            map: &road_map,
+            camera: &camera,
+            line_preview: &[],
+            preview_kind: PreviewKind::None,
+            overlay_mode: OverlayMode::None,
+            view_layer: ViewLayer::Underground,
+        }
+        .render(area, &mut road_buf);
+
+        let mut plain_map = Map::new(1, 1);
+        plain_map.set_water_pipe(0, 0, true);
+        let mut plain_buf = Buffer::empty(area);
+        MapView {
+            map: &plain_map,
+            camera: &camera,
+            line_preview: &[],
+            preview_kind: PreviewKind::None,
+            overlay_mode: OverlayMode::None,
+            view_layer: ViewLayer::Underground,
+        }
+        .render(area, &mut plain_buf);
+
+        assert_eq!(road_buf.cell((0, 0)).unwrap().symbol(), "┈");
+        assert_eq!(plain_buf.cell((0, 0)).unwrap().symbol(), "┈");
+        assert_ne!(
+            road_buf.cell((0, 0)).unwrap().bg,
+            plain_buf.cell((0, 0)).unwrap().bg
+        );
+    }
+
+    #[test]
+    fn unpowered_warning_marker_is_single_width_safe() {
+        assert_eq!(UNPOWERED_WARNING_MARKER, '!');
     }
 }

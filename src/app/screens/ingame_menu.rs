@@ -25,8 +25,11 @@ pub enum MenuAction {
     ToggleInspect,
     OpenBudget,
     OpenStatistics,
+    ToggleLayer,
     OverlayNone,
     OverlayPower,
+    OverlayWater,
+    OverlayTraffic,
     OverlayPollution,
     OverlayLandValue,
     OverlayCrime,
@@ -111,7 +114,7 @@ const DISASTER_ROWS: [MenuRow; 3] = [
         action: MenuAction::DisasterTornado,
     },
 ];
-const WINDOWS_ROWS: [MenuRow; 10] = [
+const WINDOWS_ROWS: [MenuRow; 13] = [
     MenuRow {
         label: "Toolbox",
         right: "",
@@ -133,6 +136,11 @@ const WINDOWS_ROWS: [MenuRow; 10] = [
         action: MenuAction::OpenStatistics,
     },
     MenuRow {
+        label: "View Layer",
+        right: "U",
+        action: MenuAction::ToggleLayer,
+    },
+    MenuRow {
         label: "Overlay: Off",
         right: "",
         action: MenuAction::OverlayNone,
@@ -141,6 +149,16 @@ const WINDOWS_ROWS: [MenuRow; 10] = [
         label: "Overlay: Power",
         right: "",
         action: MenuAction::OverlayPower,
+    },
+    MenuRow {
+        label: "Overlay: Water Service",
+        right: "",
+        action: MenuAction::OverlayWater,
+    },
+    MenuRow {
+        label: "Overlay: Traffic",
+        right: "",
+        action: MenuAction::OverlayTraffic,
     },
     MenuRow {
         label: "Overlay: Pollution",
@@ -232,7 +250,9 @@ impl InGameScreen {
     ) -> Option<ScreenTransition> {
         match action {
             MenuAction::None => {}
-            MenuAction::NewCity => return Some(ScreenTransition::Pop),
+            MenuAction::NewCity => {
+                self.open_confirm_prompt(super::ingame::ConfirmPromptAction::ReturnToStart);
+            }
             MenuAction::LoadCity => {
                 self.open_confirm_prompt(super::ingame::ConfirmPromptAction::LoadCity);
             }
@@ -280,8 +300,11 @@ impl InGameScreen {
             MenuAction::ToggleInspect => self.toggle_inspect_window(),
             MenuAction::OpenBudget => self.open_budget(context),
             MenuAction::OpenStatistics => self.open_stats_window(),
+            MenuAction::ToggleLayer => self.toggle_view_layer(),
             MenuAction::OverlayNone => self.overlay_mode = OverlayMode::None,
             MenuAction::OverlayPower => self.overlay_mode = OverlayMode::Power,
+            MenuAction::OverlayWater => self.overlay_mode = OverlayMode::Water,
+            MenuAction::OverlayTraffic => self.overlay_mode = OverlayMode::Traffic,
             MenuAction::OverlayPollution => self.overlay_mode = OverlayMode::Pollution,
             MenuAction::OverlayLandValue => self.overlay_mode = OverlayMode::LandValue,
             MenuAction::OverlayCrime => self.overlay_mode = OverlayMode::Crime,
@@ -339,6 +362,20 @@ impl InGameScreen {
                     ""
                 }
             }
+            MenuAction::OverlayWater => {
+                if self.overlay_mode == OverlayMode::Water {
+                    "ON"
+                } else {
+                    ""
+                }
+            }
+            MenuAction::OverlayTraffic => {
+                if self.overlay_mode == OverlayMode::Traffic {
+                    "ON"
+                } else {
+                    ""
+                }
+            }
             MenuAction::OverlayPollution => {
                 if self.overlay_mode == OverlayMode::Pollution {
                     "ON"
@@ -388,6 +425,7 @@ impl InGameScreen {
                     "OFF"
                 }
             }
+            MenuAction::ToggleLayer => InGameScreen::view_layer_label(self.view_layer),
             _ => base.right,
         };
         let label = match base.action {
@@ -469,7 +507,7 @@ mod tests {
             MenuAction::ToggleInspect
         );
         assert_eq!(
-            InGameScreen::menu_action_for(3, 9),
+            InGameScreen::menu_action_for(3, 12),
             MenuAction::OverlayFireRisk
         );
         assert_eq!(MENU_TITLES[4], "Help");
@@ -538,5 +576,45 @@ mod tests {
         assert!(transition.is_none());
         assert!(screen.is_help_open());
         assert!(!screen.menu_active);
+    }
+
+    #[test]
+    fn new_city_menu_action_opens_return_to_start_prompt() {
+        let mut screen = InGameScreen::new();
+        let engine = std::sync::Arc::new(std::sync::RwLock::new(
+            crate::core::engine::SimulationEngine::new(
+                crate::core::map::Map::new(10, 10),
+                crate::core::sim::SimState::default(),
+            ),
+        ));
+        let cmd_tx = None;
+        let mut running = true;
+        let context = AppContext {
+            engine: &engine,
+            cmd_tx: &cmd_tx,
+            running: &mut running,
+        };
+
+        let transition = screen.handle_menu_action(MenuAction::NewCity, &context);
+
+        assert!(transition.is_none());
+        assert!(screen.is_confirm_prompt_open());
+    }
+
+    #[test]
+    fn windows_menu_uses_clear_layer_and_water_service_labels() {
+        let screen = InGameScreen::new();
+        let sim = SimState::default();
+
+        let (layer_label, layer_value, _) = screen
+            .menu_row(3, 4, &sim)
+            .expect("windows layer row should exist");
+        let (water_label, _, _) = screen
+            .menu_row(3, 7, &sim)
+            .expect("windows water overlay row should exist");
+
+        assert_eq!(layer_label, "View Layer");
+        assert_eq!(layer_value, "Surface");
+        assert_eq!(water_label, "Overlay: Water Service");
     }
 }

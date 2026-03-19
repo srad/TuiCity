@@ -1,6 +1,6 @@
 use crate::{
     app::camera::Camera,
-    core::map::Map,
+    core::map::{Map, ViewLayer},
     ui::game::map_view,
     ui::theme::{self, OverlayMode},
 };
@@ -10,6 +10,7 @@ pub struct MiniMap<'a> {
     pub map: &'a Map,
     pub camera: &'a Camera,
     pub overlay_mode: OverlayMode,
+    pub view_layer: ViewLayer,
 }
 
 impl<'a> Widget for MiniMap<'a> {
@@ -62,10 +63,16 @@ impl<'a> Widget for MiniMap<'a> {
                     (row as usize * (mh - 1)) / (rh_usize - 1)
                 };
 
-                let tile = self.map.get(map_x, map_y);
+                let tile = self.map.view_tile(self.view_layer, map_x, map_y);
                 let overlay = self.map.get_overlay(map_x, map_y);
-                let mut sprite =
-                    map_view::committed_tile_sprite(self.map, tile, overlay, map_x, map_y);
+                let mut sprite = map_view::committed_tile_sprite(
+                    self.map,
+                    self.view_layer,
+                    tile,
+                    overlay,
+                    map_x,
+                    map_y,
+                );
                 if let Some(bg) = theme::overlay_tint(self.overlay_mode, overlay) {
                     sprite = sprite.with_bg(bg);
                 }
