@@ -12,6 +12,7 @@ A terminal-based city-building simulation written in Rust. Build layered cities 
 - [Playing the Game](#playing-the-game)
   - [Prerequisites & Building](#prerequisites--building)
   - [Main Menu](#main-menu)
+  - [Music](#music)
   - [Creating a New City](#creating-a-new-city)
   - [Controls](#controls)
   - [Tools](#tools)
@@ -66,6 +67,18 @@ The main menu offers four options:
 | **Quit** | Exit the application |
 
 Navigate with the **arrow keys** and confirm with **Enter**, or click an item with the mouse.
+
+### Music
+
+- The current soundtrack working set lives in `assets/music` and is intentionally small: one title theme plus one lighter gameplay cue.
+- `01_civic_sunrise_theme` is the title theme and is looped on the start screen on Windows builds.
+- `02_riverfront_reflections` is currently an asset/reference gameplay cue only; it is not auto-rotated in-game yet.
+- Each track keeps a source `.mid` plus a reference `.mp3`, and the title theme also keeps a `.wav` runtime file for reliable Windows playback.
+- Track metadata, durations, and file names live in `assets/music/manifest.json`.
+- The current Python generator only emits those two kept tracks and prefers FluidSynth plus a local soundfont when available, with the built-in renderer used only as fallback.
+- The recommended path for further improvement is DAW-first refinement in LMMS with Surge XT rather than treating the generated render as the final word.
+- See `assets/music/LMMS_SURGE_WORKFLOW.md` for the current authoring workflow.
+- To add more in-game music later, you need both asset work and code work: add the exported files under `assets/music`, add them to `assets/music/manifest.json`, and extend `src/audio.rs` / `src/app/mod.rs` so the game actually selects and plays them.
 
 ### Creating a New City
 
@@ -167,6 +180,7 @@ Select a tool by pressing its hotkey or from the toolbox chooser. Moving the mou
 - Roads and power lines can cross on the same surface tile, SC2000-style; the shared tile still counts as both a road connection and a power connection.
 - Water behaves similarly underground: pipes and developed buildings relay service, while empty zones do not chain utilities by themselves.
 - The **Water Service** overlay is a surface coverage view. The **Underground** layer is a separate infrastructure view for pipes and subway tunnels, with faint roads and landmarks left visible for orientation.
+- The **Power Grid** overlay now shows a subtle flow pulse on live power lines, while underground pipes and subway stations have their own low-key activity pulses in underground view.
 - Power lines can be laid through zones and later be replaced by the building that grows there.
 - Most plopped surface buildings can also be placed directly on bare power lines; the line is removed automatically as part of placement.
 
@@ -176,6 +190,7 @@ Select a tool by pressing its hotkey or from the toolbox chooser. Moving the mou
 
 **Disaster Prep**
 - Fire stations are the most cost-effective disaster defence. One station per residential cluster keeps fire spread contained.
+- Active fires now flicker in the map view so burning tiles stand out immediately.
 - Tornadoes occur in month 3 (2% chance). Keep funds in reserve rather than spending everything in February.
 - Flooding occurs in month 6 (10% chance). Avoid placing critical infrastructure immediately adjacent to water.
 
@@ -343,7 +358,7 @@ src/
 2. The active screen builds a frontend-neutral `ScreenView`.
 3. `TerminalRenderer` matches that `ScreenView` and dispatches to the matching terminal renderer in `src/ui/screens/*` or `src/ui/frontends/terminal/ingame.rs`.
 4. `DesktopState` computes the in-game window layout (menu bar, status bar, map, panel, budget, inspect, tool chooser, help, about), including centering, clamping, title bars, and close-button geometry.
-5. `MapView` iterates visible tiles (camera offset + viewport size), picks colours and 2-cell sprites from `theme.rs`, and writes them into the buffer. To better match terminal font aspect ratios, **the map is rendered using double-width tile sprites** (each map tile maps to two horizontal terminal cells), with roads, rails, and power lines using dedicated left/right sprite pairs so they do not appear double-thick. Surface road traffic is also animated directly on those sprites using the current traffic overlay values. Water service remains a surface-oriented coverage overlay, while underground mode composites pipes/tunnels with ghosted roads and landmarks for orientation. When the map is larger than the viewport, dedicated DOS-style horizontal and vertical scrollbars are rendered beside it.
+5. `MapView` iterates visible tiles (camera offset + viewport size), picks colours and 2-cell sprites from `theme.rs`, and writes them into the buffer. To better match terminal font aspect ratios, **the map is rendered using double-width tile sprites** (each map tile maps to two horizontal terminal cells), with roads, rails, and power lines using dedicated left/right sprite pairs so they do not appear double-thick. Surface road traffic is also animated directly on those sprites using the current traffic overlay values, burning tiles use a small ASCII flicker cycle to make fires easier to spot, and utility overlays/layers add restrained pulses for active power lines, underground pipes, and subway stations. Water service remains a surface-oriented coverage overlay, while underground mode composites pipes/tunnels with ghosted roads and landmarks for orientation. When the map is larger than the viewport, dedicated DOS-style horizontal and vertical scrollbars are rendered beside it.
 6. The panel window renders the toolbox, minimap, and tile-info section. Layout is computed from the managed panel window rect so it stays stable while dragging, and the toolbar itself is layout-driven rather than row-index driven. The minimap uses the same 2:1 horizontal sampling as the main map so its aspect ratio, viewport outline, and click-to-center behavior stay aligned with the primary map view.
 7. Popup windows such as the tool chooser, budget window, inspect window, statistics window, help window, and about window render through dedicated `ui/game/*` modules or shared terminal helpers. The menu bar is rendered last so it always appears on top.
 

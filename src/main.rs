@@ -1,4 +1,5 @@
 mod app;
+mod audio;
 mod core;
 mod game_info;
 mod ui;

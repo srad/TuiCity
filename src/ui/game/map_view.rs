@@ -29,6 +29,10 @@ const UNPOWERED_WARNING_MARKER: char = '!';
 const TRAFFIC_ANIMATION_THRESHOLD: u8 = 24;
 const TRAFFIC_ANIMATION_PERIOD: u32 = 8;
 const TRAFFIC_ANIMATION_STEP_MS: u128 = 280;
+const FIRE_ANIMATION_PERIOD: u32 = 4;
+const FIRE_ANIMATION_STEP_MS: u128 = 180;
+const UTILITY_ANIMATION_PERIOD: u32 = 6;
+const UTILITY_ANIMATION_STEP_MS: u128 = 220;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct ScrollbarMetrics {
@@ -421,6 +425,24 @@ fn traffic_animation_phase() -> u32 {
         % TRAFFIC_ANIMATION_PERIOD as u128) as u32
 }
 
+fn fire_animation_phase() -> u32 {
+    (std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis()
+        / FIRE_ANIMATION_STEP_MS
+        % FIRE_ANIMATION_PERIOD as u128) as u32
+}
+
+fn utility_animation_phase() -> u32 {
+    (std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis()
+        / UTILITY_ANIMATION_STEP_MS
+        % UTILITY_ANIMATION_PERIOD as u128) as u32
+}
+
 fn traffic_marker_char(tile: Tile, traffic: u8) -> char {
     match tile {
         Tile::Highway => {
@@ -516,6 +538,140 @@ fn animate_transport_sprite(
         }
         (true, true) => add_traffic_marker(sprite, lane_slot, marker, marker_fg),
         (false, false) => sprite,
+    }
+}
+
+fn animate_fire_sprite(
+    mut sprite: theme::TileSprite,
+    overlay: TileOverlay,
+    phase: u32,
+) -> theme::TileSprite {
+    if !overlay.on_fire {
+        return sprite;
+    }
+
+    let (left_ch, right_ch, fg, bg) = match phase % FIRE_ANIMATION_PERIOD {
+        0 => ('*', '+', Color::Rgb(255, 220, 120), Color::Rgb(175, 55, 0)),
+        1 => ('+', '*', Color::Rgb(255, 190, 70), Color::Rgb(145, 35, 0)),
+        2 => ('x', '*', Color::Rgb(255, 230, 140), Color::Rgb(185, 65, 0)),
+        _ => ('*', 'x', Color::Rgb(255, 175, 60), Color::Rgb(135, 28, 0)),
+    };
+
+    sprite.left.ch = left_ch;
+    sprite.right.ch = right_ch;
+    sprite.left.fg = fg;
+    sprite.right.fg = fg;
+    sprite.left.bg = bg;
+    sprite.right.bg = bg;
+    sprite
+}
+
+fn animate_power_overlay_sprite(
+    map: &Map,
+    view_layer: ViewLayer,
+    overlay_mode: OverlayMode,
+    tile: Tile,
+    overlay: TileOverlay,
+    x: usize,
+    y: usize,
+    sprite: theme::TileSprite,
+    phase: u32,
+) -> theme::TileSprite {
+    if overlay_mode != OverlayMode::Power
+        || view_layer != ViewLayer::Surface
+        || !tile.power_connects()
+        || overlay.power_level == 0
+    {
+        return sprite;
+    }
+
+    let (_, e, _, w) = map_connectivity(map, view_layer, tile, x, y);
+    let has_horizontal = e || w;
+    let local_phase = (phase + ((x as u32 * 2 + y as u32 * 3) % UTILITY_ANIMATION_PERIOD))
+        % UTILITY_ANIMATION_PERIOD;
+    let pulse_slot = ((local_phase / 3) % 2) as usize;
+    let marker = if overlay.power_level >= 192 {
+        '•'
+    } else {
+        '·'
+    };
+    let fg = if overlay.power_level >= 192 {
+        Color::Rgb(255, 255, 170)
+    } else {
+        Color::Rgb(245, 220, 120)
+    };
+
+    if has_horizontal {
+        add_traffic_marker(sprite, pulse_slot, marker, fg)
+    } else if local_phase % 3 != 1 {
+        add_traffic_marker(sprite, 1, marker, fg)
+    } else {
+        sprite
+    }
+}
+
+fn animate_underground_water_sprite(
+    map: &Map,
+    view_layer: ViewLayer,
+    overlay_mode: OverlayMode,
+    tile: Tile,
+    overlay: TileOverlay,
+    x: usize,
+    y: usize,
+    sprite: theme::TileSprite,
+    phase: u32,
+) -> theme::TileSprite {
+    if view_layer != ViewLayer::Underground
+        || overlay_mode == OverlayMode::Water
+        || tile != Tile::WaterPipe
+        || overlay.water_service == 0
+    {
+        return sprite;
+    }
+
+    let (_, e, _, w) = map_connectivity(map, view_layer, tile, x, y);
+    let has_horizontal = e || w;
+    let local_phase =
+        (phase + ((x as u32 + y as u32 * 2) % UTILITY_ANIMATION_PERIOD)) % UTILITY_ANIMATION_PERIOD;
+    let pulse_slot = ((local_phase / 3) % 2) as usize;
+    let marker = if overlay.water_service >= 192 {
+        '◦'
+    } else {
+        '·'
+    };
+    let fg = if overlay.water_service >= 192 {
+        Color::Rgb(200, 245, 255)
+    } else {
+        Color::Rgb(140, 215, 245)
+    };
+
+    if has_horizontal {
+        add_traffic_marker(sprite, pulse_slot, marker, fg)
+    } else if local_phase % 3 != 1 {
+        add_traffic_marker(sprite, 1, marker, fg)
+    } else {
+        sprite
+    }
+}
+
+fn animate_subway_station_sprite(
+    view_layer: ViewLayer,
+    tile: Tile,
+    sprite: theme::TileSprite,
+    phase: u32,
+) -> theme::TileSprite {
+    if view_layer != ViewLayer::Underground || tile != Tile::SubwayStation {
+        return sprite;
+    }
+
+    match phase % UTILITY_ANIMATION_PERIOD {
+        0 | 1 => {
+            theme::TileSprite::pair('U', '•', Color::Rgb(230, 245, 255), Color::Rgb(40, 78, 125))
+        }
+        2 | 3 => {
+            theme::TileSprite::pair('U', 'o', Color::Rgb(205, 228, 245), Color::Rgb(28, 64, 108))
+        }
+        _ => sprite,
     }
 }
 
@@ -781,6 +937,8 @@ impl<'a> Widget for MapView<'a> {
         let ui = theme::ui_palette();
         let (cursor_fg, cursor_bg) = theme::cursor_style();
         let animation_phase = traffic_animation_phase();
+        let fire_phase = fire_animation_phase();
+        let utility_phase = utility_animation_phase();
 
         let preview_set: std::collections::HashSet<(usize, usize)> =
             self.line_preview.iter().copied().collect();
@@ -937,6 +1095,35 @@ impl<'a> Widget for MapView<'a> {
                             sprite,
                             animation_phase,
                         );
+                        let sprite = animate_power_overlay_sprite(
+                            self.map,
+                            self.view_layer,
+                            self.overlay_mode,
+                            tile,
+                            overlay,
+                            map_x,
+                            map_y,
+                            sprite,
+                            utility_phase,
+                        );
+                        let sprite = animate_underground_water_sprite(
+                            self.map,
+                            self.view_layer,
+                            self.overlay_mode,
+                            tile,
+                            overlay,
+                            map_x,
+                            map_y,
+                            sprite,
+                            utility_phase,
+                        );
+                        let sprite = animate_subway_station_sprite(
+                            self.view_layer,
+                            tile,
+                            sprite,
+                            utility_phase,
+                        );
+                        let sprite = animate_fire_sprite(sprite, overlay, fire_phase);
 
                         if lot_tile.receives_power() && !overlay.is_powered() {
                             let ms = std::time::SystemTime::now()
@@ -1162,6 +1349,123 @@ mod tests {
 
         assert_eq!(surface.right.ch, '•');
         assert_eq!(underground, base);
+    }
+
+    #[test]
+    fn fire_animation_flickers_between_distinct_ascii_frames() {
+        let overlay = TileOverlay {
+            on_fire: true,
+            ..TileOverlay::default()
+        };
+        let base = theme::TileSprite::uniform('*', Color::Rgb(255, 200, 0), Color::Rgb(150, 40, 0));
+
+        let first = animate_fire_sprite(base, overlay, 0);
+        let second = animate_fire_sprite(base, overlay, 1);
+
+        assert_eq!(first.left.ch, '*');
+        assert_eq!(first.right.ch, '+');
+        assert_eq!(second.left.ch, '+');
+        assert_eq!(second.right.ch, '*');
+        assert_ne!(first.left.bg, second.left.bg);
+    }
+
+    #[test]
+    fn fire_animation_leaves_non_burning_tiles_unchanged() {
+        let overlay = TileOverlay::default();
+        let base = theme::TileSprite::uniform('R', Color::White, Color::Black);
+
+        assert_eq!(animate_fire_sprite(base, overlay, 0), base);
+    }
+
+    #[test]
+    fn power_overlay_animation_marks_live_power_lines() {
+        let mut map = Map::new(3, 1);
+        map.set(0, 0, Tile::PowerLine);
+        map.set(1, 0, Tile::PowerLine);
+        map.set(2, 0, Tile::PowerLine);
+        map.set_overlay(
+            1,
+            0,
+            TileOverlay {
+                power_level: 255,
+                ..TileOverlay::default()
+            },
+        );
+
+        let overlay = map.get_overlay(1, 0);
+        let base = committed_tile_sprite(&map, ViewLayer::Surface, Tile::PowerLine, overlay, 1, 0);
+        let animated = animate_power_overlay_sprite(
+            &map,
+            ViewLayer::Surface,
+            OverlayMode::Power,
+            Tile::PowerLine,
+            overlay,
+            1,
+            0,
+            base,
+            0,
+        );
+
+        assert!(animated.left.ch == '•' || animated.right.ch == '•');
+    }
+
+    #[test]
+    fn water_animation_marks_underground_pipes_only() {
+        let mut map = Map::new(3, 1);
+        map.set_water_pipe(0, 0, true);
+        map.set_water_pipe(1, 0, true);
+        map.set_water_pipe(2, 0, true);
+        map.set_overlay(
+            1,
+            0,
+            TileOverlay {
+                water_service: 255,
+                ..TileOverlay::default()
+            },
+        );
+
+        let overlay = map.get_overlay(1, 0);
+        let base =
+            committed_tile_sprite(&map, ViewLayer::Underground, Tile::WaterPipe, overlay, 1, 0);
+        let underground = animate_underground_water_sprite(
+            &map,
+            ViewLayer::Underground,
+            OverlayMode::None,
+            Tile::WaterPipe,
+            overlay,
+            1,
+            0,
+            base,
+            0,
+        );
+        let surface = animate_underground_water_sprite(
+            &map,
+            ViewLayer::Surface,
+            OverlayMode::None,
+            Tile::WaterPipe,
+            overlay,
+            1,
+            0,
+            base,
+            0,
+        );
+
+        assert!(underground.left.ch == '◦' || underground.right.ch == '◦');
+        assert_eq!(surface, base);
+    }
+
+    #[test]
+    fn subway_station_animation_pulses_underground_only() {
+        let base = theme::TileSprite::uniform('U', Color::White, Color::Blue);
+
+        let underground =
+            animate_subway_station_sprite(ViewLayer::Underground, Tile::SubwayStation, base, 0);
+        let surface =
+            animate_subway_station_sprite(ViewLayer::Surface, Tile::SubwayStation, base, 0);
+
+        assert_eq!(underground.left.ch, 'U');
+        assert_eq!(underground.right.ch, '•');
+        assert_eq!(surface, base);
     }
 
     #[test]

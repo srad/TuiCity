@@ -24,3 +24,5 @@ saves
 settings.json
 .claude
 target-verify
+__pycache__
+tools/fluidsynth*

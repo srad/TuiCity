@@ -15,6 +15,7 @@ use line_drag::LineDrag;
 use rect_drag::RectDrag;
 
 use crate::app::screens::{AppContext, InGameScreen, Screen, ScreenTransition, StartScreen};
+use crate::audio::{MusicCue, MusicManager};
 use crate::core::{engine::EngineCommand, map::Map, sim::SimState, tool::Tool};
 pub use crate::ui::runtime::{ClickArea, DesktopState, MapUiAreas, UiAreas, UiRect, WindowId};
 
@@ -23,12 +24,13 @@ pub struct AppState {
     pub engine: Arc<RwLock<crate::core::engine::SimulationEngine>>,
     pub cmd_tx: Option<Sender<EngineCommand>>,
     pub running: bool,
+    pub music: MusicManager,
 }
 
 impl AppState {
     pub fn new() -> Self {
         config::apply_user_config();
-        Self {
+        let mut app = Self {
             screens: vec![Box::new(StartScreen::new())],
             engine: Arc::new(RwLock::new(crate::core::engine::SimulationEngine::new(
                 Map::new(128, 128),
@@ -36,7 +38,10 @@ impl AppState {
             ))),
             cmd_tx: None,
             running: true,
-        }
+            music: MusicManager::new(),
+        };
+        app.sync_music();
+        app
     }
 
     pub fn on_tick(&mut self) {
@@ -52,6 +57,7 @@ impl AppState {
             }
         }
         self.running = running;
+        self.sync_music();
     }
 
     pub fn on_event(&mut self, event: &crossterm::event::Event) -> bool {
@@ -69,6 +75,7 @@ impl AppState {
             }
         };
         self.running = running;
+        self.sync_music();
 
         let handled = transition.is_some();
         if let Some(transition) = transition {
@@ -104,6 +111,7 @@ impl AppState {
             }
         };
         self.running = running;
+        self.sync_music();
 
         if let Some(transition) = transition {
             self.apply_transition(transition);
@@ -126,8 +134,25 @@ impl AppState {
                 self.screens.pop();
                 self.screens.push(screen);
             }
-            ScreenTransition::Quit => self.running = false,
+            ScreenTransition::Quit => {
+                self.running = false;
+                self.music.stop_all();
+            }
         }
+        self.sync_music();
+    }
+
+    fn sync_music(&mut self) {
+        let cue = if let Some(screen) = self.screens.last_mut() {
+            if screen.as_any_mut().is::<StartScreen>() {
+                MusicCue::StartTheme
+            } else {
+                MusicCue::None
+            }
+        } else {
+            MusicCue::None
+        };
+        self.music.sync(cue);
     }
 }
 
