@@ -10,6 +10,8 @@ const CONFIG_FILE_NAME: &str = "config.json";
 pub struct UserConfig {
     #[serde(default)]
     pub theme: Option<ThemePreset>,
+    #[serde(default)]
+    pub music_enabled: Option<bool>,
 }
 
 pub fn apply_user_config() {
@@ -21,6 +23,16 @@ pub fn apply_user_config() {
 pub fn persist_theme_preference(theme: ThemePreset) -> io::Result<()> {
     let mut config = load_user_config();
     config.theme = Some(theme);
+    save_user_config(&config)
+}
+
+pub fn is_music_enabled() -> bool {
+    load_user_config().music_enabled.unwrap_or(true)
+}
+
+pub fn persist_music_preference(enabled: bool) -> io::Result<()> {
+    let mut config = load_user_config();
+    config.music_enabled = Some(enabled);
     save_user_config(&config)
 }
 

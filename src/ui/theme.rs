@@ -1071,22 +1071,22 @@ pub fn tile_glyph(tile: Tile, overlay: TileOverlay) -> TileGlyph {
 
     match tile {
         Tile::Grass => TileGlyph {
-            ch: ' ',
+            ch: '·',
             fg: Color::Rgb(40, 100, 40),
             bg: Color::Rgb(25, 60, 25),
         },
         Tile::Water => TileGlyph {
-            ch: '≈',
+            ch: '~',
             fg: Color::Rgb(100, 150, 255),
             bg: Color::Rgb(20, 40, 100),
         },
         Tile::Trees => TileGlyph {
-            ch: '♣',
+            ch: '↟',
             fg: Color::Rgb(30, 180, 30),
             bg: Color::Rgb(20, 50, 20),
         },
         Tile::Dirt => TileGlyph {
-            ch: ' ',
+            ch: '░',
             fg: Color::Rgb(100, 80, 60),
             bg: Color::Rgb(60, 45, 35),
         },
@@ -1141,47 +1141,47 @@ pub fn tile_glyph(tile: Tile, overlay: TileOverlay) -> TileGlyph {
             bg: ui.sector_industrial_bg,
         },
         Tile::ResLow => TileGlyph {
-            ch: 'h',
+            ch: '▄',
             fg: ui.sector_residential,
             bg: ui.sector_residential_bg,
         },
         Tile::ResMed => TileGlyph {
-            ch: 'H',
+            ch: '▆',
             fg: ui.sector_residential,
             bg: ui.sector_residential_bg,
         },
         Tile::ResHigh => TileGlyph {
-            ch: 'A',
+            ch: '█',
             fg: Color::Rgb(208, 245, 202),
             bg: ui.sector_residential_bg,
         },
         Tile::CommLow => TileGlyph {
-            ch: 'c',
+            ch: '◇',
             fg: ui.sector_commercial,
             bg: ui.sector_commercial_bg,
         },
         Tile::CommHigh => TileGlyph {
-            ch: 'C',
+            ch: '◆',
             fg: Color::Rgb(204, 232, 250),
             bg: ui.sector_commercial_bg,
         },
         Tile::IndLight => TileGlyph {
-            ch: 'i',
+            ch: '△',
             fg: ui.sector_industrial,
             bg: ui.sector_industrial_bg,
         },
         Tile::IndHeavy => TileGlyph {
-            ch: 'I',
+            ch: '▲',
             fg: Color::Rgb(245, 225, 172),
             bg: ui.sector_industrial_bg,
         },
         Tile::PowerPlantCoal | Tile::PowerPlantGas => TileGlyph {
-            ch: 'Y',
+            ch: '⚙',
             fg: Color::Rgb(255, 255, 100),
             bg: Color::Rgb(60, 60, 30),
         },
         Tile::Park => TileGlyph {
-            ch: '♠',
+            ch: '⚘',
             fg: Color::Rgb(50, 220, 50),
             bg: Color::Rgb(20, 80, 20),
         },
@@ -1497,19 +1497,19 @@ mod tests {
         let tower = tile_glyph(Tile::ResHigh, TileOverlay::default());
 
         assert_eq!(fire.ch, '*');
-        assert_eq!(tower.ch, 'A');
+        assert_eq!(tower.ch, '█');
     }
 
     #[test]
-    fn developed_zone_glyphs_are_ascii_and_distinct_from_empty_zones() {
+    fn developed_zone_glyphs_are_distinct_from_empty_zones() {
         let empty_res = tile_glyph(Tile::ZoneRes, TileOverlay::default());
         let low_res = tile_glyph(Tile::ResLow, TileOverlay::default());
         let low_comm = tile_glyph(Tile::CommLow, TileOverlay::default());
         let light_ind = tile_glyph(Tile::IndLight, TileOverlay::default());
 
         assert_eq!(empty_res.ch, '▒');
-        assert_eq!(low_res.ch, 'h');
-        assert_eq!(low_comm.ch, 'c');
-        assert_eq!(light_ind.ch, 'i');
+        assert_eq!(low_res.ch, '▄');
+        assert_eq!(low_comm.ch, '◇');
+        assert_eq!(light_ind.ch, '△');
     }
 }

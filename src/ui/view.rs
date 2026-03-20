@@ -18,7 +18,7 @@ use crate::{
 #[derive(Clone, Debug)]
 pub struct StartViewModel {
     pub selected: usize,
-    pub options: [&'static str; 4],
+    pub options: Vec<String>,
 }
 
 #[derive(Clone, Debug)]

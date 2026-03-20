@@ -13,6 +13,7 @@ pub enum MenuAction {
     NewCity,
     LoadCity,
     SaveCity,
+    ToggleMusic,
     Quit,
     SpeedPause,
     SpeedSlow,
@@ -48,7 +49,7 @@ pub struct MenuRow {
 
 pub const MENU_TITLES: [&str; 6] = ["File", "Speed", "Disasters", "Windows", "Help", "About"];
 
-const FILE_ROWS: [MenuRow; 5] = [
+const FILE_ROWS: [MenuRow; 6] = [
     MenuRow {
         label: "New City",
         right: "Alt+N",
@@ -68,6 +69,11 @@ const FILE_ROWS: [MenuRow; 5] = [
         label: "Settings",
         right: "Shift+P",
         action: MenuAction::OpenSettings,
+    },
+    MenuRow {
+        label: "Toggle Music",
+        right: "M",
+        action: MenuAction::ToggleMusic,
     },
     MenuRow {
         label: "Quit",
@@ -268,6 +274,10 @@ impl InGameScreen {
             }
             MenuAction::Quit => {
                 self.open_confirm_prompt(super::ingame::ConfirmPromptAction::Quit);
+            }
+            MenuAction::ToggleMusic => {
+                let current = crate::app::config::is_music_enabled();
+                let _ = crate::app::config::persist_music_preference(!current);
             }
             MenuAction::OpenSettings => {
                 return Some(ScreenTransition::Push(Box::new(SettingsScreen::new())));

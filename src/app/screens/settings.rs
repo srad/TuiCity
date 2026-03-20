@@ -31,7 +31,7 @@ impl SettingsScreen {
     }
 
     fn option_count(&self) -> usize {
-        3
+        4
     }
 
     fn activate_selected(&mut self) -> Option<ScreenTransition> {
@@ -42,7 +42,12 @@ impl SettingsScreen {
                 let _ = config::persist_theme_preference(next);
                 None
             }
-            2 => Some(ScreenTransition::Pop),
+            2 => {
+                let current = config::is_music_enabled();
+                let _ = config::persist_music_preference(!current);
+                None
+            }
+            3 => Some(ScreenTransition::Pop),
             _ => None,
         }
     }
@@ -83,15 +88,26 @@ impl Screen for SettingsScreen {
                 let _ = config::persist_theme_preference(next);
                 None
             }
+            Action::CharInput('M') | Action::CharInput('m') => {
+                let current = config::is_music_enabled();
+                let _ = config::persist_music_preference(!current);
+                None
+            }
             _ => None,
         }
     }
 
     fn build_view(&self, _context: AppContext<'_>) -> crate::ui::view::ScreenView {
+        let music_label = if config::is_music_enabled() {
+            "Disable Music"
+        } else {
+            "Enable Music"
+        };
         crate::ui::view::ScreenView::Settings(crate::ui::view::SettingsViewModel {
             options: vec![
                 "Theme Settings".to_string(),
                 "Cycle Theme".to_string(),
+                music_label.to_string(),
                 "Back".to_string(),
             ],
             selected: self.state.selected,

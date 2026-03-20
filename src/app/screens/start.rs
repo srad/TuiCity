@@ -4,14 +4,14 @@ use super::{AppContext, LoadCityScreen, NewCityScreen, Screen, ScreenTransition,
 
 pub struct StartState {
     pub selected: usize,
-    pub menu_areas: [ClickArea; 4],
+    pub menu_areas: [ClickArea; 5],
 }
 
 impl Default for StartState {
     fn default() -> Self {
         Self {
             selected: 0,
-            menu_areas: [ClickArea::default(); 4],
+            menu_areas: [ClickArea::default(); 5],
         }
     }
 }
@@ -34,7 +34,7 @@ impl Screen for StartScreen {
     }
 
     fn on_action(&mut self, action: Action, _context: AppContext) -> Option<ScreenTransition> {
-        const N: usize = 4;
+        const N: usize = 5;
         match action {
             Action::Quit | Action::CharInput('q') => Some(ScreenTransition::Quit),
             Action::MoveCursor(_, dy) => {
@@ -60,9 +60,20 @@ impl Screen for StartScreen {
     }
 
     fn build_view(&self, _context: AppContext<'_>) -> crate::ui::view::ScreenView {
+        let music_label = if crate::app::config::is_music_enabled() {
+            "Disable Music"
+        } else {
+            "Enable Music"
+        };
         crate::ui::view::ScreenView::Start(crate::ui::view::StartViewModel {
             selected: self.state.selected,
-            options: ["Load Existing City", "Create New City", "Settings", "Quit"],
+            options: vec![
+                "Load Existing City".to_string(),
+                "Create New City".to_string(),
+                "Settings".to_string(),
+                music_label.to_string(),
+                "Quit".to_string(),
+            ],
         })
     }
 }
@@ -75,7 +86,12 @@ impl StartScreen {
                 state: super::new_city::NewCityState::new(),
             }))),
             2 => Some(ScreenTransition::Push(Box::new(SettingsScreen::new()))),
-            3 => Some(ScreenTransition::Quit),
+            3 => {
+                let current = crate::app::config::is_music_enabled();
+                let _ = crate::app::config::persist_music_preference(!current);
+                None
+            }
+            4 => Some(ScreenTransition::Quit),
             _ => None,
         }
     }

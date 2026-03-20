@@ -1,60 +1,52 @@
 use std::path::{Path, PathBuf};
+use std::sync::mpsc::{channel, Sender};
+use std::thread;
+use std::time::Duration;
+use rand::seq::SliceRandom;
+use rodio::{OutputStream, Sink, Decoder};
+use std::fs::File;
+use std::io::BufReader;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum MusicCue {
     #[default]
     None,
     StartTheme,
+    Gameplay,
 }
 
 pub struct MusicManager {
     current: MusicCue,
-    #[cfg(windows)]
-    backend: WindowsAudioBackend,
+    backend: AudioBackend,
 }
 
 impl MusicManager {
     pub fn new() -> Self {
         Self {
             current: MusicCue::None,
-            #[cfg(windows)]
-            backend: WindowsAudioBackend::new(),
+            backend: AudioBackend::new(),
         }
     }
 
     pub fn sync(&mut self, cue: MusicCue) {
         if self.current == cue {
+            if cue != MusicCue::None {
+                self.backend.ensure_playing();
+            }
             return;
         }
 
-        self.stop_all();
+        self.current = cue;
 
-        match cue {
-            MusicCue::None => {
-                self.current = MusicCue::None;
-            }
-            MusicCue::StartTheme => {
-                #[cfg(windows)]
-                {
-                    if let Some(path) = asset_path("assets/music/01_civic_sunrise_theme.wav")
-                        .or_else(|| asset_path("assets/music/01_civic_sunrise_theme.mid"))
-                    {
-                        if self.backend.play_loop(&path) {
-                            self.current = cue;
-                        }
-                    }
-                }
-                #[cfg(not(windows))]
-                {
-                    self.current = cue;
-                }
-            }
+        if cue == MusicCue::None {
+            self.backend.stop_all();
+        } else {
+            self.backend.ensure_playing();
         }
     }
 
     pub fn stop_all(&mut self) {
-        #[cfg(windows)]
-        self.backend.stop();
+        self.backend.stop_all();
         self.current = MusicCue::None;
     }
 }
@@ -96,113 +88,174 @@ fn asset_path(relative: &str) -> Option<PathBuf> {
     None
 }
 
-#[cfg(windows)]
-struct WindowsAudioBackend {
-    alias: &'static str,
-    enabled: bool,
-    wave_path: Option<Vec<u16>>,
+enum AudioCommand {
+    EnsurePlaying,
+    StopAll,
 }
 
-#[cfg(windows)]
-impl WindowsAudioBackend {
+struct AudioBackend {
+    tx: Sender<AudioCommand>,
+}
+
+impl AudioBackend {
     fn new() -> Self {
-        Self {
-            alias: "tc2000_music",
-            enabled: !cfg!(test),
-            wave_path: None,
-        }
-    }
+        let (tx, rx) = channel();
+        let enabled = !cfg!(test);
 
-    fn play_loop(&mut self, path: &Path) -> bool {
-        if !self.enabled {
-            return false;
-        }
+        thread::spawn(move || {
+            // Keep output_stream alive as long as the thread runs
+            let (_stream, stream_handle) = match OutputStream::try_default() {
+                Ok(res) => res,
+                Err(_) => return, // No audio device
+            };
 
-        self.stop();
-        match path
-            .extension()
-            .and_then(|ext| ext.to_str())
-            .map(|ext| ext.to_ascii_lowercase())
-            .as_deref()
-        {
-            Some("wav") => self.play_wave_loop(path),
-            Some("mid") | Some("midi") => {
-                let command = format!(
-                    "open \"{}\" type sequencer alias {}",
-                    path.display(),
-                    self.alias
-                );
-                if mci_send(&command) == 0 {
-                    return mci_send(&format!("play {} repeat", self.alias)) == 0;
+            let sink = match Sink::try_new(&stream_handle) {
+                Ok(res) => res,
+                Err(_) => return,
+            };
+
+            let mut player = AudioPlayer::new(enabled, sink);
+            
+            loop {
+                match rx.recv_timeout(Duration::from_millis(200)) {
+                    Ok(AudioCommand::EnsurePlaying) => {
+                        player.ensure_playing();
+                    }
+                    Ok(AudioCommand::StopAll) => {
+                        player.stop_all();
+                    }
+                    Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                        if player.playing {
+                            player.ensure_playing();
+                        }
+                    }
+                    Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                        player.stop_all();
+                        break;
+                    }
                 }
-                false
             }
-            _ => false,
+        });
+
+        Self { tx }
+    }
+
+    fn ensure_playing(&mut self) {
+        let _ = self.tx.send(AudioCommand::EnsurePlaying);
+    }
+
+    fn stop_all(&mut self) {
+        let _ = self.tx.send(AudioCommand::StopAll);
+    }
+}
+
+struct AudioPlayer {
+    enabled: bool,
+    playlist: Vec<PathBuf>,
+    current_track: usize,
+    playing: bool,
+    sink: Sink,
+}
+
+impl AudioPlayer {
+    fn new(enabled: bool, sink: Sink) -> Self {
+        let mut player = Self {
+            enabled,
+            playlist: Vec::new(),
+            current_track: 0,
+            playing: false,
+            sink,
+        };
+        if enabled {
+            player.load_playlist();
+        }
+        player
+    }
+
+    fn load_playlist(&mut self) {
+        let mut paths = Vec::new();
+        if let Some(assets_dir) = asset_path("assets/music") {
+            let mut dirs = vec![assets_dir];
+            while let Some(dir) = dirs.pop() {
+                if let Ok(entries) = std::fs::read_dir(dir) {
+                    for entry in entries.flatten() {
+                        let path = entry.path();
+                        if path.is_dir() {
+                            dirs.push(path);
+                        } else if let Some(ext) = path.extension().and_then(|e| e.to_str()).map(|e| e.to_ascii_lowercase()) {
+                            if ext == "mp3" {
+                                paths.push(path);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        self.playlist = paths;
+        self.shuffle_playlist();
+    }
+
+    fn shuffle_playlist(&mut self) {
+        let mut rng = rand::thread_rng();
+        self.playlist.shuffle(&mut rng);
+        self.current_track = 0;
+    }
+
+    fn ensure_playing(&mut self) {
+        if !self.enabled || self.playlist.is_empty() {
+            return;
+        }
+
+        if !self.playing {
+            self.play_current();
+        } else {
+            if self.sink.empty() {
+                self.next_track();
+            } else if self.sink.is_paused() {
+                self.sink.play();
+            }
         }
     }
 
-    fn play_wave_loop(&mut self, path: &Path) -> bool {
-        use std::{iter, os::windows::ffi::OsStrExt};
-
-        let wide: Vec<u16> = path
-            .as_os_str()
-            .encode_wide()
-            .chain(iter::once(0))
-            .collect();
-        self.wave_path = Some(wide);
-        unsafe {
-            PlaySoundW(
-                self.wave_path
-                    .as_ref()
-                    .map(|buffer| buffer.as_ptr())
-                    .unwrap_or(std::ptr::null()),
-                std::ptr::null_mut(),
-                SND_ASYNC | SND_FILENAME | SND_LOOP | SND_NODEFAULT,
-            ) != 0
+    fn play_current(&mut self) {
+        self.sink.stop(); // Clear the sink
+        
+        if self.playlist.is_empty() {
+            return;
+        }
+        
+        let path = &self.playlist[self.current_track];
+        if let Ok(file) = File::open(path) {
+            let reader = BufReader::new(file);
+            if let Ok(decoder) = Decoder::new(reader) {
+                self.sink.append(decoder);
+                self.sink.play();
+                self.playing = true;
+            } else {
+                // If decoding fails, skip to next track to avoid stalling
+                self.next_track();
+            }
+        } else {
+            self.next_track();
         }
     }
 
-    fn stop(&mut self) {
+    fn next_track(&mut self) {
+        if self.playlist.is_empty() {
+            return;
+        }
+        self.current_track += 1;
+        if self.current_track >= self.playlist.len() {
+            self.shuffle_playlist();
+        }
+        self.play_current();
+    }
+
+    fn stop_all(&mut self) {
         if !self.enabled {
             return;
         }
-        unsafe {
-            PlaySoundW(std::ptr::null(), std::ptr::null_mut(), 0);
-        }
-        self.wave_path = None;
-        let _ = mci_send(&format!("stop {}", self.alias));
-        let _ = mci_send(&format!("close {}", self.alias));
+        self.sink.stop();
+        self.playing = false;
     }
-}
-
-#[cfg(windows)]
-#[link(name = "winmm")]
-extern "system" {
-    fn PlaySoundW(sound_name: *const u16, module: *mut std::ffi::c_void, flags: u32) -> i32;
-    fn mciSendStringW(
-        command: *const u16,
-        return_string: *mut u16,
-        return_length: u32,
-        callback: isize,
-    ) -> u32;
-}
-
-#[cfg(windows)]
-const SND_ASYNC: u32 = 0x0001;
-#[cfg(windows)]
-const SND_NODEFAULT: u32 = 0x0002;
-#[cfg(windows)]
-const SND_LOOP: u32 = 0x0008;
-#[cfg(windows)]
-const SND_FILENAME: u32 = 0x0002_0000;
-
-#[cfg(windows)]
-fn mci_send(command: &str) -> u32 {
-    use std::{ffi::OsStr, iter, os::windows::ffi::OsStrExt};
-
-    let wide: Vec<u16> = OsStr::new(command)
-        .encode_wide()
-        .chain(iter::once(0))
-        .collect();
-    unsafe { mciSendStringW(wide.as_ptr(), std::ptr::null_mut(), 0, 0) }
 }

@@ -143,9 +143,15 @@ impl AppState {
     }
 
     fn sync_music(&mut self) {
+        if !crate::app::config::is_music_enabled() {
+            self.music.sync(MusicCue::None);
+            return;
+        }
         let cue = if let Some(screen) = self.screens.last_mut() {
             if screen.as_any_mut().is::<StartScreen>() {
                 MusicCue::StartTheme
+            } else if screen.as_any_mut().is::<InGameScreen>() {
+                MusicCue::Gameplay
             } else {
                 MusicCue::None
             }

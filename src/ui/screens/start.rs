@@ -30,7 +30,7 @@ const TITLE_ART_LARGE: [&str; 6] = [
 ];
 
 pub fn render_start(frame: &mut Frame, area: Rect, view: &StartViewModel, state: &mut StartState) {
-    state.menu_areas = [ClickArea::default(); 4];
+    state.menu_areas = [ClickArea::default(); 5];
 
     if area.width < 72 || area.height < 27 {
         render_compact_start(frame, area, view, state);

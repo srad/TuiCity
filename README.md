@@ -70,15 +70,13 @@ Navigate with the **arrow keys** and confirm with **Enter**, or click an item wi
 
 ### Music
 
-- The current soundtrack working set lives in `assets/music` and is intentionally small: one title theme plus one lighter gameplay cue.
-- `01_civic_sunrise_theme` is the title theme and is looped on the start screen on Windows builds.
-- `02_riverfront_reflections` is currently an asset/reference gameplay cue only; it is not auto-rotated in-game yet.
-- Each track keeps a source `.mid` plus a reference `.mp3`, and the title theme also keeps a `.wav` runtime file for reliable Windows playback.
-- Track metadata, durations, and file names live in `assets/music/manifest.json`.
-- The current Python generator only emits those two kept tracks and prefers FluidSynth plus a local soundfont when available, with the built-in renderer used only as fallback.
-- The recommended path for further improvement is DAW-first refinement in LMMS with Surge XT rather than treating the generated render as the final word.
+- The soundtrack working set lives in `assets/music`.
+- The game automatically scans the `assets/music` folder for `.mp3` files at startup.
+- All discovered tracks are played in a random order without repeating until the entire playlist has finished, at which point the playlist is reshuffled and restarted automatically.
+- Playback runs in a dedicated background thread using the cross-platform `rodio` crate (with only the MP3 decoding feature enabled to keep the build size minimal).
+- The music can be enabled or disabled at any time via the **Start Screen** or in-game by going to **File -> Toggle Music** (shortcut `M`). Your preference is saved persistently.
 - See `assets/music/LMMS_SURGE_WORKFLOW.md` for the current authoring workflow.
-- To add more in-game music later, you need both asset work and code work: add the exported files under `assets/music`, add them to `assets/music/manifest.json`, and extend `src/audio.rs` / `src/app/mod.rs` so the game actually selects and plays them.
+- To add more in-game music, simply drop the `.mp3` exports into the `assets/music` folder. No code changes are required for the game to pick them up.
 
 ### Creating a New City
 

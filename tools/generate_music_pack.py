@@ -306,27 +306,27 @@ SONGS: tuple[SongSpec, ...] = (
         description="A livelier but still mellow evening cue for busier downtown play.",
     ),
     SongSpec(
-        slug="10_midnight_zoning",
-        title="Midnight Zoning",
+        slug="11_metropolitan_mists",
+        title="Metropolitan Mists",
         role="gameplay",
-        bpm=66,
-        key_root=53,
-        scale="dorian",
-        bars=56,
-        lead_program=71,
-        comp_program=4,
-        pad_program=90,
-        bass_program=35,
-        progression=((0, "m9"), (5, "m7"), (7, "maj7"), (2, "sus4")),
-        motif_a=((0.0, 1.0, 1, 1), (2.0, 0.75, 4, 1), (3.0, 0.75, 6, 1)),
-        motif_b=((0.0, 1.25, 5, 1), (2.0, 0.5, 3, 1), (3.0, 0.5, 2, 1)),
-        description="The quietest cue in the pack, intended for late-session planning.",
+        bpm=72,
+        key_root=63,  # Eb
+        scale="major",
+        bars=48,
+        lead_program=75,  # Pan Flute (breathy/relaxed)
+        comp_program=5,   # Rhodes EP
+        pad_program=90,   # Warm Pad
+        bass_program=35,  # Fretless Bass
+        progression=((0, "maj9"), (5, "dom9"), (8, "maj7"), (10, "sus4")),
+        motif_a=(),
+        motif_b=(),
+        description="A hand-composed, non-algorithmic relaxing track with breathy woodwinds and jazzy electric piano.",
     ),
 )
 
 ACTIVE_SONG_SLUGS = (
     "01_civic_sunrise_theme",
-    "02_riverfront_reflections",
+    "11_metropolitan_mists",
 )
 
 
@@ -1260,6 +1260,112 @@ def build_riverfront_reflections_light(
     return bar_cursor * BAR_TICKS + PPQ
 
 
+def build_metropolitan_mists(
+    lead: Track | AudioTrack,
+    comp: Track | AudioTrack,
+    pad: Track | AudioTrack,
+    bass: Track | AudioTrack,
+    counter: Track | AudioTrack,
+) -> int:
+    # --- HARMONY (Jazz-Fusion Voicings) ---
+    eb_maj9 = {"bass": 39, "pad": [51, 58, 62, 65], "comp": [62, 65, 70, 74]}
+    ab_13   = {"bass": 44, "pad": [56, 60, 64, 66], "comp": [64, 66, 68, 72]}
+    f_m9    = {"bass": 41, "pad": [53, 60, 63, 65], "comp": [60, 63, 68, 72]}
+    bb_13su = {"bass": 46, "pad": [58, 63, 66, 68], "comp": [63, 66, 70, 73]}
+    c_m11   = {"bass": 48, "pad": [51, 55, 58, 62], "comp": [63, 65, 70, 72]}
+
+    prog = [eb_maj9, ab_13, eb_maj9, bb_13su, eb_maj9, ab_13, c_m11, f_m9]
+    bridge_prog = [f_m9, bb_13su, eb_maj9, c_m11, f_m9, bb_13su, ab_13, bb_13su]
+
+    def add_syncopated_comp(bar, chords):
+        rng = random.Random(stable_seed("mists-comp", bar))
+        # Rhodes "Stabs" landing on the off-beats
+        stabs = [(0.0, 0.2, 85), (1.5, 0.4, 75), (2.25, 0.2, 90), (3.5, 0.3, 70)]
+        chord = chords[bar % len(chords)]
+        for offset, dur, vel in stabs:
+            for note in chord["comp"]:
+                add_humanized_note(comp, bar, offset, dur, 1, note, vel, rng, timing=0.01)
+
+    def add_walking_bass(bar, chords):
+        rng = random.Random(stable_seed("mists-bass", bar))
+        root = chords[bar % len(chords)]["bass"]
+        next_root = chords[(bar + 1) % len(chords)]["bass"]
+        # Classic syncopated fusion bass line
+        pattern = [
+            (0.0, 0.8, root, 95),
+            (1.0, 0.4, root + 7, 85),
+            (1.5, 0.6, root + 12, 90),
+            (2.5, 0.4, root + 10, 80),
+            (3.0, 0.5, root + 5, 85),
+            (3.5, 0.3, next_root - 1, 75) # Chromatic approach
+        ]
+        for offset, dur, note, vel in pattern:
+            add_humanized_note(bass, bar, offset, dur, 3, note, vel, rng, timing=0.015)
+
+    def add_expressive_lead(bar, phrase_type):
+        rng = random.Random(stable_seed("mists-lead", bar))
+        # Use triplets and syncopation for the flute
+        if phrase_type == "call":
+            notes = [
+                (0.0, 1.2, 75, 60),  # Soft start
+                (1.33, 0.3, 79, 85), # Pushed triplet
+                (1.66, 0.3, 82, 95),
+                (2.0, 1.5, 84, 105)  # Peak velocity
+            ]
+        elif phrase_type == "resp":
+            notes = [
+                (0.0, 0.8, 82, 90),
+                (1.0, 0.4, 80, 80),
+                (1.5, 1.5, 79, 70)   # Tail-off
+            ]
+        else:
+            notes = []
+            
+        for offset, dur, note, vel in notes:
+            add_humanized_note(lead, bar, offset, dur, 0, note, vel, rng, timing=0.005)
+
+    def add_fusion_drums(bar):
+        rng = random.Random(stable_seed("mists-drums", bar))
+        # Soft shaker / hi-hat groove
+        for i in range(8):
+            add_humanized_note(counter, bar, i*0.5, 0.1, 9, 42, 35 if i%2==0 else 20, rng)
+        # Pushed kick/snare
+        if bar % 2 == 0:
+            add_humanized_note(counter, bar, 0.0, 0.2, 9, 36, 45, rng)
+            add_humanized_note(counter, bar, 2.5, 0.2, 9, 38, 40, rng)
+
+    # Build sequence
+    for bar in range(64):
+        if bar < 8: # Intro
+            chords = prog
+            add_fusion_drums(bar)
+        elif bar < 24: # A Section
+            chords = prog
+            add_syncopated_comp(bar, chords)
+            add_walking_bass(bar, chords)
+            add_fusion_drums(bar)
+            add_expressive_lead(bar, "call" if bar % 4 == 0 else "resp" if bar % 4 == 2 else "none")
+        elif bar < 40: # B Section (Bridge)
+            chords = bridge_prog
+            add_syncopated_comp(bar, chords)
+            add_walking_bass(bar, chords)
+            add_fusion_drums(bar)
+            # More active flute in bridge
+            if bar % 2 == 0:
+                add_humanized_note(lead, bar, 0.5, 0.5, 0, 87, 95, random.Random(bar))
+                add_humanized_note(lead, bar, 1.5, 1.5, 0, 86, 80, random.Random(bar))
+        else: # Outro
+            chords = prog
+            add_fusion_drums(bar)
+
+        # Always add pad for atmosphere
+        chord = chords[bar % len(chords)]
+        for note in chord["pad"]:
+            add_humanized_note(pad, bar, 0.0, 4.0, 2, note, 45, random.Random(bar), timing=0.02)
+
+    return 64 * BAR_TICKS + PPQ
+
+
 def make_song(spec: SongSpec) -> bytes:
     meta = Track(spec.title)
     meta.tempo(0, spec.bpm)
@@ -1292,6 +1398,8 @@ def make_song(spec: SongSpec) -> bytes:
         if spec.slug == "01_civic_sunrise_theme"
         else build_riverfront_reflections_light(lead, comp, pad, bass, counter)
         if spec.slug == "02_riverfront_reflections"
+        else build_metropolitan_mists(lead, comp, pad, bass, counter)
+        if spec.slug == "11_metropolitan_mists"
         else populate_tracks(spec, lead, comp, pad, bass, drums)
     )
     tracks = [meta, lead, comp, pad, bass]
@@ -1335,6 +1443,8 @@ def arrange_song(spec: SongSpec) -> tuple[list[AudioTrack], int]:
         if spec.slug == "01_civic_sunrise_theme"
         else build_riverfront_reflections_light(lead, comp, pad, bass, counter)
         if spec.slug == "02_riverfront_reflections"
+        else build_metropolitan_mists(lead, comp, pad, bass, counter)
+        if spec.slug == "11_metropolitan_mists"
         else populate_tracks(spec, lead, comp, pad, bass, drums)
     )
     tracks = [lead, comp, pad, bass]
