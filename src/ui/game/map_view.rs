@@ -1,6 +1,7 @@
 use crate::{
     app::camera::Camera,
     core::{map::Map, map::Tile, map::TileOverlay, map::ViewLayer, tool::Tool},
+    ui::runtime::{scrollbar_metrics, scrollbar_offset_from_pointer},
     ui::theme::{self, OverlayMode},
 };
 use ratatui::{buffer::Buffer, layout::Rect, style::Color, widgets::Widget};
@@ -35,13 +36,6 @@ const UTILITY_ANIMATION_PERIOD: u32 = 6;
 const UTILITY_ANIMATION_STEP_MS: u128 = 220;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct ScrollbarMetrics {
-    pub thumb_start: u16,
-    pub thumb_len: u16,
-    pub max_offset: usize,
-}
-
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct MapChromeLayout {
     pub viewport: Rect,
     pub view_tiles_w: usize,
@@ -59,47 +53,6 @@ pub struct MapChromeLayout {
     pub horizontal_inc: Rect,
     pub horizontal_page_step: usize,
     pub corner: Rect,
-}
-
-pub fn scrollbar_metrics(
-    track_len: u16,
-    view_items: usize,
-    total_items: usize,
-    offset: usize,
-) -> Option<ScrollbarMetrics> {
-    if track_len == 0 || view_items == 0 || total_items <= view_items {
-        return None;
-    }
-
-    let max_offset = total_items.saturating_sub(view_items);
-    let thumb_len = ((track_len as usize * view_items) / total_items).max(1) as u16;
-    let thumb_start = if max_offset == 0 || thumb_len >= track_len {
-        0
-    } else {
-        ((track_len - thumb_len) as usize * offset.min(max_offset) / max_offset) as u16
-    };
-
-    Some(ScrollbarMetrics {
-        thumb_start,
-        thumb_len: thumb_len.min(track_len),
-        max_offset,
-    })
-}
-
-pub fn scrollbar_offset_from_pointer(
-    track_len: u16,
-    thumb_len: u16,
-    max_offset: usize,
-    pointer: u16,
-    grab_offset: u16,
-) -> usize {
-    if track_len == 0 || thumb_len >= track_len || max_offset == 0 {
-        return 0;
-    }
-
-    let max_thumb_pos = track_len - thumb_len;
-    let thumb_pos = pointer.saturating_sub(grab_offset).min(max_thumb_pos);
-    (thumb_pos as usize * max_offset) / max_thumb_pos as usize
 }
 
 fn split_vertical_bar(bar: Rect) -> (Rect, Rect, Rect) {

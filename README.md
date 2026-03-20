@@ -114,7 +114,7 @@ As you adjust the values, the preview map and the hex seed update in real-time. 
 | `F1` | Open menu bar |
 | `b` / `B` / `$` | Open budget window |
 
-The **File** menu contains save/load/quit and settings actions, the **Windows** menu can toggle the **Toolbox**, **Inspect**, **Statistics**, the active **View Layer**, and overlay modes, and the right-aligned **Help** and **About** items open modal reference windows. The status bar also exposes a persistent clickable **Surface / Underground** switch so layer state is always visible.
+The **File** menu contains save/load/quit and settings actions, the **Windows** menu can toggle the **Toolbox**, **Inspect**, **Statistics**, the **Map Legend**, the active **View Layer**, and overlay modes, and the right-aligned **Help** and **About** items open reference windows. The status bar also exposes a persistent clickable **Surface / Underground** switch so layer state is always visible.
 
 On the **Load City** screen, use **Arrow keys** to select a save, **Enter** to load it, and **d** to open the delete confirmation dialog for the selected city.
 
@@ -232,7 +232,7 @@ The simulation runs in a dedicated OS thread managed by `core/engine.rs`. The ma
 
 **3. Frontend-Neutral Screen Views + UI Runtime**
 
-Shared geometry and window helpers now live in `src/ui/runtime.rs` (`ClickArea`, `MapUiAreas`, `UiAreas`, centered/clamped window helpers). Each screen builds a frontend-neutral `ScreenView` in `src/ui/view.rs`, and the terminal renderer turns that view into `ratatui` output. In-game UI elements (map, tools panel, budget, inspect, statistics, tool chooser, help, about) are movable windows managed by `DesktopState`.
+Shared geometry and window helpers now live in `src/ui/runtime.rs` (`ClickArea`, `MapUiAreas`, `UiAreas`, centered/clamped window helpers). This layer now also centralizes **window layout geometry** (padding, scrollbar placement) and provides a **generic hit-testing system**, allowing the game to identify interactions with buttons, title bars, and scrollbar components in a window-agnostic way. Each screen builds a frontend-neutral `ScreenView` in `src/ui/view.rs`, and the terminal renderer turns that view into `ratatui` output. In-game UI elements (map, tools panel, budget, inspect, statistics, tool chooser, help, about, legend) are movable windows managed by `DesktopState`.
 
 `InGameScreen` is also split into focused feature modules rather than one large implementation file:
 - `ingame.rs` keeps the screen shell and top-level lifecycle
@@ -358,7 +358,7 @@ src/
 4. `DesktopState` computes the in-game window layout (menu bar, status bar, map, panel, budget, inspect, tool chooser, help, about), including centering, clamping, title bars, and close-button geometry.
 5. `MapView` iterates visible tiles (camera offset + viewport size), picks colours and 2-cell sprites from `theme.rs`, and writes them into the buffer. To better match terminal font aspect ratios, **the map is rendered using double-width tile sprites** (each map tile maps to two horizontal terminal cells), with roads, rails, and power lines using dedicated left/right sprite pairs so they do not appear double-thick. Surface road traffic is also animated directly on those sprites using the current traffic overlay values, burning tiles use a small ASCII flicker cycle to make fires easier to spot, and utility overlays/layers add restrained pulses for active power lines, underground pipes, and subway stations. Water service remains a surface-oriented coverage overlay, while underground mode composites pipes/tunnels with ghosted roads and landmarks for orientation. When the map is larger than the viewport, dedicated DOS-style horizontal and vertical scrollbars are rendered beside it.
 6. The panel window renders the toolbox, minimap, and tile-info section. Layout is computed from the managed panel window rect so it stays stable while dragging, and the toolbar itself is layout-driven rather than row-index driven. The minimap uses the same 2:1 horizontal sampling as the main map so its aspect ratio, viewport outline, and click-to-center behavior stay aligned with the primary map view.
-7. Popup windows such as the tool chooser, budget window, inspect window, statistics window, help window, and about window render through dedicated `ui/game/*` modules or shared terminal helpers. The menu bar is rendered last so it always appears on top.
+7. Popup windows such as the tool chooser, budget window, inspect window, statistics window, help window, about window, and **Map Legend** render through dedicated `ui/game/*` modules or shared terminal helpers. Text-heavy windows now feature internal padding for readability and **interactive mouse-driven scrollbars** with up/down arrows and drag support. The menu bar is rendered last so it always appears on top.
 
 ### Adding a New Tool
 

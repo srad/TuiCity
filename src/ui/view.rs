@@ -150,6 +150,7 @@ impl ConfirmDialogViewModel {
 #[derive(Clone)]
 pub struct TextWindowViewModel {
     pub lines: Vec<String>,
+    pub scroll_y: u16,
 }
 
 #[derive(Clone)]

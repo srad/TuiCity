@@ -153,6 +153,7 @@ pub struct UiAreas {
     pub toolbar_items: Vec<ToolbarHitArea>,
     pub tool_chooser_items: Vec<ClickArea>,
     pub dialog_items: Vec<ClickArea>,
+    pub desktop: DesktopLayout,
 }
 
 #[derive(Clone, Debug)]
@@ -168,6 +169,8 @@ pub struct WindowState {
     pub modal: bool,
     pub center_on_open: bool,
     pub title: &'static str,
+    pub scroll_y: u16,
+    pub content_height: u16,
 }
 
 impl WindowState {
@@ -184,6 +187,8 @@ impl WindowState {
             modal: false,
             center_on_open: false,
             title: "",
+            scroll_y: 0,
+            content_height: 0,
         }
     }
 
@@ -217,6 +222,15 @@ impl UiRect {
             width,
             height,
         }
+    }
+
+    pub fn contains(&self, col: u16, row: u16) -> bool {
+        self.width > 0
+            && self.height > 0
+            && col >= self.x
+            && col < self.x + self.width
+            && row >= self.y
+            && row < self.y + self.height
     }
 }
 
@@ -268,15 +282,132 @@ pub struct WindowDragState {
     pub offset_y: u16,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ScrollbarMetrics {
+    pub thumb_start: u16,
+    pub thumb_len: u16,
+    pub max_offset: usize,
+}
+
+pub fn scrollbar_metrics(
+    track_len: u16,
+    view_items: usize,
+    total_items: usize,
+    offset: usize,
+) -> Option<ScrollbarMetrics> {
+    if track_len == 0 || view_items == 0 || total_items <= view_items {
+        return None;
+    }
+
+    let max_offset = total_items.saturating_sub(view_items);
+    let thumb_len = ((track_len as usize * view_items) / total_items).max(1) as u16;
+    let thumb_start = if max_offset == 0 || thumb_len >= track_len {
+        0
+    } else {
+        ((track_len - thumb_len) as usize * offset.min(max_offset) / max_offset) as u16
+    };
+
+    Some(ScrollbarMetrics {
+        thumb_start,
+        thumb_len: thumb_len.min(track_len),
+        max_offset,
+    })
+}
+
+pub fn scrollbar_offset_from_pointer(
+    track_len: u16,
+    thumb_len: u16,
+    max_offset: usize,
+    pointer: u16,
+    grab_offset: u16,
+) -> usize {
+    if track_len == 0 || thumb_len >= track_len || max_offset == 0 {
+        return 0;
+    }
+
+    let max_thumb_pos = track_len - thumb_len;
+    let thumb_pos = pointer.saturating_sub(grab_offset).min(max_thumb_pos);
+    (thumb_pos as usize * max_offset) / max_thumb_pos as usize
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WindowHit {
+    TitleBar,
+    CloseButton,
+    ScrollUp,
+    ScrollDown,
+    ScrollTrackPageUp,
+    ScrollTrackPageDown,
+    ScrollThumb { grab_offset: u16 },
+    Content,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ScrollbarLayout {
+    pub dec: UiRect,
+    pub inc: UiRect,
+    pub track: UiRect,
+    pub thumb: UiRect,
+    pub page_step: u16,
+}
+
+impl ScrollbarLayout {
+    pub fn hit_test(&self, col: u16, row: u16) -> Option<WindowHit> {
+        if self.dec.contains(col, row) {
+            Some(WindowHit::ScrollUp)
+        } else if self.inc.contains(col, row) {
+            Some(WindowHit::ScrollDown)
+        } else if self.thumb.contains(col, row) {
+            Some(WindowHit::ScrollThumb {
+                grab_offset: row.saturating_sub(self.thumb.y),
+            })
+        } else if self.track.contains(col, row) {
+            if row < self.thumb.y {
+                Some(WindowHit::ScrollTrackPageUp)
+            } else {
+                Some(WindowHit::ScrollTrackPageDown)
+            }
+        } else {
+            None
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct WindowLayout {
     pub outer: UiRect,
     pub inner: UiRect,
+    pub padded_inner: UiRect,
     pub title_bar: UiRect,
     pub close_button: UiRect,
+    pub scrollbar: Option<ScrollbarLayout>,
 }
 
-#[derive(Clone, Debug)]
+impl WindowLayout {
+    pub fn hit_test(&self, col: u16, row: u16) -> Option<WindowHit> {
+        if !self.outer.contains(col, row) {
+            return None;
+        }
+
+        if self.close_button.contains(col, row) {
+            return Some(WindowHit::CloseButton);
+        }
+
+        if let Some(sb) = &self.scrollbar {
+            if let Some(hit) = sb.hit_test(col, row) {
+                return Some(hit);
+            }
+        }
+
+        if self.title_bar.contains(col, row) {
+            return Some(WindowHit::TitleBar);
+        }
+
+        Some(WindowHit::Content)
+    }
+}
+
+#[derive(Clone, Debug, Default)]
 pub struct DesktopLayout {
     pub menu_bar: UiRect,
     pub status_bar: UiRect,
@@ -454,6 +585,15 @@ impl DesktopState {
         win.visible && win.contains(col, row)
     }
 
+    pub fn find_window_at(&self, col: u16, row: u16) -> Option<WindowId> {
+        for &id in self.z_order.iter().rev() {
+            if self.contains(id, col, row) {
+                return Some(id);
+            }
+        }
+        None
+    }
+
     pub fn layout(&mut self, full: UiRect) -> DesktopLayout {
         let menu_bar = UiRect::new(full.x, full.y, full.width, 1);
         let status_bar = UiRect::new(full.x, full.y.saturating_add(1), full.width, 1);
@@ -492,17 +632,49 @@ impl DesktopState {
                 outer.width.saturating_sub(2),
                 outer.height.saturating_sub(2),
             );
+            let padded_inner = UiRect::new(
+                inner.x.saturating_add(2),
+                inner.y.saturating_add(1),
+                inner.width.saturating_sub(4),
+                inner.height.saturating_sub(2),
+            );
             let title_bar = UiRect::new(outer.x, outer.y, outer.width, outer.height.min(1));
             let close_button = if win.closable && outer.width >= 5 && outer.height > 0 {
                 UiRect::new(outer.x + outer.width.saturating_sub(5), outer.y, 5, 1)
             } else {
                 UiRect::default()
             };
+
+            let scrollbar = if win.content_height > padded_inner.height && inner.width > 1 {
+                let track_len = inner.height.saturating_sub(2);
+                if let Some(metrics) = scrollbar_metrics(
+                    track_len,
+                    padded_inner.height as usize,
+                    win.content_height as usize,
+                    win.scroll_y as usize,
+                ) {
+                    let x = inner.x + inner.width - 1;
+                    Some(ScrollbarLayout {
+                        dec: UiRect::new(x, inner.y, 1, 1),
+                        inc: UiRect::new(x, inner.y + inner.height - 1, 1, 1),
+                        track: UiRect::new(x, inner.y + 1, 1, track_len),
+                        thumb: UiRect::new(x, inner.y + 1 + metrics.thumb_start, 1, metrics.thumb_len),
+                        page_step: padded_inner.height,
+                    })
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+
             windows[id.index()] = WindowLayout {
                 outer,
                 inner,
+                padded_inner,
                 title_bar,
                 close_button,
+                scrollbar,
             };
         }
 
@@ -591,19 +763,151 @@ mod tests {
     #[test]
     fn desktop_state_opens_centers_and_closes_modal_windows() {
         let mut desktop = DesktopState::new_ingame();
-        assert!(!desktop.is_open(WindowId::Budget));
+        let full = UiRect::new(0, 0, 100, 40);
 
         desktop.open(WindowId::Budget, true);
-        let layout = desktop.layout(UiRect::new(0, 0, 100, 40));
-        let budget = layout.window(WindowId::Budget);
+        assert!(desktop.window(WindowId::Budget).visible);
 
-        assert!(desktop.is_open(WindowId::Budget));
-        assert!(budget.outer.width <= 100);
-        assert!(budget.outer.height <= 37);
-        assert_eq!(layout.news_ticker.y, 39);
+        let layout = desktop.layout(full);
+        let win_layout = layout.window(WindowId::Budget);
+        assert_eq!(win_layout.outer.width, 74);
+        assert_eq!(win_layout.outer.height, 29);
+        assert_eq!(win_layout.outer.x, 13);
+        assert_eq!(win_layout.outer.y, 6);
 
         desktop.close(WindowId::Budget);
-        assert!(!desktop.is_open(WindowId::Budget));
+        assert!(!desktop.window(WindowId::Budget).visible);
+    }
+
+    #[test]
+    fn window_layout_calculates_correct_padded_inner() {
+        let mut desktop = DesktopState::new_ingame();
+        let full = UiRect::new(0, 0, 100, 40);
+        {
+            let win = desktop.window_mut(WindowId::Help);
+            win.visible = true;
+            win.x = 10;
+            win.y = 10;
+            win.width = 20;
+            win.height = 10;
+            win.center_on_open = false; // Ensure centering doesn't override our position
+        }
+
+        let layout = desktop.layout(full);
+        let win_layout = layout.window(WindowId::Help);
+
+        assert_eq!(win_layout.outer.y, 10);
+        assert_eq!(win_layout.inner.y, 11);
+        assert_eq!(win_layout.padded_inner.y, 12);
+    }
+
+    #[test]
+    fn window_layout_includes_scrollbar_only_when_content_exceeds_height() {
+        let mut desktop = DesktopState::new_ingame();
+        let full = UiRect::new(0, 0, 100, 40);
+        {
+            let win = desktop.window_mut(WindowId::Help);
+            win.visible = true;
+            win.width = 20;
+            win.height = 10; // padded_height = 6
+        }
+
+        // Case 1: Content fits
+        {
+            let win = desktop.window_mut(WindowId::Help);
+            win.content_height = 5;
+        }
+        let layout = desktop.layout(full);
+        assert!(layout.window(WindowId::Help).scrollbar.is_none());
+
+        // Case 2: Content exactly fits
+        {
+            let win = desktop.window_mut(WindowId::Help);
+            win.content_height = 6;
+        }
+        let layout = desktop.layout(full);
+        assert!(layout.window(WindowId::Help).scrollbar.is_none());
+
+        // Case 3: Content exceeds height
+        {
+            let win = desktop.window_mut(WindowId::Help);
+            win.content_height = 10;
+        }
+        let layout = desktop.layout(full);
+        let sb = layout.window(WindowId::Help).scrollbar.expect("should have scrollbar");
+        assert_eq!(sb.dec.width, 1);
+        assert_eq!(sb.inc.width, 1);
+        assert_eq!(sb.track.height, 6); // inner.height - 2 arrows
+    }
+
+    #[test]
+    fn window_hit_test_identifies_all_components() {
+        let mut desktop = DesktopState::new_ingame();
+        let full = UiRect::new(0, 0, 100, 40);
+        {
+            let win = desktop.window_mut(WindowId::Help);
+            win.visible = true;
+            win.x = 10;
+            win.y = 10;
+            win.width = 20;
+            win.height = 10;
+            win.closable = true;
+            win.content_height = 100;
+            win.center_on_open = false;
+        }
+
+        let layout = desktop.layout(full);
+        let win_layout = layout.window(WindowId::Help);
+
+        // Title bar
+        assert_eq!(win_layout.hit_test(10, 10), Some(WindowHit::TitleBar));
+        assert_eq!(win_layout.hit_test(15, 10), Some(WindowHit::TitleBar));
+
+        // Close button
+        assert_eq!(win_layout.hit_test(25, 10), Some(WindowHit::CloseButton));
+
+        // Scrollbar (standard width is 20, inner.width is 18, inner.x is 11)
+        // scrollbar_x = 11 + 18 - 1 = 28. No wait.
+        // inner = (11, 11, 18, 8)
+        // scrollbar_x = 11 + 18 - 1 = 28
+        let sb_x = 28;
+        assert_eq!(win_layout.hit_test(sb_x, 11), Some(WindowHit::ScrollUp));
+        assert_eq!(win_layout.hit_test(sb_x, 18), Some(WindowHit::ScrollDown));
+        assert!(matches!(win_layout.hit_test(sb_x, 12), Some(WindowHit::ScrollThumb { .. }) | Some(WindowHit::ScrollTrackPageDown) | Some(WindowHit::ScrollTrackPageUp)));
+
+        // Content
+        assert_eq!(win_layout.hit_test(15, 15), Some(WindowHit::Content));
+
+        // Outside
+        assert_eq!(win_layout.hit_test(5, 5), None);
+    }
+
+    #[test]
+    fn find_window_at_respects_z_order() {
+        let mut desktop = DesktopState::new_ingame();
+        let win1 = desktop.window_mut(WindowId::Help);
+        win1.visible = true;
+        win1.x = 10;
+        win1.y = 10;
+        win1.width = 20;
+        win1.height = 20;
+
+        let win2 = desktop.window_mut(WindowId::About);
+        win2.visible = true;
+        win2.x = 15;
+        win2.y = 15;
+        win2.width = 20;
+        win2.height = 20;
+
+        // win2 (About) is added later to z_order, or we can focus it
+        desktop.focus(WindowId::Help);
+        desktop.focus(WindowId::About);
+
+        // Overlap area (15, 15)
+        assert_eq!(desktop.find_window_at(16, 16), Some(WindowId::About));
+
+        desktop.focus(WindowId::Help);
+        assert_eq!(desktop.find_window_at(16, 16), Some(WindowId::Help));
     }
 
     #[test]

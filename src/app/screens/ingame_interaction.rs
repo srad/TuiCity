@@ -1,11 +1,11 @@
 use crate::{
     app::{LineDrag, RectDrag, Tool, WindowId},
     core::engine::EngineCommand,
-    ui::runtime::ToolbarHitTarget,
+    ui::runtime::{scrollbar_offset_from_pointer, ToolbarHitTarget},
 };
 
 use super::{
-    ingame::{MiddlePanDrag, ScrollbarAxis, ScrollbarDrag},
+    ingame::{MiddlePanDrag, ScrollbarAxis, ScrollbarDrag, WindowScrollbarDrag},
     AppContext, InGameScreen,
 };
 
@@ -174,6 +174,80 @@ impl InGameScreen {
         map_ui.corner.contains(col, row)
     }
 
+    fn handle_window_hit(&mut self, id: WindowId, hit: crate::ui::runtime::WindowHit) -> bool {
+        match hit {
+            crate::ui::runtime::WindowHit::CloseButton => {
+                self.close_window(id);
+                true
+            }
+            crate::ui::runtime::WindowHit::TitleBar => {
+                // Dragging is handled by DesktopState::begin_drag which is called separately for now,
+                // but we return true to indicate we consumed the hit.
+                true
+            }
+            crate::ui::runtime::WindowHit::ScrollUp => {
+                self.scroll_window(id, -1);
+                true
+            }
+            crate::ui::runtime::WindowHit::ScrollDown => {
+                self.scroll_window(id, 1);
+                true
+            }
+            crate::ui::runtime::WindowHit::ScrollTrackPageUp => {
+                let win = self.desktop.window(id);
+                let step = win.height.saturating_sub(4) as i32;
+                self.scroll_window(id, -step);
+                true
+            }
+            crate::ui::runtime::WindowHit::ScrollTrackPageDown => {
+                let win = self.desktop.window(id);
+                let step = win.height.saturating_sub(4) as i32;
+                self.scroll_window(id, step);
+                true
+            }
+            crate::ui::runtime::WindowHit::ScrollThumb { grab_offset } => {
+                self.window_scrollbar_drag = Some(WindowScrollbarDrag {
+                    window_id: id,
+                    grab_offset,
+                });
+                true
+            }
+            crate::ui::runtime::WindowHit::Content => {
+                // If it's a tool chooser, we still need special handling for tool clicks.
+                // For text windows, Content just consumes the click.
+                id != WindowId::Map && id != WindowId::Panel
+            }
+        }
+    }
+
+    pub fn drag_window_scrollbar_thumb(&mut self, row: u16) {
+        let Some(drag) = self.window_scrollbar_drag else {
+            return;
+        };
+        let id = drag.window_id;
+        let total_lines = self.window_content_height(id) as usize;
+        let win = self.desktop.window(id);
+        let padded_h = win.height.saturating_sub(4);
+        let track_len = win.height.saturating_sub(4);
+        let inner_y = win.y + 1;
+
+        if track_len == 0 || padded_h == 0 {
+            return;
+        }
+
+        let max_offset = total_lines.saturating_sub(padded_h as usize);
+        let pointer = row.saturating_sub(inner_y + 1);
+        let offset = scrollbar_offset_from_pointer(
+            track_len,
+            1, // Smallest possible thumb for offset calc consistency
+            max_offset,
+            pointer,
+            drag.grab_offset,
+        );
+
+        self.desktop.window_mut(id).scroll_y = offset as u16;
+    }
+
     pub fn drag_scrollbar_thumb(&mut self, col: u16, row: u16, context: &AppContext) {
         let Some(drag) = self.scrollbar_drag else {
             return;
@@ -193,7 +267,7 @@ impl InGameScreen {
                 }
                 let max_offset = map_h.saturating_sub(viewport_tiles_h);
                 let pointer = row.saturating_sub(track.y);
-                let offset = crate::ui::game::map_view::scrollbar_offset_from_pointer(
+                let offset = scrollbar_offset_from_pointer(
                     track.height,
                     thumb.height,
                     max_offset,
@@ -210,7 +284,7 @@ impl InGameScreen {
                 }
                 let max_offset = map_w.saturating_sub(viewport_tiles_w);
                 let pointer = col.saturating_sub(track.x);
-                let offset = crate::ui::game::map_view::scrollbar_offset_from_pointer(
+                let offset = scrollbar_offset_from_pointer(
                     track.width,
                     thumb.width,
                     max_offset,
@@ -385,96 +459,45 @@ impl InGameScreen {
     }
 
     pub fn handle_mouse_click_action(&mut self, col: u16, row: u16, context: &AppContext) -> bool {
-        if self.is_stats_open() {
-            if self.title_close_hit(WindowId::Statistics, col, row) {
-                self.close_stats_window();
-                return true;
+        // 1. Check for Window Hits (Generic)
+        if let Some(win_id) = self.desktop.find_window_at(col, row) {
+            let hit = self.ui_areas.desktop.window(win_id).hit_test(col, row);
+
+            if let Some(hit) = hit {
+                // Special case: Budget Window Control Focus
+                if win_id == WindowId::Budget && hit == crate::ui::runtime::WindowHit::Content {
+                    self.focus_budget_control_at(col, row);
+                    return true;
+                }
+
+                // Special case: Tool Chooser Tool Clicks
+                if win_id == WindowId::PowerPicker {
+                    if let Some(tool) = self.tool_chooser_tool_at(col, row) {
+                        self.select_tool(tool);
+                        return true;
+                    }
+                }
+
+                // Window Dragging (Title Bar)
+                if hit == crate::ui::runtime::WindowHit::TitleBar {
+                    if self.desktop.begin_drag(win_id, col, row) {
+                        return true;
+                    }
+                }
+
+                // Handle other hits (Close, Scroll, etc.)
+                if self.handle_window_hit(win_id, hit) {
+                    return true;
+                }
             }
-            if self.desktop.begin_drag(WindowId::Statistics, col, row) {
-                return true;
-            }
-            if self.desktop.contains(WindowId::Statistics, col, row) {
-                return true;
-            }
+        }
+
+        // 2. Fallback to Map Scrollbars (Legacy MapView system)
+        if self.handle_scrollbar_click(col, row, context) {
             return true;
         }
-        if self.is_budget_open() {
-            if self.title_close_hit(WindowId::Budget, col, row) {
-                self.close_budget();
-                return true;
-            }
-            if self.desktop.begin_drag(WindowId::Budget, col, row) {
-                return true;
-            }
-            if self.desktop.contains(WindowId::Budget, col, row) {
-                self.focus_budget_control_at(col, row);
-            }
-            return true;
-        }
-        if self.is_inspect_open() {
-            if self.title_close_hit(WindowId::Inspect, col, row) {
-                self.close_inspect_window();
-                return true;
-            }
-            if self.desktop.begin_drag(WindowId::Inspect, col, row) {
-                return true;
-            }
-        }
-        if self.is_tool_chooser_open() {
-            if self.title_close_hit(WindowId::PowerPicker, col, row) {
-                self.close_tool_chooser();
-                return true;
-            }
-            if self.desktop.begin_drag(WindowId::PowerPicker, col, row) {
-                return true;
-            }
-            if let Some(tool) = self.tool_chooser_tool_at(col, row) {
-                self.select_tool(tool);
-                return true;
-            }
-            if self.desktop.contains(WindowId::PowerPicker, col, row) {
-                return true;
-            }
-        }
-        if self.is_help_open() {
-            if self.title_close_hit(WindowId::Help, col, row) {
-                self.close_help_window();
-                return true;
-            }
-            if self.desktop.begin_drag(WindowId::Help, col, row) {
-                return true;
-            }
-            if self.desktop.contains(WindowId::Help, col, row) {
-                return true;
-            }
-            return true;
-        }
-        if self.is_about_open() {
-            if self.title_close_hit(WindowId::About, col, row) {
-                self.close_about_window();
-                return true;
-            }
-            if self.desktop.begin_drag(WindowId::About, col, row) {
-                return true;
-            }
-            if self.desktop.contains(WindowId::About, col, row) {
-                return true;
-            }
-            return true;
-        }
-        if self.is_legend_open() {
-            if self.title_close_hit(WindowId::Legend, col, row) {
-                self.close_legend_window();
-                return true;
-            }
-            if self.desktop.begin_drag(WindowId::Legend, col, row) {
-                return true;
-            }
-            if self.desktop.contains(WindowId::Legend, col, row) {
-                return true;
-            }
-            return true;
-        }
+
+        // 3. Fallback to Toolbar (Generic)
         if self.title_close_hit(WindowId::Panel, col, row) {
             self.close_tool_chooser();
             self.desktop.close(WindowId::Panel);
@@ -494,18 +517,9 @@ impl InGameScreen {
         if self.desktop.begin_drag(WindowId::Map, col, row) {
             return true;
         }
-        if self.desktop.contains(WindowId::PowerPicker, col, row) {
-            return true;
-        }
-        if self.handle_scrollbar_click(col, row, context) {
-            return true;
-        }
-        if self.is_over_window(col, row) {
-            self.handle_click(col, row, true, context);
-            return true;
-        }
-        if Tool::uses_line_drag(self.current_tool) && self.ui_areas.map.viewport.contains(col, row)
-        {
+
+        // 4. Fallback to Map Interactions (Zoning, etc.)
+        if Tool::uses_line_drag(self.current_tool) && self.ui_areas.map.viewport.contains(col, row) {
             let (mx, my) = self.screen_to_map_clamped(col, row, context);
             self.camera.cursor_x = mx;
             self.camera.cursor_y = my;
@@ -531,6 +545,10 @@ impl InGameScreen {
         }
         if self.scrollbar_drag.is_some() {
             self.drag_scrollbar_thumb(col, row, context);
+            return true;
+        }
+        if self.window_scrollbar_drag.is_some() {
+            self.drag_window_scrollbar_thumb(row);
             return true;
         }
         if self.is_over_window(col, row) {
@@ -580,6 +598,9 @@ impl InGameScreen {
     pub fn handle_mouse_up_action(&mut self, col: u16, row: u16, context: &AppContext) -> bool {
         self.desktop.end_drag();
         if self.scrollbar_drag.take().is_some() {
+            return true;
+        }
+        if self.window_scrollbar_drag.take().is_some() {
             return true;
         }
         if self.line_drag.is_some() {

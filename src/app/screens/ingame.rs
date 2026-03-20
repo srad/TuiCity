@@ -3,7 +3,7 @@ use std::collections::VecDeque;
 use crate::{
     app::{
         config, input::Action, save, Camera, DesktopState, LineDrag, RectDrag, Tool, UiAreas,
-        WindowId,
+        UiRect, WindowId,
     },
     core::engine::EngineCommand,
     game_info::GAME_NAME,
@@ -29,37 +29,44 @@ pub const AUTO_SAVE_INTERVAL: u32 = 50 * 12 * 6;
 fn build_help_lines() -> Vec<String> {
     vec![
         "Goal".to_string(),
+        "".to_string(),
         "Grow a solvent city by giving zones three things: road access, power, and demand.".to_string(),
         "".to_string(),
         "Getting started".to_string(),
+        "".to_string(),
         "1. Lay a short road spine before zoning.".to_string(),
         "2. Place a power plant and connect it with power lines.".to_string(),
         "3. Zone mostly residential, then add a smaller amount of commercial and industrial.".to_string(),
         "4. Unpause and let buildings grow before spending heavily on extras.".to_string(),
         "".to_string(),
         "What makes a city work".to_string(),
+        "".to_string(),
         "Residential zones need nearby jobs.".to_string(),
         "Commercial and industrial zones need residents to staff them.".to_string(),
         "Unpowered or disconnected zones will stay empty.".to_string(),
         "Too much industry raises pollution and drags land value down.".to_string(),
         "".to_string(),
         "A safe early layout".to_string(),
+        "".to_string(),
         "Use a simple road grid.".to_string(),
         "Keep industry separated from homes.".to_string(),
         "Put commercial between residential and industry or near main roads.".to_string(),
         "Add parks to lift land value around housing.".to_string(),
         "".to_string(),
         "Money and survival".to_string(),
+        "".to_string(),
         "Income comes from developed buildings, not empty zones.".to_string(),
         "Do not overbuild roads, rails, or services before tax income arrives.".to_string(),
         "Check the budget window if treasury keeps falling.".to_string(),
         "".to_string(),
         "Disasters and services".to_string(),
+        "".to_string(),
         "Fire departments reduce fire risk.".to_string(),
         "Police stations reduce crime.".to_string(),
         "Keep some cash in reserve so one bad month does not stall the city.".to_string(),
         "".to_string(),
         "Useful controls".to_string(),
+        "".to_string(),
         "Left click the minimap to jump the camera.".to_string(),
         "Use the toolbox for zoning and infrastructure.".to_string(),
         "Press Ctrl+S to save, and use File to load another city.".to_string(),
@@ -124,6 +131,12 @@ pub(super) struct ScrollbarDrag {
     pub(super) grab_offset: u16,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub(super) struct WindowScrollbarDrag {
+    pub(super) window_id: WindowId,
+    pub(super) grab_offset: u16,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum ConfirmPromptAction {
     Quit,
@@ -163,6 +176,7 @@ pub struct InGameScreen {
     pub desktop: DesktopState,
     pub(super) map_pan_drag: Option<MiddlePanDrag>,
     pub(super) scrollbar_drag: Option<ScrollbarDrag>,
+    pub(super) window_scrollbar_drag: Option<WindowScrollbarDrag>,
     pub budget_ui: BudgetState,
     pub news_ticker: CityNewsState,
 }
@@ -201,6 +215,7 @@ impl InGameScreen {
             desktop: DesktopState::new_ingame(),
             map_pan_drag: None,
             scrollbar_drag: None,
+            window_scrollbar_drag: None,
             budget_ui: BudgetState::new(),
             news_ticker: CityNewsState::default(),
         }
@@ -214,6 +229,29 @@ impl InGameScreen {
             || self.desktop.contains(WindowId::PowerPicker, col, row)
             || self.desktop.contains(WindowId::Help, col, row)
             || self.desktop.contains(WindowId::About, col, row)
+            || self.desktop.contains(WindowId::Legend, col, row)
+    }
+
+    pub(super) fn window_content_height(&self, id: WindowId) -> u16 {
+        match id {
+            WindowId::Help => build_help_lines().len() as u16,
+            WindowId::About => ABOUT_LINES.len() as u16,
+            WindowId::Legend => build_legend_lines().len() as u16,
+            _ => 0,
+        }
+    }
+
+    pub(super) fn scroll_window(&mut self, id: WindowId, delta: i32) {
+        let content_h = self.window_content_height(id);
+        let win = self.desktop.window_mut(id);
+        let view_h = win.height.saturating_sub(4); // 2 borders + 2 padding
+        let max_scroll = content_h.saturating_sub(view_h);
+
+        if delta < 0 {
+            win.scroll_y = win.scroll_y.saturating_sub(delta.unsigned_abs() as u16);
+        } else {
+            win.scroll_y = (win.scroll_y + delta as u16).min(max_scroll);
+        }
     }
 
     pub fn push_message(&mut self, text: String) {
@@ -325,9 +363,18 @@ impl InGameScreen {
         self.desktop.close(WindowId::Inspect);
     }
 
+    pub fn close_window(&mut self, id: WindowId) {
+        if id == WindowId::PowerPicker {
+            self.close_tool_chooser();
+        } else {
+            self.desktop.close(id);
+        }
+    }
+
     pub fn open_stats_window(&mut self) {
         self.desktop.close(WindowId::Help);
         self.desktop.close(WindowId::About);
+        self.desktop.close(WindowId::Legend);
         self.desktop.open(WindowId::Statistics, true);
     }
 
@@ -338,6 +385,7 @@ impl InGameScreen {
     pub fn open_help_window(&mut self) {
         self.desktop.close(WindowId::Statistics);
         self.desktop.close(WindowId::About);
+        self.desktop.close(WindowId::Legend);
         self.desktop.open(WindowId::Help, true);
     }
 
@@ -348,6 +396,7 @@ impl InGameScreen {
     pub fn open_about_window(&mut self) {
         self.desktop.close(WindowId::Statistics);
         self.desktop.close(WindowId::Help);
+        self.desktop.close(WindowId::Legend);
         self.desktop.open(WindowId::About, true);
     }
 
@@ -447,18 +496,21 @@ impl InGameScreen {
     fn help_view_model(&self) -> Option<TextWindowViewModel> {
         self.is_help_open().then(|| TextWindowViewModel {
             lines: build_help_lines(),
+            scroll_y: self.desktop.window(WindowId::Help).scroll_y,
         })
     }
 
     fn about_view_model(&self) -> Option<TextWindowViewModel> {
         self.is_about_open().then(|| TextWindowViewModel {
             lines: ABOUT_LINES.iter().map(|line| (*line).to_string()).collect(),
+            scroll_y: self.desktop.window(WindowId::About).scroll_y,
         })
     }
 
     fn legend_view_model(&self) -> Option<TextWindowViewModel> {
         self.is_legend_open().then(|| TextWindowViewModel {
             lines: build_legend_lines(),
+            scroll_y: self.desktop.window(WindowId::Legend).scroll_y,
         })
     }
 
@@ -665,6 +717,12 @@ impl Screen for InGameScreen {
             self.news_ticker
                 .tick(&engine.sim, &engine.map, &self.event_messages);
         }
+
+        // Sync window content heights
+        self.desktop.window_mut(WindowId::Help).content_height = build_help_lines().len() as u16;
+        self.desktop.window_mut(WindowId::About).content_height = ABOUT_LINES.len() as u16;
+        self.desktop.window_mut(WindowId::Legend).content_height = build_legend_lines().len() as u16;
+
         if self.paused {
             return;
         }
@@ -786,6 +844,42 @@ impl Screen for InGameScreen {
                         self.close_help_window();
                     } else {
                         self.close_legend_window();
+                    }
+                    None
+                }
+                Action::MoveCursor(_, dy) if dy != 0 => {
+                    let id = if self.is_about_open() {
+                        WindowId::About
+                    } else if self.is_help_open() {
+                        WindowId::Help
+                    } else if self.is_legend_open() {
+                        WindowId::Legend
+                    } else {
+                        WindowId::Statistics
+                    };
+                    let win = self.desktop.window_mut(id);
+                    if dy < 0 {
+                        win.scroll_y = win.scroll_y.saturating_sub(1);
+                    } else {
+                        win.scroll_y = win.scroll_y.saturating_add(1);
+                    }
+                    None
+                }
+                Action::PanCamera(_, dy) if dy != 0 => {
+                    let id = if self.is_about_open() {
+                        WindowId::About
+                    } else if self.is_help_open() {
+                        WindowId::Help
+                    } else if self.is_legend_open() {
+                        WindowId::Legend
+                    } else {
+                        WindowId::Statistics
+                    };
+                    let win = self.desktop.window_mut(id);
+                    if dy < 0 {
+                        win.scroll_y = win.scroll_y.saturating_sub(3);
+                    } else {
+                        win.scroll_y = win.scroll_y.saturating_add(3);
                     }
                     None
                 }
@@ -1643,6 +1737,7 @@ mod tests {
             running: &mut running,
         };
         screen.on_action(Action::CharInput('b'), open_context);
+        screen.ui_areas.desktop = screen.desktop.layout(UiRect::new(0, 0, 100, 40));
 
         let start_x = screen.desktop.window(WindowId::Budget).x;
         let start_y = screen.desktop.window(WindowId::Budget).y;

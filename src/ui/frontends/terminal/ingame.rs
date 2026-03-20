@@ -9,7 +9,9 @@ use crate::{
     app::{ClickArea, MapUiAreas, UiRect, WindowId},
     game_info::GAME_NAME,
     ui::{
-        frontends::terminal::render_confirm_dialog, game, runtime::UiRect as RuntimeRect,
+        frontends::terminal::render_confirm_dialog,
+        game,
+        runtime::UiRect as RuntimeRect,
         view::InGameDesktopView,
     },
 };
@@ -76,20 +78,65 @@ fn render_window_shadow(frame: &mut Frame, rect: Rect) {
 
 fn render_text_window_content(
     frame: &mut Frame,
-    inner: Rect,
+    layout: &crate::ui::runtime::WindowLayout,
     view: &crate::ui::view::TextWindowViewModel,
     bg: ratatui::style::Color,
     fg: ratatui::style::Color,
 ) {
-    if inner.width == 0 || inner.height == 0 {
-        return;
+    let padded_inner = to_rect(layout.padded_inner);
+
+    if padded_inner.width > 0 && padded_inner.height > 0 {
+        frame.render_widget(
+            Paragraph::new(view.lines.join("\n"))
+                .style(Style::default().fg(fg).bg(bg))
+                .wrap(Wrap { trim: false })
+                .scroll((view.scroll_y, 0)),
+            padded_inner,
+        );
     }
-    frame.render_widget(
-        Paragraph::new(view.lines.join("\n"))
-            .style(Style::default().fg(fg).bg(bg))
-            .wrap(Wrap { trim: false }),
-        inner,
-    );
+
+    // Scrollbar
+    if let Some(sb) = &layout.scrollbar {
+        let buf = frame.buffer_mut();
+
+        // Top arrow
+        if let Some(cell) = buf.cell_mut(to_pos(sb.dec)) {
+            cell.set_char('▲');
+            cell.set_fg(fg);
+            cell.set_bg(bg);
+        }
+
+        // Bottom arrow
+        if let Some(cell) = buf.cell_mut(to_pos(sb.inc)) {
+            cell.set_char('▼');
+            cell.set_fg(fg);
+            cell.set_bg(bg);
+        }
+
+        // Track
+        let track = to_rect(sb.track);
+        for y in 0..track.height {
+            if let Some(cell) = buf.cell_mut((track.x, track.y + y)) {
+                cell.set_char('│');
+                cell.set_fg(fg);
+                cell.set_bg(bg);
+            }
+        }
+
+        // Thumb
+        let thumb = to_rect(sb.thumb);
+        for y in 0..thumb.height {
+            if let Some(cell) = buf.cell_mut((thumb.x, thumb.y + y)) {
+                cell.set_char('█');
+                cell.set_fg(fg);
+                cell.set_bg(bg);
+            }
+        }
+    }
+}
+
+fn to_pos(rect: RuntimeRect) -> (u16, u16) {
+    (rect.x, rect.y)
 }
 
 fn darken_shadow_cell(cell: &mut ratatui::buffer::Cell, fallback: ratatui::style::Color) {
@@ -181,10 +228,10 @@ pub fn render_ingame(
     view: &InGameDesktopView,
 ) {
     let ui = crate::ui::theme::ui_palette();
-    let desktop_layout =
-        screen
-            .desktop
-            .layout(UiRect::new(area.x, area.y, area.width, area.height));
+    let desktop_layout = screen
+        .desktop
+        .layout(UiRect::new(area.x, area.y, area.width, area.height));
+    screen.ui_areas.desktop = desktop_layout.clone();
 
     let menu_area = to_rect(desktop_layout.menu_bar);
     let status_area = to_rect(desktop_layout.status_bar);
@@ -201,12 +248,6 @@ pub fn render_ingame(
     let inspect_inner = to_rect(desktop_layout.window(WindowId::Inspect).inner);
     let power_outer = to_rect(desktop_layout.window(WindowId::PowerPicker).outer);
     let power_inner = to_rect(desktop_layout.window(WindowId::PowerPicker).inner);
-    let help_outer = to_rect(desktop_layout.window(WindowId::Help).outer);
-    let help_inner = to_rect(desktop_layout.window(WindowId::Help).inner);
-    let about_outer = to_rect(desktop_layout.window(WindowId::About).outer);
-    let about_inner = to_rect(desktop_layout.window(WindowId::About).inner);
-    let legend_outer = to_rect(desktop_layout.window(WindowId::Legend).outer);
-    let legend_inner = to_rect(desktop_layout.window(WindowId::Legend).inner);
 
     let map_layout = game::map_view::layout_map_chrome(
         map_inner,
@@ -607,10 +648,12 @@ pub fn render_ingame(
     }
 
     if let Some(help) = &view.help {
+        let layout = desktop_layout.window(WindowId::Help);
         if screen.desktop.window(WindowId::Help).shadowed {
-            render_window_shadow(frame, help_outer);
+            render_window_shadow(frame, to_rect(layout.outer));
         }
-        frame.render_widget(Clear, help_outer);
+        let outer = to_rect(layout.outer);
+        frame.render_widget(Clear, outer);
         frame.render_widget(
             Block::default()
                 .borders(Borders::ALL)
@@ -618,17 +661,19 @@ pub fn render_ingame(
                 .title_style(Style::default().fg(ui.window_title))
                 .border_style(Style::default().fg(ui.window_border))
                 .style(Style::default().bg(ui.popup_bg)),
-            help_outer,
+            outer,
         );
-        render_close_button(frame, help_outer);
-        render_text_window_content(frame, help_inner, help, ui.popup_bg, ui.text_primary);
+        render_close_button(frame, outer);
+        render_text_window_content(frame, &layout, help, ui.popup_bg, ui.text_primary);
     }
 
     if let Some(about) = &view.about {
+        let layout = desktop_layout.window(WindowId::About);
         if screen.desktop.window(WindowId::About).shadowed {
-            render_window_shadow(frame, about_outer);
+            render_window_shadow(frame, to_rect(layout.outer));
         }
-        frame.render_widget(Clear, about_outer);
+        let outer = to_rect(layout.outer);
+        frame.render_widget(Clear, outer);
         frame.render_widget(
             Block::default()
                 .borders(Borders::ALL)
@@ -636,17 +681,19 @@ pub fn render_ingame(
                 .title_style(Style::default().fg(ui.window_title))
                 .border_style(Style::default().fg(ui.window_border))
                 .style(Style::default().bg(ui.popup_bg)),
-            about_outer,
+            outer,
         );
-        render_close_button(frame, about_outer);
-        render_text_window_content(frame, about_inner, about, ui.popup_bg, ui.text_primary);
+        render_close_button(frame, outer);
+        render_text_window_content(frame, &layout, about, ui.popup_bg, ui.text_primary);
     }
 
     if let Some(legend) = &view.legend {
+        let layout = desktop_layout.window(WindowId::Legend);
         if screen.desktop.window(WindowId::Legend).shadowed {
-            render_window_shadow(frame, legend_outer);
+            render_window_shadow(frame, to_rect(layout.outer));
         }
-        frame.render_widget(Clear, legend_outer);
+        let outer = to_rect(layout.outer);
+        frame.render_widget(Clear, outer);
         frame.render_widget(
             Block::default()
                 .borders(Borders::ALL)
@@ -654,10 +701,10 @@ pub fn render_ingame(
                 .title_style(Style::default().fg(ui.window_title))
                 .border_style(Style::default().fg(ui.window_border))
                 .style(Style::default().bg(ui.popup_bg)),
-            legend_outer,
+            outer,
         );
-        render_close_button(frame, legend_outer);
-        render_text_window_content(frame, legend_inner, legend, ui.popup_bg, ui.text_primary);
+        render_close_button(frame, outer);
+        render_text_window_content(frame, &layout, legend, ui.popup_bg, ui.text_primary);
     }
 
     render_menu_bar(frame, menu_area, screen, view);
