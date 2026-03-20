@@ -230,10 +230,11 @@ pub enum WindowId {
     PowerPicker,
     Help,
     About,
+    Legend,
 }
 
 impl WindowId {
-    pub const ALL: [WindowId; 8] = [
+    pub const ALL: [WindowId; 9] = [
         WindowId::Map,
         WindowId::Panel,
         WindowId::Budget,
@@ -242,6 +243,7 @@ impl WindowId {
         WindowId::PowerPicker,
         WindowId::Help,
         WindowId::About,
+        WindowId::Legend,
     ];
 
     pub fn index(self) -> usize {
@@ -254,6 +256,7 @@ impl WindowId {
             WindowId::PowerPicker => 5,
             WindowId::Help => 6,
             WindowId::About => 7,
+            WindowId::Legend => 8,
         }
     }
 }
@@ -278,7 +281,7 @@ pub struct DesktopLayout {
     pub menu_bar: UiRect,
     pub status_bar: UiRect,
     pub news_ticker: UiRect,
-    windows: [WindowLayout; 8],
+    windows: [WindowLayout; 9],
 }
 
 impl DesktopLayout {
@@ -289,7 +292,7 @@ impl DesktopLayout {
 
 #[derive(Clone, Debug)]
 pub struct DesktopState {
-    windows: [WindowState; 8],
+    windows: [WindowState; 9],
     pub drag: Option<WindowDragState>,
     pub z_order: Vec<WindowId>,
 }
@@ -342,8 +345,15 @@ impl DesktopState {
         about.modal = true;
         about.center_on_open = true;
 
+        let mut legend = WindowState::new(0, 0, 56, 15);
+        legend.title = " Map Legend ";
+        legend.visible = false;
+        legend.closable = true;
+        legend.modal = false;
+        legend.center_on_open = true;
+
         Self {
-            windows: [map, panel, budget, statistics, inspect, power, help, about],
+            windows: [map, panel, budget, statistics, inspect, power, help, about, legend],
             drag: None,
             z_order: vec![
                 WindowId::Map,
@@ -354,6 +364,7 @@ impl DesktopState {
                 WindowId::PowerPicker,
                 WindowId::Help,
                 WindowId::About,
+                WindowId::Legend,
             ],
         }
     }
@@ -458,7 +469,7 @@ impl DesktopState {
             full.width,
             full.height.saturating_sub(3),
         );
-        let mut windows = [WindowLayout::default(); 8];
+        let mut windows = [WindowLayout::default(); 9];
 
         for id in WindowId::ALL {
             let win = self.window_mut(id);

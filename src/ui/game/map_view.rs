@@ -1559,7 +1559,7 @@ mod tests {
         .render(area, &mut buf);
 
         assert_eq!(buf.cell((0, 0)).unwrap().symbol(), "P");
-        assert_eq!(buf.cell((1, 0)).unwrap().symbol(), "P");
+        assert_eq!(buf.cell((1, 0)).unwrap().symbol(), "]");
     }
 
     #[test]
@@ -1681,7 +1681,7 @@ mod tests {
         .render(area, &mut buf);
 
         assert_eq!(buf.cell((0, 0)).unwrap().symbol(), "P");
-        assert_eq!(buf.cell((1, 0)).unwrap().symbol(), "P");
+        assert_eq!(buf.cell((1, 0)).unwrap().symbol(), "]");
     }
 
     #[test]

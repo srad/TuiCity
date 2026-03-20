@@ -26,43 +26,76 @@ use super::{
 /// Ticks between auto-saves (50 ticks/month × 12 months × 6 months ≈ every 6 in-game months).
 pub const AUTO_SAVE_INTERVAL: u32 = 50 * 12 * 6;
 
-const HELP_LINES: &[&str] = &[
-    "Goal",
-    "Grow a solvent city by giving zones three things: road access, power, and demand.",
-    "",
-    "Getting started",
-    "1. Lay a short road spine before zoning.",
-    "2. Place a power plant and connect it with power lines.",
-    "3. Zone mostly residential, then add a smaller amount of commercial and industrial.",
-    "4. Unpause and let buildings grow before spending heavily on extras.",
-    "",
-    "What makes a city work",
-    "Residential zones need nearby jobs.",
-    "Commercial and industrial zones need residents to staff them.",
-    "Unpowered or disconnected zones will stay empty.",
-    "Too much industry raises pollution and drags land value down.",
-    "",
-    "A safe early layout",
-    "Use a simple road grid.",
-    "Keep industry separated from homes.",
-    "Put commercial between residential and industry or near main roads.",
-    "Add parks to lift land value around housing.",
-    "",
-    "Money and survival",
-    "Income comes from developed buildings, not empty zones.",
-    "Do not overbuild roads, rails, or services before tax income arrives.",
-    "Check the budget window if treasury keeps falling.",
-    "",
-    "Disasters and services",
-    "Fire departments reduce fire risk.",
-    "Police stations reduce crime.",
-    "Keep some cash in reserve so one bad month does not stall the city.",
-    "",
-    "Useful controls",
-    "Left click the minimap to jump the camera.",
-    "Use the toolbox for zoning and infrastructure.",
-    "Press Ctrl+S to save, and use File to load another city.",
-];
+fn build_help_lines() -> Vec<String> {
+    vec![
+        "Goal".to_string(),
+        "Grow a solvent city by giving zones three things: road access, power, and demand.".to_string(),
+        "".to_string(),
+        "Getting started".to_string(),
+        "1. Lay a short road spine before zoning.".to_string(),
+        "2. Place a power plant and connect it with power lines.".to_string(),
+        "3. Zone mostly residential, then add a smaller amount of commercial and industrial.".to_string(),
+        "4. Unpause and let buildings grow before spending heavily on extras.".to_string(),
+        "".to_string(),
+        "What makes a city work".to_string(),
+        "Residential zones need nearby jobs.".to_string(),
+        "Commercial and industrial zones need residents to staff them.".to_string(),
+        "Unpowered or disconnected zones will stay empty.".to_string(),
+        "Too much industry raises pollution and drags land value down.".to_string(),
+        "".to_string(),
+        "A safe early layout".to_string(),
+        "Use a simple road grid.".to_string(),
+        "Keep industry separated from homes.".to_string(),
+        "Put commercial between residential and industry or near main roads.".to_string(),
+        "Add parks to lift land value around housing.".to_string(),
+        "".to_string(),
+        "Money and survival".to_string(),
+        "Income comes from developed buildings, not empty zones.".to_string(),
+        "Do not overbuild roads, rails, or services before tax income arrives.".to_string(),
+        "Check the budget window if treasury keeps falling.".to_string(),
+        "".to_string(),
+        "Disasters and services".to_string(),
+        "Fire departments reduce fire risk.".to_string(),
+        "Police stations reduce crime.".to_string(),
+        "Keep some cash in reserve so one bad month does not stall the city.".to_string(),
+        "".to_string(),
+        "Useful controls".to_string(),
+        "Left click the minimap to jump the camera.".to_string(),
+        "Use the toolbox for zoning and infrastructure.".to_string(),
+        "Press Ctrl+S to save, and use File to load another city.".to_string(),
+    ]
+}
+
+fn build_legend_lines() -> Vec<String> {
+    let mut lines = Vec::new();
+    let overlay = crate::core::map::TileOverlay::default();
+    
+    let mut push_legend = |label: &str, tiles: &[crate::core::map::Tile]| {
+        let mut sprites = String::new();
+        for &tile in tiles {
+            let sprite = crate::ui::theme::tile_sprite(tile, overlay);
+            sprites.push(sprite.left.ch);
+            sprites.push(sprite.right.ch);
+            sprites.push(' ');
+        }
+        lines.push(format!("  {}- {}", sprites, label));
+    };
+
+    use crate::core::map::Tile;
+    push_legend("Empty Zones (Res, Comm, Ind)", &[Tile::ZoneRes, Tile::ZoneComm, Tile::ZoneInd]);
+    push_legend("Residential (Low, Med, High)", &[Tile::ResLow, Tile::ResMed, Tile::ResHigh]);
+    push_legend("Commercial (Low, High)", &[Tile::CommLow, Tile::CommHigh]);
+    push_legend("Industrial (Light, Heavy)", &[Tile::IndLight, Tile::IndHeavy]);
+    push_legend("Power Plant", &[Tile::PowerPlantCoal]);
+    push_legend("Police Station", &[Tile::Police]);
+    push_legend("Fire Station", &[Tile::Fire]);
+    push_legend("Hospital", &[Tile::Hospital]);
+    push_legend("Park", &[Tile::Park]);
+    push_legend("Water (Pump, Tower, Treatment, Desalination)", &[Tile::WaterPump, Tile::WaterTower, Tile::WaterTreatment, Tile::Desalination]);
+    push_legend("Transit (Bus, Rail, Subway)", &[Tile::BusDepot, Tile::RailDepot, Tile::SubwayStation]);
+    
+    lines
+}
 
 const ABOUT_LINES: &[&str] = &[
     GAME_NAME,
@@ -273,6 +306,10 @@ impl InGameScreen {
         self.desktop.is_open(WindowId::About)
     }
 
+    pub fn is_legend_open(&self) -> bool {
+        self.desktop.is_open(WindowId::Legend)
+    }
+
     pub fn is_confirm_prompt_open(&self) -> bool {
         self.confirm_prompt_action.is_some()
     }
@@ -316,6 +353,25 @@ impl InGameScreen {
 
     pub fn close_about_window(&mut self) {
         self.desktop.close(WindowId::About);
+    }
+
+    pub fn open_legend_window(&mut self) {
+        self.desktop.close(WindowId::Statistics);
+        self.desktop.close(WindowId::Help);
+        self.desktop.close(WindowId::About);
+        self.desktop.open(WindowId::Legend, true);
+    }
+
+    pub fn close_legend_window(&mut self) {
+        self.desktop.close(WindowId::Legend);
+    }
+
+    pub fn toggle_legend_window(&mut self) {
+        if self.is_legend_open() {
+            self.close_legend_window();
+        } else {
+            self.open_legend_window();
+        }
     }
 
     pub fn toggle_inspect_window(&mut self) {
@@ -366,6 +422,7 @@ impl InGameScreen {
             statistics: self.statistics_view_model(sim),
             help: self.help_view_model(),
             about: self.about_view_model(),
+            legend: self.legend_view_model(),
         }
     }
 
@@ -389,13 +446,19 @@ impl InGameScreen {
 
     fn help_view_model(&self) -> Option<TextWindowViewModel> {
         self.is_help_open().then(|| TextWindowViewModel {
-            lines: HELP_LINES.iter().map(|line| (*line).to_string()).collect(),
+            lines: build_help_lines(),
         })
     }
 
     fn about_view_model(&self) -> Option<TextWindowViewModel> {
         self.is_about_open().then(|| TextWindowViewModel {
             lines: ABOUT_LINES.iter().map(|line| (*line).to_string()).collect(),
+        })
+    }
+
+    fn legend_view_model(&self) -> Option<TextWindowViewModel> {
+        self.is_legend_open().then(|| TextWindowViewModel {
+            lines: build_legend_lines(),
         })
     }
 
@@ -712,15 +775,17 @@ impl Screen for InGameScreen {
             };
         }
 
-        if self.is_stats_open() || self.is_about_open() || self.is_help_open() {
+        if self.is_stats_open() || self.is_about_open() || self.is_help_open() || self.is_legend_open() {
             return match action {
                 Action::MenuBack => {
                     if self.is_stats_open() {
                         self.close_stats_window();
                     } else if self.is_about_open() {
                         self.close_about_window();
-                    } else {
+                    } else if self.is_help_open() {
                         self.close_help_window();
+                    } else {
+                        self.close_legend_window();
                     }
                     None
                 }

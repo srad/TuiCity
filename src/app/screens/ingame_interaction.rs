@@ -356,6 +356,7 @@ impl InGameScreen {
             || self.desktop.contains(WindowId::PowerPicker, col, row)
             || self.desktop.contains(WindowId::Help, col, row)
             || self.desktop.contains(WindowId::About, col, row)
+            || self.desktop.contains(WindowId::Legend, col, row)
         {
             return;
         }
@@ -457,6 +458,19 @@ impl InGameScreen {
                 return true;
             }
             if self.desktop.contains(WindowId::About, col, row) {
+                return true;
+            }
+            return true;
+        }
+        if self.is_legend_open() {
+            if self.title_close_hit(WindowId::Legend, col, row) {
+                self.close_legend_window();
+                return true;
+            }
+            if self.desktop.begin_drag(WindowId::Legend, col, row) {
+                return true;
+            }
+            if self.desktop.contains(WindowId::Legend, col, row) {
                 return true;
             }
             return true;

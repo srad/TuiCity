@@ -197,6 +197,7 @@ pub struct InGameDesktopView {
     pub statistics: Option<StatisticsWindowViewModel>,
     pub help: Option<TextWindowViewModel>,
     pub about: Option<TextWindowViewModel>,
+    pub legend: Option<TextWindowViewModel>,
 }
 
 #[derive(Clone)]

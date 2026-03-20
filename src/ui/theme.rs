@@ -1071,7 +1071,7 @@ pub fn tile_glyph(tile: Tile, overlay: TileOverlay) -> TileGlyph {
 
     match tile {
         Tile::Grass => TileGlyph {
-            ch: '·',
+            ch: '.',
             fg: Color::Rgb(40, 100, 40),
             bg: Color::Rgb(25, 60, 25),
         },
@@ -1081,7 +1081,7 @@ pub fn tile_glyph(tile: Tile, overlay: TileOverlay) -> TileGlyph {
             bg: Color::Rgb(20, 40, 100),
         },
         Tile::Trees => TileGlyph {
-            ch: '↟',
+            ch: '^',
             fg: Color::Rgb(30, 180, 30),
             bg: Color::Rgb(20, 50, 20),
         },
@@ -1141,47 +1141,47 @@ pub fn tile_glyph(tile: Tile, overlay: TileOverlay) -> TileGlyph {
             bg: ui.sector_industrial_bg,
         },
         Tile::ResLow => TileGlyph {
-            ch: '▄',
+            ch: 'r',
             fg: ui.sector_residential,
             bg: ui.sector_residential_bg,
         },
         Tile::ResMed => TileGlyph {
-            ch: '▆',
+            ch: 'R',
             fg: ui.sector_residential,
             bg: ui.sector_residential_bg,
         },
         Tile::ResHigh => TileGlyph {
-            ch: '█',
+            ch: '#',
             fg: Color::Rgb(208, 245, 202),
             bg: ui.sector_residential_bg,
         },
         Tile::CommLow => TileGlyph {
-            ch: '◇',
+            ch: 'c',
             fg: ui.sector_commercial,
             bg: ui.sector_commercial_bg,
         },
         Tile::CommHigh => TileGlyph {
-            ch: '◆',
+            ch: 'C',
             fg: Color::Rgb(204, 232, 250),
             bg: ui.sector_commercial_bg,
         },
         Tile::IndLight => TileGlyph {
-            ch: '△',
+            ch: 'i',
             fg: ui.sector_industrial,
             bg: ui.sector_industrial_bg,
         },
         Tile::IndHeavy => TileGlyph {
-            ch: '▲',
+            ch: 'I',
             fg: Color::Rgb(245, 225, 172),
             bg: ui.sector_industrial_bg,
         },
         Tile::PowerPlantCoal | Tile::PowerPlantGas => TileGlyph {
-            ch: '⚙',
+            ch: '@',
             fg: Color::Rgb(255, 255, 100),
             bg: Color::Rgb(60, 60, 30),
         },
         Tile::Park => TileGlyph {
-            ch: '⚘',
+            ch: '"',
             fg: Color::Rgb(50, 220, 50),
             bg: Color::Rgb(20, 80, 20),
         },
@@ -1245,7 +1245,33 @@ pub fn tile_glyph(tile: Tile, overlay: TileOverlay) -> TileGlyph {
 
 pub fn tile_sprite(tile: Tile, overlay: TileOverlay) -> TileSprite {
     let glyph = tile_glyph(tile, overlay);
-    TileSprite::uniform(glyph.ch, glyph.fg, glyph.bg)
+    
+    if overlay.on_fire {
+        return TileSprite::uniform(glyph.ch, glyph.fg, glyph.bg);
+    }
+
+    let (left, right) = match tile {
+        Tile::ResLow => ('/', '\\'),
+        Tile::ResMed => ('[', ']'),
+        Tile::ResHigh => ('|', '|'),
+        Tile::CommLow => ('(', ')'),
+        Tile::CommHigh => ('{', '}'),
+        Tile::IndLight => ('/', '|'),
+        Tile::IndHeavy => ('|', 'T'),
+        Tile::Police => ('P', ']'),
+        Tile::Fire => ('F', ']'),
+        Tile::Hospital => ('[', 'H'),
+        Tile::BusDepot => ('[', 'B'),
+        Tile::RailDepot => ('[', 'R'),
+        Tile::WaterPump => ('[', 'W'),
+        Tile::WaterTower => ('[', 'T'),
+        Tile::WaterTreatment => ('[', 'C'),
+        Tile::Desalination => ('[', 'D'),
+        Tile::PowerPlantCoal | Tile::PowerPlantGas => ('@', '@'),
+        _ => (glyph.ch, glyph.ch),
+    };
+
+    TileSprite::pair(left, right, glyph.fg, glyph.bg)
 }
 
 // ── Feature 4: Network characters (Borders) ──────────────────────────────────
@@ -1497,7 +1523,7 @@ mod tests {
         let tower = tile_glyph(Tile::ResHigh, TileOverlay::default());
 
         assert_eq!(fire.ch, '*');
-        assert_eq!(tower.ch, '█');
+        assert_eq!(tower.ch, '#');
     }
 
     #[test]
@@ -1508,8 +1534,8 @@ mod tests {
         let light_ind = tile_glyph(Tile::IndLight, TileOverlay::default());
 
         assert_eq!(empty_res.ch, '▒');
-        assert_eq!(low_res.ch, '▄');
-        assert_eq!(low_comm.ch, '◇');
-        assert_eq!(light_ind.ch, '△');
+        assert_eq!(low_res.ch, 'r');
+        assert_eq!(low_comm.ch, 'c');
+        assert_eq!(light_ind.ch, 'i');
     }
 }

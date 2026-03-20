@@ -26,6 +26,7 @@ pub enum MenuAction {
     ToggleInspect,
     OpenBudget,
     OpenStatistics,
+    ToggleLegend,
     ToggleLayer,
     OverlayNone,
     OverlayPower,
@@ -120,7 +121,7 @@ const DISASTER_ROWS: [MenuRow; 3] = [
         action: MenuAction::DisasterTornado,
     },
 ];
-const WINDOWS_ROWS: [MenuRow; 13] = [
+const WINDOWS_ROWS: [MenuRow; 14] = [
     MenuRow {
         label: "Toolbox",
         right: "",
@@ -140,6 +141,11 @@ const WINDOWS_ROWS: [MenuRow; 13] = [
         label: "Statistics",
         right: "",
         action: MenuAction::OpenStatistics,
+    },
+    MenuRow {
+        label: "Map Legend",
+        right: "",
+        action: MenuAction::ToggleLegend,
     },
     MenuRow {
         label: "View Layer",
@@ -310,6 +316,7 @@ impl InGameScreen {
             MenuAction::ToggleInspect => self.toggle_inspect_window(),
             MenuAction::OpenBudget => self.open_budget(context),
             MenuAction::OpenStatistics => self.open_stats_window(),
+            MenuAction::ToggleLegend => self.toggle_legend_window(),
             MenuAction::ToggleLayer => self.toggle_view_layer(),
             MenuAction::OverlayNone => self.overlay_mode = OverlayMode::None,
             MenuAction::OverlayPower => self.overlay_mode = OverlayMode::Power,
@@ -435,6 +442,13 @@ impl InGameScreen {
                     "OFF"
                 }
             }
+            MenuAction::ToggleLegend => {
+                if self.desktop.is_open(WindowId::Legend) {
+                    "ON"
+                } else {
+                    "OFF"
+                }
+            }
             MenuAction::ToggleLayer => InGameScreen::view_layer_label(self.view_layer),
             _ => base.right,
         };
@@ -517,7 +531,7 @@ mod tests {
             MenuAction::ToggleInspect
         );
         assert_eq!(
-            InGameScreen::menu_action_for(3, 12),
+            InGameScreen::menu_action_for(3, 13),
             MenuAction::OverlayFireRisk
         );
         assert_eq!(MENU_TITLES[4], "Help");
@@ -617,10 +631,10 @@ mod tests {
         let sim = SimState::default();
 
         let (layer_label, layer_value, _) = screen
-            .menu_row(3, 4, &sim)
+            .menu_row(3, 5, &sim)
             .expect("windows layer row should exist");
         let (water_label, _, _) = screen
-            .menu_row(3, 7, &sim)
+            .menu_row(3, 8, &sim)
             .expect("windows water overlay row should exist");
 
         assert_eq!(layer_label, "View Layer");

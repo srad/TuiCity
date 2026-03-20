@@ -205,6 +205,8 @@ pub fn render_ingame(
     let help_inner = to_rect(desktop_layout.window(WindowId::Help).inner);
     let about_outer = to_rect(desktop_layout.window(WindowId::About).outer);
     let about_inner = to_rect(desktop_layout.window(WindowId::About).inner);
+    let legend_outer = to_rect(desktop_layout.window(WindowId::Legend).outer);
+    let legend_inner = to_rect(desktop_layout.window(WindowId::Legend).inner);
 
     let map_layout = game::map_view::layout_map_chrome(
         map_inner,
@@ -638,6 +640,24 @@ pub fn render_ingame(
         );
         render_close_button(frame, about_outer);
         render_text_window_content(frame, about_inner, about, ui.popup_bg, ui.text_primary);
+    }
+
+    if let Some(legend) = &view.legend {
+        if screen.desktop.window(WindowId::Legend).shadowed {
+            render_window_shadow(frame, legend_outer);
+        }
+        frame.render_widget(Clear, legend_outer);
+        frame.render_widget(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(screen.desktop.window(WindowId::Legend).title)
+                .title_style(Style::default().fg(ui.window_title))
+                .border_style(Style::default().fg(ui.window_border))
+                .style(Style::default().bg(ui.popup_bg)),
+            legend_outer,
+        );
+        render_close_button(frame, legend_outer);
+        render_text_window_content(frame, legend_inner, legend, ui.popup_bg, ui.text_primary);
     }
 
     render_menu_bar(frame, menu_area, screen, view);
