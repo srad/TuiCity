@@ -587,7 +587,7 @@ mod tests {
         let view = BudgetViewModel::from_sim(
             &sim,
             BudgetFocus::Residential,
-            sim.tax_rates,
+            sim.economy.tax_rates,
             "9".to_string(),
             "9".to_string(),
             "9".to_string(),

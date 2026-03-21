@@ -85,12 +85,12 @@ impl BudgetViewModel {
             residential_input,
             commercial_input,
             industrial_input,
-            treasury: sim.treasury,
-            current_annual_tax: sim.last_breakdown.annual_tax,
-            breakdown: sim.last_breakdown.clone(),
-            residential_population: sim.residential_population,
-            commercial_jobs: sim.commercial_jobs,
-            industrial_jobs: sim.industrial_jobs,
+            treasury: sim.economy.treasury,
+            current_annual_tax: sim.economy.last_breakdown.annual_tax,
+            breakdown: sim.economy.last_breakdown.clone(),
+            residential_population: sim.pop.residential_population,
+            commercial_jobs: sim.pop.commercial_jobs,
+            industrial_jobs: sim.pop.industrial_jobs,
         }
     }
 }

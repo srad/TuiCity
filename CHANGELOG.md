@@ -4,6 +4,33 @@ All notable changes to TuiCity 2000 are documented here.
 
 ## [Unreleased]
 
+### UI & Rendering Fixes
+
+- **Power line on zone tile now visible** — a power line placed over an undeveloped zone previously rendered with its own dark background, making it invisible against the zone colour. The map renderer now detects the underlying zone via `surface_lot_tile` and draws the power line glyph with the zone's background colour instead. Added `power_line_over_zone_uses_zone_background` regression test.
+- **Start menu cleaned up** — removed the Music Toggle item from the start screen. "Quit Game" is now the last entry (index 3). Music is toggled in-game via **File → Toggle Music** only.
+
+### Simulation Fixes
+
+- **Empty zones relay power (SC2000 parity)** — `Tile::is_conductive_structure()` now includes empty zone tiles (`ZoneRes`, `ZoneComm`, `ZoneInd`). Power lines threaded through undeveloped zones correctly chain electricity to the next tile, matching SimCity 2000 behaviour.
+
+### Code Quality
+
+- **`TileCtx` test field cleanup** — removed the now-obsolete `covered_by_power_line` and `has_road_access` fields from the growth test helpers after those fields were eliminated from the struct. Fixed three locations in `growth.rs` test code.
+
+### Simulation Engine Refactoring
+
+**Goal:** Improve maintainability and readability without changing any game mechanics. All 259 tests pass.
+
+- **Centralized constants** — extracted all magic numbers from 5+ files into `src/core/sim/constants.rs` (~30 named `pub const` values covering service radii, strengths, propagation falloff, transport limits, economy ratios, fire/crime baselines, plant lifecycle, and neglect thresholds)
+- **`for_each_in_radius` helper** — eliminated 4 copies of the radial-iteration-with-falloff pattern; extracted into `src/core/sim/util.rs` with `(nx, ny, idx, falloff)` closure API
+- **`SimState::push_history`** — atomic method that pushes to all 7 VecDeque ring buffers and trims to `HISTORY_LEN` in one call; `debug_assert` enforces all deques stay in sync
+- **`tick_growth` sub-functions** — extracted `evaluate_res`, `evaluate_comm`, `evaluate_ind` (each returning `Option<Tile>`) and a `TileCtx` struct to eliminate a large multi-responsibility match block
+- **`systems/` file split** — broke the 2079-line `systems/mod.rs` monolith into 10 focused files (`power.rs`, `water.rs`, `pollution.rs`, `land_value.rs`, `police.rs`, `fire.rs`, `growth_system.rs`, `finance.rs`, `history.rs`, `disasters.rs`); `mod.rs` is now re-exports only
+- **`FireSpreadSystem` sub-phases** — refactored into 4 named private functions: `ignite_spontaneous`, `spread_fires`, `apply_fire_damage`, `suppress_with_stations`
+- **System ordering assertion** — `#[cfg(debug_assertions)]` check in `SimulationEngine::new` ensures the 13-system pipeline is registered in the semantically correct order
+- **Engine constants** — `engine.rs` plant placement now uses named constants instead of inline literals
+- **22 new tests** (259 total): 6 in `constants.rs`, 5 in `util.rs`, 4 in `sim/mod.rs` (`push_history`), 7 in `growth.rs` (`evaluate_*` functions)
+
 ### Phase 5: Power Plant Efficiency Decay
 - Plants now degrade in efficiency over their final 12 months of life
 - Efficiency formula: `remaining_months / 12` (linear decay from 1.0 → ~0.083)

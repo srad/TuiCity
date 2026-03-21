@@ -505,15 +505,15 @@ impl InGameScreen {
     ) -> Option<StatisticsWindowViewModel> {
         self.is_stats_open().then(|| StatisticsWindowViewModel {
             city_name: sim.city_name.clone(),
-            current_population: sim.population,
-            current_treasury: sim.treasury,
-            current_income: sim.last_income,
-            current_power_produced: sim.power_produced_mw,
-            current_power_consumed: sim.power_consumed_mw,
-            treasury_history: sim.treasury_history.clone(),
-            population_history: sim.population_history.clone(),
-            income_history: sim.income_history.clone(),
-            power_balance_history: sim.power_balance_history.clone(),
+            current_population: sim.pop.population,
+            current_treasury: sim.economy.treasury,
+            current_income: sim.economy.last_income,
+            current_power_produced: sim.utilities.power_produced_mw,
+            current_power_consumed: sim.utilities.power_consumed_mw,
+            treasury_history: sim.history.treasury.clone(),
+            population_history: sim.history.population.clone(),
+            income_history: sim.history.income.clone(),
+            power_balance_history: sim.history.power_balance.clone(),
         })
     }
 
@@ -757,13 +757,13 @@ impl Screen for InGameScreen {
         }
         let first_building = {
             let engine = context.engine.read().unwrap();
-            engine.sim.population > 0 && !self.first_building_notified
+            engine.sim.pop.population > 0 && !self.first_building_notified
         };
         if first_building {
             self.first_building_notified = true;
             self.push_message("First residents have arrived!".to_string());
         }
-        let treasury = context.engine.read().unwrap().sim.treasury;
+        let treasury = context.engine.read().unwrap().sim.economy.treasury;
         if treasury < 0 && !self.deficit_warned {
             self.deficit_warned = true;
             self.push_message("Warning: budget deficit!".to_string());
@@ -1721,9 +1721,9 @@ mod tests {
     fn budget_open_syncs_sector_sliders_to_sim_tax_rates() {
         let mut screen = fresh_screen();
         let mut sim = crate::core::sim::SimState::default();
-        sim.tax_rates.residential = 13;
-        sim.tax_rates.commercial = 11;
-        sim.tax_rates.industrial = 7;
+        sim.economy.tax_rates.residential = 13;
+        sim.economy.tax_rates.commercial = 11;
+        sim.economy.tax_rates.industrial = 7;
         let engine = Arc::new(RwLock::new(crate::core::engine::SimulationEngine::new(
             crate::core::map::Map::new(10, 10),
             sim,
@@ -1841,7 +1841,7 @@ mod tests {
 
         assert_eq!(screen.budget_ui.commercial_tax_input, "42");
         assert_eq!(screen.budget_ui.commercial_tax, 42);
-        assert_eq!(engine.read().unwrap().sim.tax_rates.commercial, 42);
+        assert_eq!(engine.read().unwrap().sim.economy.tax_rates.commercial, 42);
     }
 
     #[test]
@@ -1879,7 +1879,7 @@ mod tests {
 
         assert_eq!(screen.budget_ui.residential_tax_input, "100");
         assert_eq!(screen.budget_ui.residential_tax, 100);
-        assert_eq!(engine.read().unwrap().sim.tax_rates.residential, 100);
+        assert_eq!(engine.read().unwrap().sim.economy.tax_rates.residential, 100);
     }
 
     #[test]
@@ -1923,7 +1923,7 @@ mod tests {
             (start_value.saturating_sub(1)).to_string()
         );
         assert_eq!(
-            engine.read().unwrap().sim.tax_rates.commercial as usize,
+            engine.read().unwrap().sim.economy.tax_rates.commercial as usize,
             start_value.saturating_sub(1)
         );
     }

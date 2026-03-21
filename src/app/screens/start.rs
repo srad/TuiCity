@@ -52,19 +52,13 @@ impl Screen for StartScreen {
     }
 
     fn build_view(&self, _context: AppContext<'_>) -> crate::ui::view::ScreenView {
-        let music_label = if crate::app::config::is_music_enabled() {
-            "Disable Music"
-        } else {
-            "Enable Music"
-        };
         crate::ui::view::ScreenView::Start(crate::ui::view::StartViewModel {
             selected: self.state.selected,
             options: vec![
                 "Load Existing City".to_string(),
                 "Create New City".to_string(),
                 "Settings".to_string(),
-                music_label.to_string(),
-                "Quit".to_string(),
+                "Quit Game".to_string(),
             ],
         })
     }
@@ -78,12 +72,7 @@ impl StartScreen {
                 state: super::new_city::NewCityState::new(),
             }))),
             2 => Some(ScreenTransition::Push(Box::new(SettingsScreen::new()))),
-            3 => {
-                let current = crate::app::config::is_music_enabled();
-                let _ = crate::app::config::persist_music_preference(!current);
-                None
-            }
-            4 => Some(ScreenTransition::Quit),
+            3 => Some(ScreenTransition::Quit),
             _ => None,
         }
     }

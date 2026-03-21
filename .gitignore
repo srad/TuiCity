@@ -26,3 +26,6 @@ settings.json
 target-verify
 __pycache__
 tools/fluidsynth*
+CLAUDE.md
+GEMINI.md
+AGENTS.md

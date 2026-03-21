@@ -62,7 +62,7 @@ impl BudgetState {
 
 impl InGameScreen {
     pub fn sync_budget_tax_from_sim(&mut self, context: &AppContext) {
-        let tax_rates = context.engine.read().unwrap().sim.tax_rates;
+        let tax_rates = context.engine.read().unwrap().sim.economy.tax_rates;
         self.set_budget_tax_ui_value(TaxSector::Residential, tax_rates.residential as usize);
         self.set_budget_tax_ui_value(TaxSector::Commercial, tax_rates.commercial as usize);
         self.set_budget_tax_ui_value(TaxSector::Industrial, tax_rates.industrial as usize);

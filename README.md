@@ -74,7 +74,7 @@ Navigate with the **arrow keys** and confirm with **Enter**, or click an item wi
 - The game automatically scans the `assets/music` folder for `.mp3` files at startup.
 - All discovered tracks are played in a random order without repeating until the entire playlist has finished, at which point the playlist is reshuffled and restarted automatically.
 - Playback runs in a dedicated background thread using the cross-platform `rodio` crate (with only the MP3 decoding feature enabled to keep the build size minimal).
-- The music can be enabled or disabled at any time via the **Start Screen** or in-game by going to **File -> Toggle Music** (shortcut `M`). Your preference is saved persistently.
+- The music can be enabled or disabled at any time in-game via **File -> Toggle Music** (shortcut `M`). Your preference is saved persistently.
 - See `assets/music/LMMS_SURGE_WORKFLOW.md` for the current authoring workflow.
 - To add more in-game music, simply drop the `.mp3` exports into the `assets/music` folder. No code changes are required for the game to pick them up.
 
@@ -174,7 +174,7 @@ Select a tool by pressing its hotkey or from the toolbox chooser. Moving the mou
 - In the surface view, busy roads and highways now show ambient moving traffic markers so congestion is visible even without opening the traffic overlay.
 
 **Power & Water**
-- Power follows SC2000-style conduction: power lines, plants, and developed buildings conduct; empty zones receive service but do not relay it onward.
+- Power follows SC2000-style conduction: power lines, plants, developed buildings, and empty zones all conduct; placing a power line through an undeveloped zone is enough to chain electricity to the next tile.
 - Roads and power lines can cross on the same surface tile, SC2000-style; the shared tile still counts as both a road connection and a power connection.
 - Water behaves similarly underground: pipes and developed buildings relay service, while empty zones do not chain utilities by themselves.
 - The **Water Service** overlay is a surface coverage view. The **Underground** layer is a separate infrastructure view for pipes and subway tunnels, with faint roads and landmarks left visible for orientation.
@@ -274,15 +274,23 @@ src/
 │   │   └── gen.rs                 Procedural map generation (noise, water, forest)
 │   └── sim/
 │       ├── mod.rs                 SimState; maintenance, utility, history, and transport summary fields
+│       ├── constants.rs           All simulation balance constants (radii, falloffs, thresholds, capacities)
 │       ├── system.rs              SimSystem trait
-│       ├── growth.rs              Zone → building growth logic
+│       ├── util.rs                Shared helpers: for_each_in_radius radial iterator
+│       ├── growth.rs              Zone → building growth logic (evaluate_res/comm/ind sub-functions)
 │       ├── transport/mod.rs       Network cache, trip simulation, routing, and traffic accumulation
 │       └── systems/
-│           └── mod.rs             Core SimSystem implementations:
-│                                    PowerSystem, WaterSystem, PollutionSystem,
-│                                    LandValueSystem, PoliceSystem, FireSystem, GrowthSystem,
-│                                    FinanceSystem, HistorySystem,
-│                                    FireSpreadSystem, FloodSystem, TornadoSystem
+│           ├── mod.rs             Re-exports only
+│           ├── power.rs           PowerSystem
+│           ├── water.rs           WaterSystem
+│           ├── pollution.rs       PollutionSystem
+│           ├── land_value.rs      LandValueSystem
+│           ├── police.rs          PoliceSystem
+│           ├── fire.rs            FireSystem
+│           ├── growth_system.rs   GrowthSystem (delegates to growth.rs)
+│           ├── finance.rs         FinanceSystem + TileCounts + UndergroundCounts
+│           ├── history.rs         HistorySystem
+│           └── disasters.rs       FireSpreadSystem, FloodSystem, TornadoSystem
 └── ui/
     ├── mod.rs                     Renderer selection + `ScreenView` dispatch
     ├── view.rs                    Frontend-neutral screen and in-game view models
@@ -373,7 +381,7 @@ src/
 
 ### Adding a New Sim System
 
-1. **Implement `SimSystem`** — add a new struct in `src/core/sim/systems/mod.rs` (or a new submodule) with a `tick(&mut self, map: &mut Map, sim: &mut SimState)` method.
+1. **Implement `SimSystem`** — create a new file in `src/core/sim/systems/` (e.g. `my_system.rs`) with a struct implementing `tick(&mut self, map: &mut Map, sim: &mut SimState)`, then add `mod my_system;` and `pub use my_system::MySystem;` to `src/core/sim/systems/mod.rs`.
 2. **Register it** in the `SimulationEngine::new` system list in `src/core/engine.rs` at the appropriate position.
 3. **Add any new fields** the system needs to `SimState` in `src/core/sim/mod.rs` (derive `Serialize`/`Deserialize` so they persist in `.tc2` saves).
 4. **Optionally add an overlay** if the system produces per-tile data worth visualising: add a field to `TileOverlay` in `src/core/map/tile.rs` and handle the new overlay mode in `src/ui/game/map_view.rs` and `src/ui/theme.rs`.

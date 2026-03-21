@@ -10,14 +10,14 @@ mod tests {
     fn setup_engine() -> SimulationEngine {
         let map = Map::new(10, 10);
         let mut sim = SimState::default();
-        sim.treasury = 100000; // Give enough money for tests
+        sim.economy.treasury = 100000; // Give enough money for tests
         SimulationEngine::new(map, sim)
     }
 
     #[test]
     fn test_place_single_tool() {
         let mut engine = setup_engine();
-        let initial_funds = engine.sim.treasury;
+        let initial_funds = engine.sim.economy.treasury;
         let cost = Tool::Road.cost();
 
         // Place a road
@@ -36,7 +36,7 @@ mod tests {
             "Tile should be updated to Road"
         );
         assert_eq!(
-            engine.sim.treasury,
+            engine.sim.economy.treasury,
             initial_funds - cost,
             "Treasury should be deducted by tool cost"
         );
@@ -45,7 +45,7 @@ mod tests {
     #[test]
     fn test_place_tool_out_of_bounds() {
         let mut engine = setup_engine();
-        let initial_funds = engine.sim.treasury;
+        let initial_funds = engine.sim.economy.treasury;
 
         // Try to place a road outside the map (map is 10x10)
         let cmd = EngineCommand::PlaceTool {
@@ -58,7 +58,7 @@ mod tests {
 
         assert!(result.is_err(), "Tool placement out of bounds should fail");
         assert_eq!(
-            engine.sim.treasury, initial_funds,
+            engine.sim.economy.treasury, initial_funds,
             "Treasury should not change on failure"
         );
     }
@@ -67,7 +67,7 @@ mod tests {
     fn test_insufficient_funds() {
         let mut engine = setup_engine();
         // Set treasury lower than a coal plant's cost
-        engine.sim.treasury = 10;
+        engine.sim.economy.treasury = 10;
         let cost = Tool::PowerPlantCoal.cost();
         assert!(cost > 10, "PowerPlant cost must be > 10 for this test");
 
@@ -85,7 +85,7 @@ mod tests {
         );
         assert_eq!(result.unwrap_err(), "Insufficient funds!");
         assert_eq!(
-            engine.sim.treasury, 10,
+            engine.sim.economy.treasury, 10,
             "Treasury should not change on failure"
         );
     }
@@ -93,7 +93,7 @@ mod tests {
     #[test]
     fn test_place_line() {
         let mut engine = setup_engine();
-        let initial_funds = engine.sim.treasury;
+        let initial_funds = engine.sim.economy.treasury;
         let cost = Tool::Road.cost();
 
         // Path of 3 tiles
@@ -110,7 +110,7 @@ mod tests {
         assert_eq!(engine.map.get(1, 2), Tile::Road);
         assert_eq!(engine.map.get(1, 3), Tile::Road);
         assert_eq!(
-            engine.sim.treasury,
+            engine.sim.economy.treasury,
             initial_funds - (cost * 3),
             "Treasury should be deducted for 3 tiles"
         );
@@ -159,7 +159,7 @@ mod tests {
     #[test]
     fn test_place_rect() {
         let mut engine = setup_engine();
-        let initial_funds = engine.sim.treasury;
+        let initial_funds = engine.sim.economy.treasury;
         let cost = Tool::ZoneResLight.cost();
 
         let tiles = vec![(2, 2), (2, 3), (3, 2), (3, 3)];
@@ -174,7 +174,7 @@ mod tests {
         assert_eq!(engine.map.get(2, 2), Tile::ZoneRes);
         assert_eq!(engine.map.get(3, 3), Tile::ZoneRes);
         assert_eq!(
-            engine.sim.treasury,
+            engine.sim.economy.treasury,
             initial_funds - (cost * 4),
             "Treasury should be deducted for 4 tiles"
         );
@@ -292,7 +292,7 @@ mod tests {
                 y: 2,
             })
             .unwrap();
-        let treasury_after_line = engine.sim.treasury;
+        let treasury_after_line = engine.sim.economy.treasury;
 
         engine
             .execute_command(EngineCommand::PlaceTool {
@@ -306,7 +306,7 @@ mod tests {
         assert_eq!(engine.map.get(2, 2), Tile::WaterPump);
         assert!(!engine.map.has_power_line(2, 2));
         assert_eq!(
-            engine.sim.treasury,
+            engine.sim.economy.treasury,
             treasury_after_line - Tool::WaterPump.cost()
         );
     }
@@ -325,7 +325,7 @@ mod tests {
                 })
                 .unwrap();
         }
-        let treasury_after_lines = engine.sim.treasury;
+        let treasury_after_lines = engine.sim.economy.treasury;
 
         engine
             .execute_command(EngineCommand::PlaceTool {
@@ -341,7 +341,7 @@ mod tests {
             assert!(!engine.map.has_power_line(x, y));
         }
         assert_eq!(
-            engine.sim.treasury,
+            engine.sim.economy.treasury,
             treasury_after_lines - Tool::Park.cost()
         );
     }
@@ -463,9 +463,9 @@ mod tests {
         );
         engine.map.set_power_line(2, 0, true);
         engine.map.set(3, 0, Tile::Road);
-        engine.sim.demand_res = 1.0;
+        engine.sim.demand.res = 1.0;
 
-        for _ in 0..6 {
+        for _ in 0..50 {
             engine.execute_command(EngineCommand::AdvanceMonth).unwrap();
             if engine.map.get(2, 0) == Tile::ResLow {
                 break;

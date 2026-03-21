@@ -14,16 +14,24 @@ use crate::core::{
 };
 use crate::game_info::SAVE_DIR_NAME;
 
-const CURRENT_SAVE_VERSION: u32 = 6;
+const CURRENT_SAVE_VERSION: u32 = 7;
 const BINARY_SAVE_MAGIC: [u8; 4] = *b"TC2S";
 const BINARY_SAVE_EXTENSION: &str = "tc2";
+#[derive(serde::Deserialize)]
+struct EconomyListing {
+    treasury: i64,
+}
+#[derive(serde::Deserialize)]
+struct PopListing {
+    population: u64,
+}
 #[derive(serde::Deserialize)]
 struct SaveListingSim {
     city_name: String,
     year: i32,
     month: u8,
-    population: u64,
-    treasury: i64,
+    pop: PopListing,
+    economy: EconomyListing,
 }
 
 #[derive(Clone, Debug)]
@@ -131,8 +139,8 @@ pub fn list_saves_in_dir(dir: &Path) -> Vec<SaveEntry> {
                 city_name: save.city_name,
                 year: save.year,
                 month: save.month,
-                population: save.population,
-                treasury: save.treasury,
+                population: save.pop.population,
+                treasury: save.economy.treasury,
                 modified_at,
             });
         }
@@ -226,6 +234,7 @@ fn write_binary_save_file(path: &Path, sim: &SimState, map: &Map) -> io::Result<
             encode_trip_mode(overlay.trip_mode),
             encode_trip_failure(overlay.trip_failure),
             overlay.plant_efficiency,
+            overlay.neglected_months,
         ])?;
     }
     writer.flush()?;
@@ -245,7 +254,7 @@ fn load_binary_save(path: &Path) -> io::Result<(Map, SimState)> {
         ));
     }
 
-    let version = read_u32(&mut reader)?;
+    let _version = read_u32(&mut reader)?;
     let sim_len = read_u32(&mut reader)? as usize;
     let sim_json = read_exact_vec(&mut reader, sim_len)?;
     let sim = serde_json::from_slice::<SimState>(&sim_json).map_err(io::Error::other)?;
@@ -287,45 +296,24 @@ fn load_binary_save(path: &Path) -> io::Result<(Map, SimState)> {
 
     let mut overlays = Vec::with_capacity(len);
     for _ in 0..len {
-        if version >= 6 {
-            let bytes = read_exact_array::<13, _>(&mut reader)?;
-            overlays.push(TileOverlay {
-                power_level: bytes[0],
-                on_fire: bytes[1] != 0,
-                crime: bytes[2],
-                zone: None,
-                pollution: bytes[3],
-                land_value: bytes[4],
-                fire_risk: bytes[5],
-                traffic: bytes[6],
-                water_service: bytes[7],
-                trip_success: bytes[8] != 0,
-                trip_cost: bytes[9],
-                trip_mode: decode_trip_mode(bytes[10]),
-                trip_failure: decode_trip_failure(bytes[11]),
-                neglected_months: 0,
-                plant_efficiency: bytes[12],
-            });
-        } else {
-            let bytes = read_exact_array::<12, _>(&mut reader)?;
-            overlays.push(TileOverlay {
-                power_level: bytes[0],
-                on_fire: bytes[1] != 0,
-                crime: bytes[2],
-                zone: None,
-                pollution: bytes[3],
-                land_value: bytes[4],
-                fire_risk: bytes[5],
-                traffic: bytes[6],
-                water_service: bytes[7],
-                trip_success: bytes[8] != 0,
-                trip_cost: bytes[9],
-                trip_mode: decode_trip_mode(bytes[10]),
-                trip_failure: decode_trip_failure(bytes[11]),
-                neglected_months: 0,
-                plant_efficiency: 255,
-            });
-        }
+        let bytes = read_exact_array::<14, _>(&mut reader)?;
+        overlays.push(TileOverlay {
+            power_level: bytes[0],
+            on_fire: bytes[1] != 0,
+            crime: bytes[2],
+            zone: None,
+            pollution: bytes[3],
+            land_value: bytes[4],
+            fire_risk: bytes[5],
+            traffic: bytes[6],
+            water_service: bytes[7],
+            trip_success: bytes[8] != 0,
+            trip_cost: bytes[9],
+            trip_mode: decode_trip_mode(bytes[10]),
+            trip_failure: decode_trip_failure(bytes[11]),
+            plant_efficiency: bytes[12],
+            neglected_months: bytes[13],
+        });
     }
 
     let mut map = Map::new(width, height);
@@ -537,7 +525,10 @@ mod tests {
     use super::*;
     use crate::core::{
         map::{Map, Tile, TileOverlay},
-        sim::{DisasterConfig, MaintenanceBreakdown, PlantState, SimState, TaxRates},
+        sim::{
+            DisasterConfig, EconomyState, HistoryState, MaintenanceBreakdown, PlantState,
+            PopulationState, DemandState, UtilityState, TripStats, RngState, SimState, TaxRates,
+        },
     };
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -618,71 +609,60 @@ mod tests {
             city_name: "Test City".to_string(),
             year: 1955,
             month: 8,
-            treasury: 12_345,
-            population: 6789,
-            residential_population: 2222,
-            commercial_jobs: 1111,
-            industrial_jobs: 999,
-            demand_res: 0.25,
-            demand_comm: -0.5,
-            demand_ind: 0.75,
-            tax_rates: TaxRates {
-                residential: 7,
-                commercial: 11,
-                industrial: 13,
+            economy: EconomyState {
+                treasury: 12_345,
+                tax_rates: TaxRates { residential: 7, commercial: 11, industrial: 13 },
+                last_income: 4321,
+                last_breakdown: MaintenanceBreakdown {
+                    roads: 10, power_lines: 11, power_plants: 12, police: 13,
+                    fire: 14, parks: 15, residential_tax: 16, commercial_tax: 17,
+                    industrial_tax: 18, total: 110, annual_tax: 999,
+                },
+                unlock_mode: crate::core::sim::UnlockMode::Historical,
             },
-            demand_history_res: vec![0.1, 0.2, 0.3].into(),
-            demand_history_comm: vec![-0.1, -0.2].into(),
-            demand_history_ind: vec![0.4, 0.5, 0.6, 0.7].into(),
-            treasury_history: vec![100, 200, -50].into(),
-            population_history: vec![4000, 5200, 6789].into(),
-            income_history: vec![2100, 3500, 4321].into(),
-            power_balance_history: vec![20, 55, 80].into(),
-            disasters: DisasterConfig {
-                fire_enabled: true,
-                flood_enabled: true,
-                tornado_enabled: false,
+            pop: PopulationState {
+                population: 6789,
+                residential_population: 2222,
+                commercial_jobs: 1111,
+                industrial_jobs: 999,
             },
-            last_income: 4321,
-            last_breakdown: MaintenanceBreakdown {
-                roads: 10,
-                power_lines: 11,
-                power_plants: 12,
-                police: 13,
-                fire: 14,
-                parks: 15,
-                residential_tax: 16,
-                commercial_tax: 17,
-                industrial_tax: 18,
-                total: 110,
-                annual_tax: 999,
+            demand: DemandState { res: 0.25, comm: -0.5, ind: 0.75 },
+            history: HistoryState {
+                demand_res: vec![0.1, 0.2, 0.3].into(),
+                demand_comm: vec![-0.1, -0.2].into(),
+                demand_ind: vec![0.4, 0.5, 0.6, 0.7].into(),
+                treasury: vec![100, 200, -50].into(),
+                population: vec![4000, 5200, 6789].into(),
+                income: vec![2100, 3500, 4321].into(),
+                power_balance: vec![20, 55, 80].into(),
             },
-            power_produced_mw: 500,
-            power_consumed_mw: 420,
-            water_produced_units: 300,
-            water_consumed_units: 180,
-            transport_rng_state: 0x0123_4567_89AB_CDEF,
-            disaster_rng_state: 0xBEEF_DEAD_BEEF_CAFE,
-            growth_rng_state: 0xFACEFEED_FACEFEED,
-            trip_attempts: 70,
-            trip_successes: 54,
-            trip_failures: 16,
-            road_share: 20,
-            bus_share: 12,
-            rail_share: 14,
-            subway_share: 8,
-            unlock_mode: crate::core::sim::UnlockMode::Historical,
+            utilities: UtilityState {
+                power_produced_mw: 500,
+                power_consumed_mw: 420,
+                water_produced_units: 300,
+                water_consumed_units: 180,
+            },
+            trips: TripStats {
+                attempts: 70,
+                successes: 54,
+                failures: 16,
+                road_share: 20,
+                bus_share: 12,
+                rail_share: 14,
+                subway_share: 8,
+            },
+            rng: RngState {
+                transport: 0x0123_4567_89AB_CDEF,
+                disaster: 0xBEEF_DEAD_BEEF_CAFE,
+                growth: 0xFACEFEED_FACEFEED,
+            },
+            disasters: DisasterConfig { fire_enabled: true, flood_enabled: true, tornado_enabled: false },
             plants: std::collections::HashMap::new(),
             depots: std::collections::HashMap::new(),
         };
         sim.plants.insert(
             (3, 0),
-            PlantState {
-                age_months: 12,
-                max_life_months: 600,
-                capacity_mw: 500,
-                efficiency: 1.0,
-            },
+            PlantState { age_months: 12, max_life_months: 600, capacity_mw: 500, efficiency: 1.0 },
         );
         sim
     }
@@ -764,8 +744,8 @@ mod tests {
         assert_eq!(saves[0].city_name, sim.city_name);
         assert_eq!(saves[0].year, sim.year);
         assert_eq!(saves[0].month, sim.month);
-        assert_eq!(saves[0].population, sim.population);
-        assert_eq!(saves[0].treasury, sim.treasury);
+        assert_eq!(saves[0].population, sim.pop.population);
+        assert_eq!(saves[0].treasury, sim.economy.treasury);
         assert!(saves[0].modified_at.is_some());
     }
 
@@ -779,7 +759,7 @@ mod tests {
 
         initial.year += 1;
         initial.month = 1;
-        initial.population += 100;
+        initial.pop.population += 100;
         let second_path =
             save_city_in_dir(&initial, &map, &dir.path).expect("second save should succeed");
 
@@ -793,7 +773,7 @@ mod tests {
         assert_eq!(saves.len(), 1);
         assert_eq!(saves[0].year, initial.year);
         assert_eq!(saves[0].month, initial.month);
-        assert_eq!(saves[0].population, initial.population);
+        assert_eq!(saves[0].population, initial.pop.population);
     }
 
     #[test]

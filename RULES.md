@@ -96,8 +96,7 @@ efficiency = min(remaining_months / 12, 1.0)
 
 - Power propagates from plant footprint (4×4 tiles) at level 255.
 - Each step away: `next_level = current_level − 2`. Propagation stops when level ≤ 1.
-- **Conducts power:** plants, power lines, conductive structures (roads with power lines, developed buildings).
-- **Receives but does not relay:** empty zones (ZoneRes, etc.).
+- **Conducts power:** plants, power lines, conductive structures (roads with power lines, developed buildings), and empty zones (ZoneRes, ZoneComm, ZoneInd).
 - Roads without power lines do NOT conduct.
 - Explosion on expiry: all tiles in 4×4 area become `Rubble`.
 
@@ -208,11 +207,14 @@ When a bus depot's trip count reaches capacity, subsequent bus trips fall back t
 ## Land Value System
 
 - Base: 80 per tile.
-- Water within 5 tiles: +40.
-- Park within 4 tiles: +30.
-- Hospital within 4 tiles: +20.
+- Proximity bonuses use **quadratic falloff**: `bonus = max_bonus × (1 − dist² / radius²)`.
+  - Water within 5 tiles: up to +40 (full bonus at source, 0 at edge).
+  - Park within 4 tiles: up to +30.
+  - Hospital within 4 tiles: up to +20.
 - Pollution penalty: `pollution / 3`.
 - Clamped to 0–255.
+
+The quadratic curve concentrates value close to amenities (at half-radius, 75% of the bonus remains), creating stronger placement incentives than a flat step function.
 
 ---
 
@@ -303,10 +305,6 @@ When a bus depot's trip count reaches capacity, subsequent bus trips fall back t
 
 ## Growth System
 
-### Bootstrap Growth (Deterministic)
-
-If a zone tile is covered by a power line AND has road access within 3 tiles AND demand > 0, it grows instantly to the Low tier, consuming the power line.
-
 ### Probabilistic Zone → Building
 
 | Zone | Chance formula |
@@ -315,7 +313,7 @@ If a zone tile is covered by a power line AND has road access within 3 tiles AND
 | ZoneComm | `(demand_comm × 0.08 + lv_bonus × 0.5) × crime_penalty × traffic_penalty` |
 | ZoneInd | `demand_ind × 0.08 × traffic_penalty` |
 
-Requirements: must be powered AND have `trip_success = true` (functional), OR be powered AND have road access within 3 tiles (bootstrap-ready).
+Requirements: must be powered AND (`trip_success = true` OR road access within 3 tiles). The road-access fallback (bootstrap-ready) allows early growth before the transport network is complete; both paths are fully probabilistic.
 
 ### Building Upgrades
 

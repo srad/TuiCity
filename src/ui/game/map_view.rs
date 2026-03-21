@@ -364,7 +364,19 @@ pub(crate) fn committed_tile_sprite(
             | Tile::SubwayTunnel
     ) {
         let (n, e, s, w) = map_connectivity(map, layer, tile, x, y);
-        theme::network_sprite(tile, n, e, s, w, glyph.fg, glyph.bg)
+        // A power line over a zone uses the zone's background so the zone type
+        // remains identifiable beneath the power line character.
+        let bg = if tile == Tile::PowerLine && layer == ViewLayer::Surface {
+            let lot = map.surface_lot_tile(x, y);
+            if lot.is_zone() {
+                theme::tile_glyph(lot, overlay).bg
+            } else {
+                glyph.bg
+            }
+        } else {
+            glyph.bg
+        };
+        theme::network_sprite(tile, n, e, s, w, glyph.fg, bg)
     } else {
         theme::tile_sprite(tile, overlay)
     }
@@ -1705,5 +1717,49 @@ mod tests {
     #[test]
     fn unpowered_warning_marker_is_single_width_safe() {
         assert_eq!(UNPOWERED_WARNING_MARKER, '!');
+    }
+
+    #[test]
+    fn power_line_over_zone_uses_zone_background() {
+        use crate::core::map::{ZoneDensity, ZoneKind, ZoneSpec};
+
+        let mut map = Map::new(3, 1);
+        // Zone at centre, power lines on both sides for horizontal connectivity
+        map.set_zone_spec(
+            1,
+            0,
+            Some(ZoneSpec {
+                kind: ZoneKind::Residential,
+                density: ZoneDensity::Light,
+            }),
+        );
+        map.set_power_line(1, 0, true);
+        map.set(0, 0, Tile::PowerLine);
+        map.set(2, 0, Tile::PowerLine);
+
+        let overlay = TileOverlay::default();
+        // rebuild_cell gives PowerLine (power line beats zone in priority)
+        let tile = map.view_tile(ViewLayer::Surface, 1, 0);
+        assert_eq!(tile, Tile::PowerLine);
+
+        let sprite = committed_tile_sprite(&map, ViewLayer::Surface, tile, overlay, 1, 0);
+        let zone_bg = theme::tile_glyph(Tile::ZoneRes, overlay).bg;
+        let pl_fg = theme::tile_glyph(Tile::PowerLine, overlay).fg;
+        let pl_bg = theme::tile_glyph(Tile::PowerLine, overlay).bg;
+        // Background must be the zone colour, not the power line's own dark field
+        assert_eq!(sprite.left.bg, zone_bg, "left cell bg should be zone bg");
+        assert_eq!(sprite.right.bg, zone_bg, "right cell bg should be zone bg");
+        assert_ne!(sprite.right.bg, pl_bg, "must differ from power line dark bg");
+        // Foreground must still be the power line colour
+        assert_eq!(sprite.right.fg, pl_fg, "power line fg must be preserved");
+
+        // A bare power line (no underlying zone) must keep its own dark background
+        let mut bare = Map::new(3, 1);
+        bare.set(0, 0, Tile::PowerLine);
+        bare.set(1, 0, Tile::PowerLine);
+        bare.set(2, 0, Tile::PowerLine);
+        let bare_sprite =
+            committed_tile_sprite(&bare, ViewLayer::Surface, Tile::PowerLine, overlay, 1, 0);
+        assert_eq!(bare_sprite.right.bg, pl_bg, "bare power line keeps its own bg");
     }
 }

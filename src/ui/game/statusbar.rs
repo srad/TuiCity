@@ -64,8 +64,8 @@ pub fn render_statusbar(
     }
 
     // Treasury
-    let money = format!(" ${} ", fmt_number(sim.treasury));
-    let money_color = if sim.treasury >= 0 {
+    let money = format!(" ${} ", fmt_number(sim.economy.treasury));
+    let money_color = if sim.economy.treasury >= 0 {
         ui.success
     } else {
         ui.danger
@@ -89,7 +89,7 @@ pub fn render_statusbar(
     }
 
     // Population
-    let pop = format!(" Pop: {} ", fmt_number(sim.population as i64));
+    let pop = format!(" Pop: {} ", fmt_number(sim.pop.population as i64));
     if write_status_text(
         buf,
         area.y,
@@ -129,9 +129,9 @@ pub fn render_statusbar(
     if !write_sep(buf, &mut col, area.y, right_limit) {
         return controls;
     }
-    let income_sign = if sim.last_income >= 0 { "+" } else { "" };
-    let income_str = format!(" {}${}/yr ", income_sign, fmt_number(sim.last_income));
-    let income_color = if sim.last_income >= 0 {
+    let income_sign = if sim.economy.last_income >= 0 { "+" } else { "" };
+    let income_str = format!(" {}${}/yr ", income_sign, fmt_number(sim.economy.last_income));
+    let income_color = if sim.economy.last_income >= 0 {
         ui.success
     } else {
         ui.danger

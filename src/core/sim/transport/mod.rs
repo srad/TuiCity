@@ -1,21 +1,22 @@
+mod network;
+mod pathfinding;
+
+use network::{transfer_entry_nodes, LotAccess, NetworkCache};
+use pathfinding::{search_path, RouteSuccess};
+
 use super::{economy::tile_sector_capacity, system::SimSystem, DepotState, SimState};
-use crate::core::map::{Map, Tile, TransportTile, TripFailure, TripMode, ZoneKind};
+use crate::core::map::{Map, Tile, TripFailure, TripMode, ZoneKind};
 use rand::{rngs::StdRng, Rng, SeedableRng};
-use std::array;
-use std::cmp::Reverse;
-use std::collections::{BinaryHeap, HashMap, HashSet, VecDeque};
+use std::collections::HashMap;
 
-// Lots may "walk" a few tiles to reach roads, depots, or stations without requiring
-// a dedicated pedestrian simulation.
-pub const WALK_DIST: i32 = 3;
-// SC2000-lite trips are intentionally capped so sprawling or disconnected networks fail
-// cleanly instead of exploring the entire map every month.
-pub const MAX_TRIP_COST: usize = 48;
-
-const TRANSFER_PENALTY: usize = 4;
-const ROAD_TRAFFIC_FACTOR: u16 = 4;
+// Re-export transport constants from the central constants module so existing callers
+// (tests, other modules) that import from here continue to compile unchanged.
+pub use crate::core::sim::constants::{
+    BUS_DEPOT_CAPACITY, MAX_TRIP_COST, ROAD_TRAFFIC_FACTOR, TRANSFER_PENALTY, WALK_DIST,
+};
 const BUS_TRAFFIC_FACTOR: u16 = 1;
-pub const BUS_DEPOT_CAPACITY: u32 = 100;
+
+// ── Per-lot trip state ────────────────────────────────────────────────────────
 
 #[derive(Clone, Copy, Debug, Default)]
 struct LotTripState {
@@ -53,122 +54,13 @@ impl LotTripState {
     }
 }
 
-#[derive(Clone, Debug, Default)]
-struct LotAccess {
-    road_nodes: Vec<usize>,
-    bus_nodes: Vec<usize>,
-    rail_nodes: Vec<usize>,
-    subway_nodes: Vec<usize>,
-}
-
-#[derive(Clone, Debug)]
-struct ModeTargets {
-    road_nodes: Vec<bool>,
-    road_components: HashSet<u32>,
-    bus_nodes: Vec<bool>,
-    bus_components: HashSet<u32>,
-    rail_nodes: Vec<bool>,
-    rail_components: HashSet<u32>,
-    subway_nodes: Vec<bool>,
-    subway_components: HashSet<u32>,
-}
-
-impl ModeTargets {
-    fn new(len: usize) -> Self {
-        Self {
-            road_nodes: vec![false; len],
-            road_components: HashSet::new(),
-            bus_nodes: vec![false; len],
-            bus_components: HashSet::new(),
-            rail_nodes: vec![false; len],
-            rail_components: HashSet::new(),
-            subway_nodes: vec![false; len],
-            subway_components: HashSet::new(),
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
-struct NetworkCache {
-    // Connected components let the transport system reject impossible trips early before
-    // paying for pathfinding. Lots on different components cannot reach each other.
-    road_components: Vec<Option<u32>>,
-    rail_components: Vec<Option<u32>>,
-    subway_components: Vec<Option<u32>>,
-    // Per-lot local access points into each network type.
-    lot_access: Vec<LotAccess>,
-    // Destination entry points grouped by zone kind. Empty zones are kept here so undeveloped
-    // cities can still bootstrap growth instead of requiring every destination to already exist.
-    targets_by_kind: [ModeTargets; 3],
-}
-
-impl NetworkCache {
-    fn build(map: &Map) -> Self {
-        let len = map.width * map.height;
-        let road_components = label_components(map, NetworkKind::Road);
-        let rail_components = label_components(map, NetworkKind::Rail);
-        let subway_components = label_components(map, NetworkKind::Subway);
-        let mut lot_access = vec![LotAccess::default(); len];
-        let mut targets_by_kind = array::from_fn(|_| ModeTargets::new(len));
-
-        for y in 0..map.height {
-            for x in 0..map.width {
-                let idx = map.idx(x, y);
-                let tile = trip_lot_tile(map, x, y);
-                if !is_trip_lot(tile) {
-                    continue;
-                }
-
-                let access = LotAccess {
-                    road_nodes: collect_local_road_nodes(map, x, y),
-                    bus_nodes: collect_transfer_nodes(map, x, y, Tile::BusDepot),
-                    rail_nodes: collect_transfer_nodes(map, x, y, Tile::RailDepot),
-                    subway_nodes: collect_transfer_nodes(map, x, y, Tile::SubwayStation),
-                };
-                lot_access[idx] = access.clone();
-
-                let Some(kind) = ZoneKind::from_tile(tile) else {
-                    continue;
-                };
-                let targets = &mut targets_by_kind[zone_index(kind)];
-                register_targets(
-                    targets,
-                    &access,
-                    &road_components,
-                    &rail_components,
-                    &subway_components,
-                );
-            }
-        }
-
-        Self {
-            road_components,
-            rail_components,
-            subway_components,
-            lot_access,
-            targets_by_kind,
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum NetworkKind {
-    Road,
-    Rail,
-    Subway,
-}
+// ── Trip result types ─────────────────────────────────────────────────────────
 
 #[derive(Clone, Copy, Debug, Default)]
 struct ModeEligibility {
     has_local: bool,
     has_destination: bool,
     eligible: bool,
-}
-
-#[derive(Clone, Debug)]
-struct RouteSuccess {
-    path: Vec<usize>,
-    cost: usize,
 }
 
 #[derive(Clone, Debug)]
@@ -189,6 +81,8 @@ struct LotSimulation {
     total_cost: u32,
     successful_attempts: u32,
 }
+
+// ── TransportSystem ───────────────────────────────────────────────────────────
 
 #[derive(Debug, Default)]
 pub struct TransportSystem {
@@ -232,20 +126,20 @@ impl SimSystem for TransportSystem {
 
         // Persisted RNG state keeps SC2000-style transit randomness reproducible across
         // save/load and deterministic in tests.
-        let mut rng = StdRng::seed_from_u64(sim.transport_rng_state);
+        let mut rng = StdRng::seed_from_u64(sim.rng.transport);
         let mut raw_traffic: Vec<u16> = map
             .overlays
             .iter()
             .map(|overlay| overlay.traffic.saturating_sub(16) as u16)
             .collect();
 
-        sim.trip_attempts = 0;
-        sim.trip_successes = 0;
-        sim.trip_failures = 0;
-        sim.road_share = 0;
-        sim.bus_share = 0;
-        sim.rail_share = 0;
-        sim.subway_share = 0;
+        sim.trips.attempts = 0;
+        sim.trips.successes = 0;
+        sim.trips.failures = 0;
+        sim.trips.road_share = 0;
+        sim.trips.bus_share = 0;
+        sim.trips.rail_share = 0;
+        sim.trips.subway_share = 0;
 
         for y in 0..map.height {
             for x in 0..map.width {
@@ -288,9 +182,11 @@ impl SimSystem for TransportSystem {
             map.overlays[idx].traffic = traffic.min(255) as u8;
         }
 
-        sim.transport_rng_state = rng.gen();
+        sim.rng.transport = rng.gen();
     }
 }
+
+// ── Lot simulation ────────────────────────────────────────────────────────────
 
 fn simulate_lot(
     map: &Map,
@@ -312,7 +208,7 @@ fn simulate_lot(
 
     for &target_kind in trip_targets(tile).unwrap_or(&[]) {
         if developed {
-            sim.trip_attempts = sim.trip_attempts.saturating_add(weight as u32);
+            sim.trips.attempts = sim.trips.attempts.saturating_add(weight as u32);
         }
 
         match attempt_target_trip(map, cache, access, target_kind, lot_state, rng) {
@@ -325,10 +221,10 @@ fn simulate_lot(
                     simulation.mode_weights[mode_index(mode)].saturating_add(diagnostic_weight);
 
                 if developed {
-                    sim.trip_successes = sim.trip_successes.saturating_add(weight as u32);
+                    sim.trips.successes = sim.trips.successes.saturating_add(weight as u32);
                     match mode {
                         TripMode::Road => {
-                            sim.road_share = sim.road_share.saturating_add(weight as u32);
+                            sim.trips.road_share = sim.trips.road_share.saturating_add(weight as u32);
                             apply_path_traffic(raw_traffic, &path, ROAD_TRAFFIC_FACTOR, weight);
                         }
                         TripMode::Bus => {
@@ -351,18 +247,18 @@ fn simulate_lot(
                             };
 
                             if depot_full {
-                                sim.road_share = sim.road_share.saturating_add(weight as u32);
+                                sim.trips.road_share = sim.trips.road_share.saturating_add(weight as u32);
                                 apply_path_traffic(raw_traffic, &path, ROAD_TRAFFIC_FACTOR, weight);
                             } else {
-                                sim.bus_share = sim.bus_share.saturating_add(weight as u32);
+                                sim.trips.bus_share = sim.trips.bus_share.saturating_add(weight as u32);
                                 apply_path_traffic(raw_traffic, &path, BUS_TRAFFIC_FACTOR, weight);
                             }
                         }
                         TripMode::Rail => {
-                            sim.rail_share = sim.rail_share.saturating_add(weight as u32);
+                            sim.trips.rail_share = sim.trips.rail_share.saturating_add(weight as u32);
                         }
                         TripMode::Subway => {
-                            sim.subway_share = sim.subway_share.saturating_add(weight as u32);
+                            sim.trips.subway_share = sim.trips.subway_share.saturating_add(weight as u32);
                         }
                     }
                 }
@@ -370,7 +266,7 @@ fn simulate_lot(
             TargetTripResult::Failure(failure) => {
                 simulation.failure = choose_failure(simulation.failure, failure);
                 if developed {
-                    sim.trip_failures = sim.trip_failures.saturating_add(weight as u32);
+                    sim.trips.failures = sim.trips.failures.saturating_add(weight as u32);
                 }
             }
         }
@@ -467,12 +363,8 @@ fn attempt_target_trip(
         }
 
         match search_path(map, starts, targets, mode, MAX_TRIP_COST) {
-            Ok(success) => {
-                return TargetTripResult::Success {
-                    mode,
-                    path: success.path,
-                    cost: success.cost,
-                };
+            Ok(RouteSuccess { path, cost }) => {
+                return TargetTripResult::Success { mode, path, cost };
             }
             Err(failure) => {
                 lot_state.trigger_cooldown(mode);
@@ -489,11 +381,11 @@ fn attempt_target_trip(
             TripMode::Road,
             MAX_TRIP_COST,
         ) {
-            Ok(success) => {
+            Ok(RouteSuccess { path, cost }) => {
                 return TargetTripResult::Success {
                     mode: TripMode::Road,
-                    path: success.path,
-                    cost: success.cost,
+                    path,
+                    cost,
                 };
             }
             Err(failure) => {
@@ -509,10 +401,12 @@ fn attempt_target_trip(
     TargetTripResult::Failure(TripFailure::NoRoute)
 }
 
+// ── Mode eligibility ──────────────────────────────────────────────────────────
+
 fn mode_eligibility(
     starts: &[usize],
     components: &[Option<u32>],
-    target_components: &HashSet<u32>,
+    target_components: &std::collections::HashSet<u32>,
 ) -> ModeEligibility {
     let has_local = !starts.is_empty();
     let has_destination = !target_components.is_empty();
@@ -533,292 +427,9 @@ fn mode_eligibility(
     }
 }
 
-fn search_path(
-    map: &Map,
-    starts: &[usize],
-    targets: &[bool],
-    mode: TripMode,
-    max_cost: usize,
-) -> Result<RouteSuccess, TripFailure> {
-    if starts.is_empty() {
-        return Err(TripFailure::NoLocalAccess);
-    }
+// ── Trip helpers ──────────────────────────────────────────────────────────────
 
-    // Dijkstra over a tiny grid is easier to reason about than a more specialized router,
-    // and the weighted costs let highways and transit feel different without extra systems.
-    let len = map.width * map.height;
-    let mut open: BinaryHeap<Reverse<(usize, usize)>> = BinaryHeap::new();
-    let mut came_from: Vec<Option<usize>> = vec![None; len];
-    let mut costs = vec![usize::MAX; len];
-    let mut hit_limit = false;
-    let initial_cost = match mode {
-        TripMode::Road => 0,
-        TripMode::Bus | TripMode::Rail | TripMode::Subway => TRANSFER_PENALTY,
-    };
-
-    for &start in starts {
-        if costs[start] > initial_cost {
-            costs[start] = initial_cost;
-            open.push(Reverse((initial_cost, start)));
-        }
-    }
-
-    while let Some(Reverse((cost, idx))) = open.pop() {
-        if cost > costs[idx] {
-            continue;
-        }
-        if cost > max_cost {
-            hit_limit = true;
-            continue;
-        }
-        if targets[idx] {
-            return Ok(RouteSuccess {
-                path: reconstruct_path(&came_from, idx),
-                cost,
-            });
-        }
-
-        for next in neighbors_for_mode(map, idx, mode) {
-            let Some(step_cost) = step_cost(map, next, mode) else {
-                continue;
-            };
-            let next_cost = cost + step_cost;
-            if next_cost > max_cost {
-                hit_limit = true;
-                continue;
-            }
-            if next_cost < costs[next] {
-                costs[next] = next_cost;
-                came_from[next] = Some(idx);
-                open.push(Reverse((next_cost, next)));
-            }
-        }
-    }
-
-    if hit_limit {
-        Err(TripFailure::TooLong)
-    } else {
-        Err(TripFailure::NoRoute)
-    }
-}
-
-fn reconstruct_path(came_from: &[Option<usize>], goal: usize) -> Vec<usize> {
-    let mut path = vec![goal];
-    let mut current = goal;
-    while let Some(prev) = came_from[current] {
-        path.push(prev);
-        current = prev;
-    }
-    path.reverse();
-    path
-}
-
-fn neighbors_for_mode(map: &Map, idx: usize, mode: TripMode) -> Vec<usize> {
-    let (x, y) = xy(map, idx);
-    let mut neighbors = Vec::with_capacity(4);
-    for (dx, dy) in [(-1, 0), (1, 0), (0, -1), (0, 1)] {
-        let nx = x as i32 + dx;
-        let ny = y as i32 + dy;
-        if !map.in_bounds(nx, ny) {
-            continue;
-        }
-        let n_idx = map.idx(nx as usize, ny as usize);
-        if step_cost(map, n_idx, mode).is_some() {
-            neighbors.push(n_idx);
-        }
-    }
-    neighbors
-}
-
-fn step_cost(map: &Map, idx: usize, mode: TripMode) -> Option<usize> {
-    let (x, y) = xy(map, idx);
-    match mode {
-        TripMode::Road => match map.transport_at(x, y)? {
-            TransportTile::Road => Some(2),
-            TransportTile::Onramp => Some(2),
-            TransportTile::Highway => Some(1),
-            TransportTile::Rail => None,
-        },
-        TripMode::Bus => map
-            .transport_at(x, y)
-            .filter(|transport| transport.is_drive_network())
-            .map(|_| 1),
-        TripMode::Rail => map
-            .transport_at(x, y)
-            .filter(|transport| *transport == TransportTile::Rail)
-            .map(|_| 1),
-        TripMode::Subway => map.has_subway_tunnel(x, y).then_some(1),
-    }
-}
-
-fn register_targets(
-    targets: &mut ModeTargets,
-    access: &LotAccess,
-    road_components: &[Option<u32>],
-    rail_components: &[Option<u32>],
-    subway_components: &[Option<u32>],
-) {
-    // Each destination lot contributes entry nodes for every network it can be reached from.
-    // Origins later search for any of these nodes when trying to satisfy a trip.
-    for &node in &access.road_nodes {
-        targets.road_nodes[node] = true;
-        if let Some(component) = road_components[node] {
-            targets.road_components.insert(component);
-        }
-    }
-    for &node in &access.bus_nodes {
-        targets.bus_nodes[node] = true;
-        if let Some(component) = road_components[node] {
-            targets.bus_components.insert(component);
-        }
-    }
-    for &node in &access.rail_nodes {
-        targets.rail_nodes[node] = true;
-        if let Some(component) = rail_components[node] {
-            targets.rail_components.insert(component);
-        }
-    }
-    for &node in &access.subway_nodes {
-        targets.subway_nodes[node] = true;
-        if let Some(component) = subway_components[node] {
-            targets.subway_components.insert(component);
-        }
-    }
-}
-
-fn label_components(map: &Map, network: NetworkKind) -> Vec<Option<u32>> {
-    let len = map.width * map.height;
-    let mut labels = vec![None; len];
-    let mut next_component = 0u32;
-
-    // A simple flood fill is enough here because connections are strictly orthogonal and
-    // there are no turn penalties at the component-label stage.
-    for idx in 0..len {
-        if labels[idx].is_some() || !node_in_network(map, idx, network) {
-            continue;
-        }
-
-        labels[idx] = Some(next_component);
-        let mut queue = VecDeque::from([idx]);
-
-        while let Some(current) = queue.pop_front() {
-            let (x, y) = xy(map, current);
-            for (dx, dy) in [(-1, 0), (1, 0), (0, -1), (0, 1)] {
-                let nx = x as i32 + dx;
-                let ny = y as i32 + dy;
-                if !map.in_bounds(nx, ny) {
-                    continue;
-                }
-                let n_idx = map.idx(nx as usize, ny as usize);
-                if labels[n_idx].is_none() && node_in_network(map, n_idx, network) {
-                    labels[n_idx] = Some(next_component);
-                    queue.push_back(n_idx);
-                }
-            }
-        }
-
-        next_component += 1;
-    }
-
-    labels
-}
-
-fn node_in_network(map: &Map, idx: usize, network: NetworkKind) -> bool {
-    let (x, y) = xy(map, idx);
-    match network {
-        NetworkKind::Road => map
-            .transport_at(x, y)
-            .map(TransportTile::is_drive_network)
-            .unwrap_or(false),
-        NetworkKind::Rail => map.transport_at(x, y) == Some(TransportTile::Rail),
-        NetworkKind::Subway => map.has_subway_tunnel(x, y),
-    }
-}
-
-fn collect_local_road_nodes(map: &Map, start_x: usize, start_y: usize) -> Vec<usize> {
-    let mut nodes = HashSet::new();
-
-    for_each_walkable_cell(map, start_x, start_y, WALK_DIST, |x, y| {
-        // Highways intentionally do not count as walk-up local access. A lot needs a surface
-        // road or a road-connected onramp before highways can extend its reach.
-        if is_local_road_node(map, x, y) {
-            nodes.insert(map.idx(x, y));
-        }
-    });
-
-    nodes.into_iter().collect()
-}
-
-fn collect_transfer_nodes(map: &Map, start_x: usize, start_y: usize, transfer: Tile) -> Vec<usize> {
-    let mut nodes = HashSet::new();
-
-    for_each_walkable_cell(map, start_x, start_y, WALK_DIST, |x, y| {
-        if map.occupant_at(x, y) != Some(transfer) {
-            return;
-        }
-        // Depots/stations are not themselves the routed network; they expose adjacent network
-        // nodes that pathfinding can start from once the lot has "walked" to the transfer.
-        for node in transfer_entry_nodes(map, x, y, transfer) {
-            nodes.insert(node);
-        }
-    });
-
-    nodes.into_iter().collect()
-}
-
-fn transfer_entry_nodes(map: &Map, x: usize, y: usize, transfer: Tile) -> Vec<usize> {
-    let mut nodes = Vec::new();
-    for (nx, ny, tile) in map.neighbors4(x, y) {
-        let valid = match transfer {
-            Tile::BusDepot => tile.vehicle_connects(),
-            Tile::RailDepot => tile == Tile::Rail,
-            Tile::SubwayStation => map.has_subway_tunnel(nx, ny),
-            _ => false,
-        };
-        if valid {
-            nodes.push(map.idx(nx, ny));
-        }
-    }
-    nodes
-}
-
-fn for_each_walkable_cell(
-    map: &Map,
-    start_x: usize,
-    start_y: usize,
-    walk_dist: i32,
-    mut f: impl FnMut(usize, usize),
-) {
-    let ix = start_x as i32;
-    let iy = start_y as i32;
-
-    for dy in -walk_dist..=walk_dist {
-        for dx in -walk_dist..=walk_dist {
-            if dx.abs() + dy.abs() > walk_dist {
-                continue;
-            }
-            let nx = ix + dx;
-            let ny = iy + dy;
-            if !map.in_bounds(nx, ny) {
-                continue;
-            }
-            f(nx as usize, ny as usize);
-        }
-    }
-}
-
-fn is_local_road_node(map: &Map, x: usize, y: usize) -> bool {
-    match map.transport_at(x, y) {
-        Some(TransportTile::Road) => true,
-        Some(TransportTile::Onramp) => map
-            .neighbors4(x, y)
-            .into_iter()
-            .any(|(_, _, tile)| matches!(tile, Tile::Road | Tile::RoadPowerLine)),
-        _ => false,
-    }
-}
-
-fn trip_lot_tile(map: &Map, x: usize, y: usize) -> Tile {
+pub(super) fn trip_lot_tile(map: &Map, x: usize, y: usize) -> Tile {
     map.surface_lot_tile(x, y)
 }
 
@@ -833,7 +444,7 @@ fn trip_targets(tile: Tile) -> Option<&'static [ZoneKind]> {
     }
 }
 
-fn is_trip_lot(tile: Tile) -> bool {
+pub(super) fn is_trip_lot(tile: Tile) -> bool {
     tile.is_building() || tile.is_zone()
 }
 
@@ -896,7 +507,7 @@ fn mode_index(mode: TripMode) -> usize {
     }
 }
 
-fn zone_index(kind: ZoneKind) -> usize {
+pub(super) fn zone_index(kind: ZoneKind) -> usize {
     match kind {
         ZoneKind::Residential => 0,
         ZoneKind::Commercial => 1,
@@ -904,14 +515,17 @@ fn zone_index(kind: ZoneKind) -> usize {
     }
 }
 
-fn xy(map: &Map, idx: usize) -> (usize, usize) {
+pub(super) fn xy(map: &Map, idx: usize) -> (usize, usize) {
     (idx % map.width, idx / map.width)
 }
+
+// ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::map::ZoneSpec;
+    use crate::core::map::{TransportTile, ZoneSpec};
+    use crate::core::sim::SimState;
     use rand::{rngs::StdRng, SeedableRng};
 
     fn run_transport(map: &mut Map, sim: &mut SimState) {
@@ -1002,7 +616,7 @@ mod tests {
         }
         map.set_occupant(8, 0, Some(Tile::RailDepot));
         map.set_zone(9, 0, Some(ZoneKind::Residential));
-        sim.transport_rng_state = seed_for_mode(&map, 0, 0, ZoneKind::Residential, TripMode::Rail);
+        sim.rng.transport = seed_for_mode(&map, 0, 0, ZoneKind::Residential, TripMode::Rail);
 
         run_transport(&mut map, &mut sim);
 
@@ -1047,9 +661,9 @@ mod tests {
 
         bus_map.set_occupant(1, 0, Some(Tile::BusDepot));
         bus_map.set_occupant(7, 0, Some(Tile::BusDepot));
-        road_sim.transport_rng_state =
+        road_sim.rng.transport =
             seed_for_mode(&road_map, 0, 0, ZoneKind::Residential, TripMode::Road);
-        bus_sim.transport_rng_state =
+        bus_sim.rng.transport =
             seed_for_mode(&bus_map, 0, 0, ZoneKind::Residential, TripMode::Bus);
 
         run_transport(&mut road_map, &mut road_sim);
@@ -1142,13 +756,13 @@ mod tests {
                 trips_used: BUS_DEPOT_CAPACITY,
             },
         );
-        sim.transport_rng_state = 0xABCD;
+        sim.rng.transport = 0xABCD;
 
         run_transport(&mut map, &mut sim);
 
-        assert_eq!(sim.bus_share, 0);
+        assert_eq!(sim.trips.bus_share, 0);
         assert!(
-            sim.road_share > 0,
+            sim.trips.road_share > 0,
             "trips should fall back to roads when depot is at capacity"
         );
     }
@@ -1192,7 +806,7 @@ mod tests {
         map.set(9, 0, Tile::ResHigh);
 
         let mut sim = SimState::default();
-        sim.transport_rng_state = 0x1234;
+        sim.rng.transport = 0x1234;
 
         let mut system = TransportSystem::default();
         system.tick(&mut map, &mut sim);
@@ -1218,13 +832,13 @@ mod tests {
         let mut sim = SimState::default();
         sim.depots
             .insert((3, 3), crate::core::sim::DepotState { trips_used: 0 });
-        sim.transport_rng_state = 0xABCD;
+        sim.rng.transport = 0xABCD;
 
         let mut system = TransportSystem::default();
         system.tick(&mut map, &mut sim);
 
         assert!(
-            sim.bus_share > 0,
+            sim.trips.bus_share > 0,
             "depot with available capacity should accept bus trips"
         );
         assert!(
@@ -1255,12 +869,12 @@ mod tests {
         );
         sim.depots
             .insert((7, 5), crate::core::sim::DepotState { trips_used: 0 });
-        sim.transport_rng_state = 0xABCD;
+        sim.rng.transport = 0xABCD;
 
         run_transport(&mut map, &mut sim);
 
         assert!(
-            sim.bus_share > 0,
+            sim.trips.bus_share > 0,
             "second depot should accept trips when first is at capacity"
         );
     }
@@ -1278,12 +892,12 @@ mod tests {
         map.set(6, 3, Tile::ResHigh);
 
         let mut sim = SimState::default();
-        sim.transport_rng_state = 0x5678;
+        sim.rng.transport = 0x5678;
 
         run_transport(&mut map, &mut sim);
 
         assert_eq!(
-            sim.rail_share, 0,
+            sim.trips.rail_share, 0,
             "rail trips require rail network, not road"
         );
     }
@@ -1307,7 +921,7 @@ mod tests {
                 trips_used: BUS_DEPOT_CAPACITY - 1,
             },
         );
-        sim.transport_rng_state = 0xDEAD;
+        sim.rng.transport = 0xDEAD;
 
         run_transport(&mut map, &mut sim);
 
@@ -1317,7 +931,7 @@ mod tests {
             "after one tick, trips_used should be 1 (depot resets each tick)"
         );
         assert!(
-            sim.bus_share > 0 || sim.road_share > 0,
+            sim.trips.bus_share > 0 || sim.trips.road_share > 0,
             "at least some trips should succeed"
         );
     }

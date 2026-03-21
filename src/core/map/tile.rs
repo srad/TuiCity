@@ -333,6 +333,7 @@ impl Tile {
 
     pub fn is_conductive_structure(self) -> bool {
         self.is_building()
+            || self.is_zone()
             || matches!(
                 self,
                 Tile::Police

@@ -103,7 +103,7 @@ struct CriticalAlertState {
 impl CriticalAlertState {
     fn from_metrics(sim: &SimState, metrics: &CityMetrics) -> Self {
         Self {
-            deficit: sim.treasury < 0 || sim.last_income < 0,
+            deficit: sim.economy.treasury < 0 || sim.economy.last_income < 0,
             fires: metrics.active_fires > 0,
             power_shortage: metrics.power_shortage,
             water_shortage: metrics.water_shortage,
@@ -180,10 +180,10 @@ fn collect_metrics(sim: &SimState, map: &Map) -> CityMetrics {
     };
 
     let pop_delta = population_delta(sim);
-    let trip_success_rate = if sim.trip_attempts == 0 {
+    let trip_success_rate = if sim.trips.attempts == 0 {
         1.0
     } else {
-        sim.trip_successes as f32 / sim.trip_attempts as f32
+        sim.trips.successes as f32 / sim.trips.attempts as f32
     };
 
     CityMetrics {
@@ -200,21 +200,21 @@ fn collect_metrics(sim: &SimState, map: &Map) -> CityMetrics {
         avg_land_value: avg(land_value_sum),
         pop_delta,
         trip_success_rate,
-        power_shortage: sim.power_consumed_mw > sim.power_produced_mw && sim.power_consumed_mw > 0,
-        water_shortage: sim.water_consumed_units > sim.water_produced_units
-            && sim.water_consumed_units > 0,
+        power_shortage: sim.utilities.power_consumed_mw > sim.utilities.power_produced_mw && sim.utilities.power_consumed_mw > 0,
+        water_shortage: sim.utilities.water_consumed_units > sim.utilities.water_produced_units
+            && sim.utilities.water_consumed_units > 0,
     }
 }
 
 fn population_delta(sim: &SimState) -> i64 {
-    let previous = if sim.population_history.len() >= 2 {
-        sim.population_history[sim.population_history.len() - 2]
-    } else if let Some(previous) = sim.population_history.back() {
+    let previous = if sim.history.population.len() >= 2 {
+        sim.history.population[sim.history.population.len() - 2]
+    } else if let Some(previous) = sim.history.population.back() {
         *previous
     } else {
-        sim.population
+        sim.pop.population
     };
-    sim.population as i64 - previous as i64
+    sim.pop.population as i64 - previous as i64
 }
 
 #[derive(Debug, Clone, Default)]
@@ -235,7 +235,7 @@ fn build_news_digest(
     let mut good = Vec::new();
     let mut filler = Vec::new();
 
-    if sim.population == 0 {
+    if sim.pop.population == 0 {
         mood.push(format!(
             "{} mood: expectant. Survey crews see empty lots and big ambitions.",
             sim.city_name
@@ -248,7 +248,7 @@ fn build_news_digest(
             sim.city_name, metrics.active_fires
         ));
     }
-    if sim.treasury < 0 || sim.last_income < 0 {
+    if sim.economy.treasury < 0 || sim.economy.last_income < 0 {
         alerts.push(format!(
             "Budget desk: {} is bleeding cash and the books are in the red.",
             sim.city_name
@@ -266,7 +266,7 @@ fn build_news_digest(
             sim.city_name
         ));
     }
-    if sim.trip_attempts > 0 && metrics.trip_success_rate < 0.55 {
+    if sim.trips.attempts > 0 && metrics.trip_success_rate < 0.55 {
         alerts.push(
             "Commute crisis: too many trips are failing before citizens reach what they need."
                 .to_string(),
@@ -304,7 +304,7 @@ fn build_news_digest(
         complaints.push(line);
     }
 
-    if sim.last_income > 0 {
+    if sim.economy.last_income > 0 {
         good.push(format!(
             "Revenue watch: {} is earning money instead of setting it on fire.",
             sim.city_name
@@ -376,9 +376,9 @@ fn utility_gap(problem_tiles: usize, receivable_tiles: usize, divisor: usize) ->
 fn overall_mood_story(sim: &SimState, metrics: &CityMetrics) -> String {
     let mut score = 0i32;
 
-    if sim.last_income > 0 {
+    if sim.economy.last_income > 0 {
         score += 2;
-    } else if sim.last_income < 0 {
+    } else if sim.economy.last_income < 0 {
         score -= 2;
     }
     if metrics.pop_delta > 0 {
@@ -443,7 +443,7 @@ fn dominant_complaint_story(sim: &SimState, metrics: &CityMetrics) -> Option<Str
                 .to_string(),
         );
     }
-    if sim.trip_attempts > 0 && metrics.trip_success_rate < 0.55 {
+    if sim.trips.attempts > 0 && metrics.trip_success_rate < 0.55 {
         return Some("Commuters say the transport network moves like cold syrup.".to_string());
     }
     if metrics.road_tiles > 0 && metrics.congested_roads.saturating_mul(3) >= metrics.road_tiles {
@@ -482,9 +482,9 @@ fn strong_demand_story(sim: &SimState) -> Option<String> {
 
 fn strongest_demand(sim: &SimState) -> Option<(&'static str, f32)> {
     [
-        ("Residential", sim.demand_res),
-        ("Commercial", sim.demand_comm),
-        ("Industrial", sim.demand_ind),
+        ("Residential", sim.demand.res),
+        ("Commercial", sim.demand.comm),
+        ("Industrial", sim.demand.ind),
     ]
     .into_iter()
     .max_by(|a, b| a.1.total_cmp(&b.1))
@@ -492,17 +492,17 @@ fn strongest_demand(sim: &SimState) -> Option<(&'static str, f32)> {
 
 fn weakest_demand(sim: &SimState) -> Option<(&'static str, f32)> {
     [
-        ("Residential", sim.demand_res),
-        ("Commercial", sim.demand_comm),
-        ("Industrial", sim.demand_ind),
+        ("Residential", sim.demand.res),
+        ("Commercial", sim.demand.comm),
+        ("Industrial", sim.demand.ind),
     ]
     .into_iter()
     .min_by(|a, b| a.1.total_cmp(&b.1))
 }
 
 fn transit_share_story(sim: &SimState) -> Option<String> {
-    let transit_share = sim.bus_share + sim.rail_share + sim.subway_share;
-    if sim.trip_successes == 0 || transit_share <= sim.road_share {
+    let transit_share = sim.trips.bus_share + sim.trips.rail_share + sim.trips.subway_share;
+    if sim.trips.successes == 0 || transit_share <= sim.trips.road_share {
         return None;
     }
     Some("Transit watch: more successful trips are riding the network than driving it.".to_string())
@@ -524,14 +524,14 @@ mod tests {
     fn sample_city() -> (SimState, Map) {
         let mut sim = SimState::default();
         sim.city_name = "Newsville".to_string();
-        sim.population = 1_250;
-        sim.population_history = vec![1_000, 1_250].into();
-        sim.trip_attempts = 100;
-        sim.trip_successes = 90;
-        sim.road_share = 40;
-        sim.bus_share = 30;
-        sim.rail_share = 20;
-        sim.subway_share = 10;
+        sim.pop.population = 1_250;
+        sim.history.population = vec![1_000, 1_250].into();
+        sim.trips.attempts = 100;
+        sim.trips.successes = 90;
+        sim.trips.road_share = 40;
+        sim.trips.bus_share = 30;
+        sim.trips.rail_share = 20;
+        sim.trips.subway_share = 10;
 
         let mut map = Map::new(2, 2);
         map.set(0, 0, Tile::ResLow);
@@ -551,8 +551,8 @@ mod tests {
     #[test]
     fn deficit_generates_finance_alert() {
         let (mut sim, map) = sample_city();
-        sim.treasury = -500;
-        sim.last_income = -1_000;
+        sim.economy.treasury = -500;
+        sim.economy.last_income = -1_000;
 
         let digest = build_news_digest(&sim, &collect_metrics(&sim, &map), &VecDeque::new());
 
@@ -581,9 +581,9 @@ mod tests {
     #[test]
     fn poor_trip_success_generates_commuter_complaint() {
         let (mut sim, map) = sample_city();
-        sim.trip_attempts = 100;
-        sim.trip_successes = 25;
-        sim.trip_failures = 75;
+        sim.trips.attempts = 100;
+        sim.trips.successes = 25;
+        sim.trips.failures = 75;
 
         let digest = build_news_digest(&sim, &collect_metrics(&sim, &map), &VecDeque::new());
 
