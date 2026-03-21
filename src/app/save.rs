@@ -14,7 +14,7 @@ use crate::core::{
 };
 use crate::game_info::SAVE_DIR_NAME;
 
-const CURRENT_SAVE_VERSION: u32 = 5;
+const CURRENT_SAVE_VERSION: u32 = 6;
 const BINARY_SAVE_MAGIC: [u8; 4] = *b"TC2S";
 const BINARY_SAVE_EXTENSION: &str = "tc2";
 #[derive(serde::Deserialize)]
@@ -225,6 +225,7 @@ fn write_binary_save_file(path: &Path, sim: &SimState, map: &Map) -> io::Result<
             overlay.trip_cost,
             encode_trip_mode(overlay.trip_mode),
             encode_trip_failure(overlay.trip_failure),
+            overlay.plant_efficiency,
         ])?;
     }
     writer.flush()?;
@@ -244,7 +245,7 @@ fn load_binary_save(path: &Path) -> io::Result<(Map, SimState)> {
         ));
     }
 
-    let _version = read_u32(&mut reader)?;
+    let version = read_u32(&mut reader)?;
     let sim_len = read_u32(&mut reader)? as usize;
     let sim_json = read_exact_vec(&mut reader, sim_len)?;
     let sim = serde_json::from_slice::<SimState>(&sim_json).map_err(io::Error::other)?;
@@ -286,22 +287,45 @@ fn load_binary_save(path: &Path) -> io::Result<(Map, SimState)> {
 
     let mut overlays = Vec::with_capacity(len);
     for _ in 0..len {
-        let bytes = read_exact_array::<12, _>(&mut reader)?;
-        overlays.push(TileOverlay {
-            power_level: bytes[0],
-            on_fire: bytes[1] != 0,
-            crime: bytes[2],
-            zone: None,
-            pollution: bytes[3],
-            land_value: bytes[4],
-            fire_risk: bytes[5],
-            traffic: bytes[6],
-            water_service: bytes[7],
-            trip_success: bytes[8] != 0,
-            trip_cost: bytes[9],
-            trip_mode: decode_trip_mode(bytes[10]),
-            trip_failure: decode_trip_failure(bytes[11]),
-        });
+        if version >= 6 {
+            let bytes = read_exact_array::<13, _>(&mut reader)?;
+            overlays.push(TileOverlay {
+                power_level: bytes[0],
+                on_fire: bytes[1] != 0,
+                crime: bytes[2],
+                zone: None,
+                pollution: bytes[3],
+                land_value: bytes[4],
+                fire_risk: bytes[5],
+                traffic: bytes[6],
+                water_service: bytes[7],
+                trip_success: bytes[8] != 0,
+                trip_cost: bytes[9],
+                trip_mode: decode_trip_mode(bytes[10]),
+                trip_failure: decode_trip_failure(bytes[11]),
+                neglected_months: 0,
+                plant_efficiency: bytes[12],
+            });
+        } else {
+            let bytes = read_exact_array::<12, _>(&mut reader)?;
+            overlays.push(TileOverlay {
+                power_level: bytes[0],
+                on_fire: bytes[1] != 0,
+                crime: bytes[2],
+                zone: None,
+                pollution: bytes[3],
+                land_value: bytes[4],
+                fire_risk: bytes[5],
+                traffic: bytes[6],
+                water_service: bytes[7],
+                trip_success: bytes[8] != 0,
+                trip_cost: bytes[9],
+                trip_mode: decode_trip_mode(bytes[10]),
+                trip_failure: decode_trip_failure(bytes[11]),
+                neglected_months: 0,
+                plant_efficiency: 255,
+            });
+        }
     }
 
     let mut map = Map::new(width, height);
@@ -607,13 +631,13 @@ mod tests {
                 commercial: 11,
                 industrial: 13,
             },
-            demand_history_res: vec![0.1, 0.2, 0.3],
-            demand_history_comm: vec![-0.1, -0.2],
-            demand_history_ind: vec![0.4, 0.5, 0.6, 0.7],
-            treasury_history: vec![100, 200, -50],
-            population_history: vec![4000, 5200, 6789],
-            income_history: vec![2100, 3500, 4321],
-            power_balance_history: vec![20, 55, 80],
+            demand_history_res: vec![0.1, 0.2, 0.3].into(),
+            demand_history_comm: vec![-0.1, -0.2].into(),
+            demand_history_ind: vec![0.4, 0.5, 0.6, 0.7].into(),
+            treasury_history: vec![100, 200, -50].into(),
+            population_history: vec![4000, 5200, 6789].into(),
+            income_history: vec![2100, 3500, 4321].into(),
+            power_balance_history: vec![20, 55, 80].into(),
             disasters: DisasterConfig {
                 fire_enabled: true,
                 flood_enabled: true,
@@ -638,6 +662,8 @@ mod tests {
             water_produced_units: 300,
             water_consumed_units: 180,
             transport_rng_state: 0x0123_4567_89AB_CDEF,
+            disaster_rng_state: 0xBEEF_DEAD_BEEF_CAFE,
+            growth_rng_state: 0xFACEFEED_FACEFEED,
             trip_attempts: 70,
             trip_successes: 54,
             trip_failures: 16,
@@ -647,6 +673,7 @@ mod tests {
             subway_share: 8,
             unlock_mode: crate::core::sim::UnlockMode::Historical,
             plants: std::collections::HashMap::new(),
+            depots: std::collections::HashMap::new(),
         };
         sim.plants.insert(
             (3, 0),
@@ -654,6 +681,7 @@ mod tests {
                 age_months: 12,
                 max_life_months: 600,
                 capacity_mw: 500,
+                efficiency: 1.0,
             },
         );
         sim

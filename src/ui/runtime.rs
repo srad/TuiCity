@@ -484,7 +484,9 @@ impl DesktopState {
         legend.center_on_open = true;
 
         Self {
-            windows: [map, panel, budget, statistics, inspect, power, help, about, legend],
+            windows: [
+                map, panel, budget, statistics, inspect, power, help, about, legend,
+            ],
             drag: None,
             z_order: vec![
                 WindowId::Map,
@@ -586,12 +588,11 @@ impl DesktopState {
     }
 
     pub fn find_window_at(&self, col: u16, row: u16) -> Option<WindowId> {
-        for &id in self.z_order.iter().rev() {
-            if self.contains(id, col, row) {
-                return Some(id);
-            }
-        }
-        None
+        self.z_order
+            .iter()
+            .rev()
+            .find(|&&id| self.contains(id, col, row))
+            .copied()
     }
 
     pub fn layout(&mut self, full: UiRect) -> DesktopLayout {
@@ -658,7 +659,12 @@ impl DesktopState {
                         dec: UiRect::new(x, inner.y, 1, 1),
                         inc: UiRect::new(x, inner.y + inner.height - 1, 1, 1),
                         track: UiRect::new(x, inner.y + 1, 1, track_len),
-                        thumb: UiRect::new(x, inner.y + 1 + metrics.thumb_start, 1, metrics.thumb_len),
+                        thumb: UiRect::new(
+                            x,
+                            inner.y + 1 + metrics.thumb_start,
+                            1,
+                            metrics.thumb_len,
+                        ),
                         page_step: padded_inner.height,
                     })
                 } else {
@@ -834,7 +840,10 @@ mod tests {
             win.content_height = 10;
         }
         let layout = desktop.layout(full);
-        let sb = layout.window(WindowId::Help).scrollbar.expect("should have scrollbar");
+        let sb = layout
+            .window(WindowId::Help)
+            .scrollbar
+            .expect("should have scrollbar");
         assert_eq!(sb.dec.width, 1);
         assert_eq!(sb.inc.width, 1);
         assert_eq!(sb.track.height, 6); // inner.height - 2 arrows
@@ -873,7 +882,12 @@ mod tests {
         let sb_x = 28;
         assert_eq!(win_layout.hit_test(sb_x, 11), Some(WindowHit::ScrollUp));
         assert_eq!(win_layout.hit_test(sb_x, 18), Some(WindowHit::ScrollDown));
-        assert!(matches!(win_layout.hit_test(sb_x, 12), Some(WindowHit::ScrollThumb { .. }) | Some(WindowHit::ScrollTrackPageDown) | Some(WindowHit::ScrollTrackPageUp)));
+        assert!(matches!(
+            win_layout.hit_test(sb_x, 12),
+            Some(WindowHit::ScrollThumb { .. })
+                | Some(WindowHit::ScrollTrackPageDown)
+                | Some(WindowHit::ScrollTrackPageUp)
+        ));
 
         // Content
         assert_eq!(win_layout.hit_test(15, 15), Some(WindowHit::Content));

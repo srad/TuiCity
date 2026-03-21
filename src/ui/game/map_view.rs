@@ -1,3 +1,4 @@
+#[allow(unused_imports)]
 use crate::{
     app::camera::Camera,
     core::{map::Map, map::Tile, map::TileOverlay, map::ViewLayer, tool::Tool},
@@ -895,7 +896,7 @@ impl<'a> Widget for MapView<'a> {
 
         let preview_set: std::collections::HashSet<(usize, usize)> =
             self.line_preview.iter().copied().collect();
-        let visible_tiles_w = (area.width as usize + 1) / 2;
+        let visible_tiles_w = (area.width as usize).div_ceil(2);
 
         for row in 0..area.height {
             let map_y = self.camera.offset_y as usize + row as usize;
@@ -1078,15 +1079,35 @@ impl<'a> Widget for MapView<'a> {
                         );
                         let sprite = animate_fire_sprite(sprite, overlay, fire_phase);
 
-                        if lot_tile.receives_power() && !overlay.is_powered() {
+                        let sprite = if lot_tile.receives_power() && !overlay.is_powered() {
                             let ms = std::time::SystemTime::now()
                                 .duration_since(std::time::UNIX_EPOCH)
                                 .unwrap()
                                 .as_millis();
-                            if (ms / 500) % 2 == 0 {
+                            if (ms / 500).is_multiple_of(2) {
                                 theme::TileSprite::uniform(
                                     UNPOWERED_WARNING_MARKER,
                                     ui.warning,
+                                    sprite.left.bg,
+                                )
+                            } else {
+                                sprite
+                            }
+                        } else {
+                            sprite
+                        };
+
+                        if matches!(tile, Tile::PowerPlantCoal | Tile::PowerPlantGas)
+                            && overlay.plant_efficiency < 255
+                        {
+                            let ms = std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .unwrap()
+                                .as_millis();
+                            if (ms / 400).is_multiple_of(2) {
+                                theme::TileSprite::uniform(
+                                    '!',
+                                    Color::Rgb(255, 180, 0),
                                     sprite.left.bg,
                                 )
                             } else {

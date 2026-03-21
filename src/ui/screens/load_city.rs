@@ -36,8 +36,8 @@ pub fn render_load_city(
     let title_y = area.y + 2;
     render_title(frame.buffer_mut(), area, title_y, &ui);
 
-    let panel_w = area.width.saturating_sub(14).min(78).max(58);
-    let panel_h = area.height.saturating_sub(14).min(18).max(12);
+    let panel_w = area.width.saturating_sub(14).clamp(58, 78);
+    let panel_h = area.height.saturating_sub(14).clamp(12, 18);
     let panel_x = area.x + area.width.saturating_sub(panel_w) / 2;
     let panel_y = title_y + 6;
     render_archive_panel(
@@ -502,7 +502,7 @@ fn paint_clouds(buf: &mut Buffer, area: Rect) {
     for y in area.y + 2..area.y + area.height / 2 {
         for x in area.x..area.x + area.width {
             let seed = hash_point(x, y);
-            if seed % 97 == 0 || seed % 131 == 0 {
+            if seed.is_multiple_of(97) || seed.is_multiple_of(131) {
                 let length = 3 + (seed % 7) as u16;
                 for dx in 0..length {
                     let px = x + dx;
@@ -572,10 +572,10 @@ fn paint_skyline(buf: &mut Buffer, area: Rect, base_y: u16) {
                     && bx + 1 < right
                     && by > top
                     && (bx - x) % 2 == 1
-                    && (base_y - by) % 2 == 0
-                    && hash_point(bx, by) % 3 == 0;
+                    && (base_y - by).is_multiple_of(2)
+                    && hash_point(bx, by).is_multiple_of(3);
                 if lit {
-                    let color = if hash_point(bx + 1, by) % 2 == 0 {
+                    let color = if hash_point(bx + 1, by).is_multiple_of(2) {
                         Color::Rgb(255, 221, 119)
                     } else {
                         Color::Rgb(106, 226, 225)

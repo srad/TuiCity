@@ -1,3 +1,4 @@
+use std::collections::VecDeque;
 use std::sync::Arc;
 
 use crate::{
@@ -161,10 +162,10 @@ pub struct StatisticsWindowViewModel {
     pub current_income: i64,
     pub current_power_produced: u32,
     pub current_power_consumed: u32,
-    pub treasury_history: Vec<i64>,
-    pub population_history: Vec<u64>,
-    pub income_history: Vec<i64>,
-    pub power_balance_history: Vec<i32>,
+    pub treasury_history: VecDeque<i64>,
+    pub population_history: VecDeque<u64>,
+    pub income_history: VecDeque<i64>,
+    pub power_balance_history: VecDeque<i32>,
 }
 
 #[derive(Clone, Debug, Default)]

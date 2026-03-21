@@ -1,4 +1,5 @@
 #![allow(dead_code)]
+#[allow(unused_imports)]
 use super::map::{Map, Tile, TransportTile, ViewLayer, ZoneSpec};
 use super::sim::{SimState, TaxSector};
 use super::tool::Tool;
@@ -185,6 +186,15 @@ impl SimulationEngine {
             return;
         }
 
+        if let Some(occupant) = self.map.occupant_at(x, y) {
+            if matches!(
+                occupant,
+                Tile::BusDepot | Tile::RailDepot | Tile::SubwayStation
+            ) {
+                self.sim.depots.remove(&(x, y));
+            }
+        }
+
         let has_surface = self.map.transport_at(x, y).is_some()
             || self.map.has_power_line(x, y)
             || self.map.occupant_at(x, y).is_some();
@@ -349,6 +359,7 @@ impl SimulationEngine {
                         age_months: 0,
                         max_life_months: 50 * 12,
                         capacity_mw: 500,
+                        efficiency: 1.0,
                     },
                 );
             }
@@ -359,8 +370,14 @@ impl SimulationEngine {
                         age_months: 0,
                         max_life_months: 60 * 12,
                         capacity_mw: 800,
+                        efficiency: 1.0,
                     },
                 );
+            }
+            Tool::BusDepot => {
+                self.sim
+                    .depots
+                    .insert((ax, ay), super::sim::DepotState { trips_used: 0 });
             }
             _ => {}
         }

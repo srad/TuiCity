@@ -1,3 +1,4 @@
+#![allow(unused_imports)]
 use std::collections::VecDeque;
 
 use crate::{
@@ -208,7 +209,7 @@ fn collect_metrics(sim: &SimState, map: &Map) -> CityMetrics {
 fn population_delta(sim: &SimState) -> i64 {
     let previous = if sim.population_history.len() >= 2 {
         sim.population_history[sim.population_history.len() - 2]
-    } else if let Some(previous) = sim.population_history.last() {
+    } else if let Some(previous) = sim.population_history.back() {
         *previous
     } else {
         sim.population
@@ -339,12 +340,12 @@ fn build_news_digest(
 
     let alerting = !alerts.is_empty();
     let mut stories = Vec::new();
-    extend_unique(&mut stories, alerts.into_iter(), MAX_STORIES);
-    extend_unique(&mut stories, events.into_iter(), MAX_STORIES);
-    extend_unique(&mut stories, mood.into_iter(), MAX_STORIES);
-    extend_unique(&mut stories, complaints.into_iter(), MAX_STORIES);
-    extend_unique(&mut stories, good.into_iter(), MAX_STORIES);
-    extend_unique(&mut stories, filler.into_iter(), MAX_STORIES);
+    extend_unique(&mut stories, alerts, MAX_STORIES);
+    extend_unique(&mut stories, events, MAX_STORIES);
+    extend_unique(&mut stories, mood, MAX_STORIES);
+    extend_unique(&mut stories, complaints, MAX_STORIES);
+    extend_unique(&mut stories, good, MAX_STORIES);
+    extend_unique(&mut stories, filler, MAX_STORIES);
 
     if stories.is_empty() {
         stories.push("City desk idle. Nobody has filed a complaint yet.".to_string());
@@ -524,7 +525,7 @@ mod tests {
         let mut sim = SimState::default();
         sim.city_name = "Newsville".to_string();
         sim.population = 1_250;
-        sim.population_history = vec![1_000, 1_250];
+        sim.population_history = vec![1_000, 1_250].into();
         sim.trip_attempts = 100;
         sim.trip_successes = 90;
         sim.road_share = 40;

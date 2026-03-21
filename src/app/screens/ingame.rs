@@ -1,3 +1,4 @@
+#![allow(unused_imports)]
 use std::collections::VecDeque;
 
 use crate::{
@@ -30,13 +31,15 @@ fn build_help_lines() -> Vec<String> {
     vec![
         "Goal".to_string(),
         "".to_string(),
-        "Grow a solvent city by giving zones three things: road access, power, and demand.".to_string(),
+        "Grow a solvent city by giving zones three things: road access, power, and demand."
+            .to_string(),
         "".to_string(),
         "Getting started".to_string(),
         "".to_string(),
         "1. Lay a short road spine before zoning.".to_string(),
         "2. Place a power plant and connect it with power lines.".to_string(),
-        "3. Zone mostly residential, then add a smaller amount of commercial and industrial.".to_string(),
+        "3. Zone mostly residential, then add a smaller amount of commercial and industrial."
+            .to_string(),
         "4. Unpause and let buildings grow before spending heavily on extras.".to_string(),
         "".to_string(),
         "What makes a city work".to_string(),
@@ -76,7 +79,7 @@ fn build_help_lines() -> Vec<String> {
 fn build_legend_lines() -> Vec<String> {
     let mut lines = Vec::new();
     let overlay = crate::core::map::TileOverlay::default();
-    
+
     let mut push_legend = |label: &str, tiles: &[crate::core::map::Tile]| {
         let mut sprites = String::new();
         for &tile in tiles {
@@ -89,18 +92,38 @@ fn build_legend_lines() -> Vec<String> {
     };
 
     use crate::core::map::Tile;
-    push_legend("Empty Zones (Res, Comm, Ind)", &[Tile::ZoneRes, Tile::ZoneComm, Tile::ZoneInd]);
-    push_legend("Residential (Low, Med, High)", &[Tile::ResLow, Tile::ResMed, Tile::ResHigh]);
+    push_legend(
+        "Empty Zones (Res, Comm, Ind)",
+        &[Tile::ZoneRes, Tile::ZoneComm, Tile::ZoneInd],
+    );
+    push_legend(
+        "Residential (Low, Med, High)",
+        &[Tile::ResLow, Tile::ResMed, Tile::ResHigh],
+    );
     push_legend("Commercial (Low, High)", &[Tile::CommLow, Tile::CommHigh]);
-    push_legend("Industrial (Light, Heavy)", &[Tile::IndLight, Tile::IndHeavy]);
+    push_legend(
+        "Industrial (Light, Heavy)",
+        &[Tile::IndLight, Tile::IndHeavy],
+    );
     push_legend("Power Plant", &[Tile::PowerPlantCoal]);
     push_legend("Police Station", &[Tile::Police]);
     push_legend("Fire Station", &[Tile::Fire]);
     push_legend("Hospital", &[Tile::Hospital]);
     push_legend("Park", &[Tile::Park]);
-    push_legend("Water (Pump, Tower, Treatment, Desalination)", &[Tile::WaterPump, Tile::WaterTower, Tile::WaterTreatment, Tile::Desalination]);
-    push_legend("Transit (Bus, Rail, Subway)", &[Tile::BusDepot, Tile::RailDepot, Tile::SubwayStation]);
-    
+    push_legend(
+        "Water (Pump, Tower, Treatment, Desalination)",
+        &[
+            Tile::WaterPump,
+            Tile::WaterTower,
+            Tile::WaterTreatment,
+            Tile::Desalination,
+        ],
+    );
+    push_legend(
+        "Transit (Bus, Rail, Subway)",
+        &[Tile::BusDepot, Tile::RailDepot, Tile::SubwayStation],
+    );
+
     lines
 }
 
@@ -348,6 +371,7 @@ impl InGameScreen {
         self.desktop.is_open(WindowId::Legend)
     }
 
+    #[allow(dead_code)]
     pub fn is_confirm_prompt_open(&self) -> bool {
         self.confirm_prompt_action.is_some()
     }
@@ -673,9 +697,7 @@ impl InGameScreen {
 
     fn confirm_prompt(&mut self, context: &AppContext) -> Option<ScreenTransition> {
         let action = self.confirm_prompt_action?;
-        let Some(dialog) = self.confirm_dialog_view_model() else {
-            return None;
-        };
+        let dialog = self.confirm_dialog_view_model()?;
 
         match dialog.selected_role() {
             Some(ConfirmDialogButtonRole::Accept) => {
@@ -721,7 +743,8 @@ impl Screen for InGameScreen {
         // Sync window content heights
         self.desktop.window_mut(WindowId::Help).content_height = build_help_lines().len() as u16;
         self.desktop.window_mut(WindowId::About).content_height = ABOUT_LINES.len() as u16;
-        self.desktop.window_mut(WindowId::Legend).content_height = build_legend_lines().len() as u16;
+        self.desktop.window_mut(WindowId::Legend).content_height =
+            build_legend_lines().len() as u16;
 
         if self.paused {
             return;
@@ -833,7 +856,11 @@ impl Screen for InGameScreen {
             };
         }
 
-        if self.is_stats_open() || self.is_about_open() || self.is_help_open() || self.is_legend_open() {
+        if self.is_stats_open()
+            || self.is_about_open()
+            || self.is_help_open()
+            || self.is_legend_open()
+        {
             return match action {
                 Action::MenuBack => {
                     if self.is_stats_open() {
@@ -1787,7 +1814,7 @@ mod tests {
             running: &mut running,
         };
         screen.on_action(Action::CharInput('b'), open_context);
-        screen.budget_ui.focused = BudgetFocus::CommercialTax;
+        screen.budget_ui.focused = BudgetFocus::Commercial;
         screen.budget_ui.commercial_tax_input.clear();
 
         let event_context = AppContext {
@@ -1834,7 +1861,7 @@ mod tests {
             running: &mut running,
         };
         screen.on_action(Action::CharInput('b'), open_context);
-        screen.budget_ui.focused = BudgetFocus::ResidentialTax;
+        screen.budget_ui.focused = BudgetFocus::Residential;
         screen.budget_ui.residential_tax_input.clear();
 
         for key in ['1', '2', '3'] {
@@ -1872,7 +1899,7 @@ mod tests {
             running: &mut running,
         };
         screen.on_action(Action::CharInput('b'), open_context);
-        screen.budget_ui.focused = BudgetFocus::CommercialTax;
+        screen.budget_ui.focused = BudgetFocus::Commercial;
         let start_value = screen.budget_ui.commercial_tax;
 
         let event_context = AppContext {

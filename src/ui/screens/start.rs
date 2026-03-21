@@ -40,7 +40,7 @@ pub fn render_start(frame: &mut Frame, area: Rect, view: &StartViewModel, state:
     let ui = theme::ui_palette();
     paint_background(frame.buffer_mut(), area);
 
-    let menu_w = area.width.saturating_sub(20).min(50).max(42);
+    let menu_w = area.width.saturating_sub(20).clamp(42, 50);
     let menu_x = area.x + area.width.saturating_sub(menu_w) / 2;
     let title_art = choose_title_art(area);
     let content_h = title_block_height(title_art) + TITLE_TO_MENU_GAP + MENU_HEIGHT;
@@ -394,7 +394,7 @@ fn paint_clouds(buf: &mut Buffer, area: Rect) {
     for y in area.y + 2..area.y + area.height / 2 {
         for x in area.x..area.x + area.width {
             let seed = hash_point(x, y);
-            if seed % 97 == 0 || seed % 131 == 0 {
+            if seed.is_multiple_of(97) || seed.is_multiple_of(131) {
                 let length = 3 + (seed % 7) as u16;
                 for dx in 0..length {
                     let px = x + dx;
@@ -464,10 +464,10 @@ fn paint_skyline(buf: &mut Buffer, area: Rect, base_y: u16) {
                     && bx + 1 < right
                     && by > top
                     && (bx - x) % 2 == 1
-                    && (base_y - by) % 2 == 0
-                    && hash_point(bx, by) % 3 == 0;
+                    && (base_y - by).is_multiple_of(2)
+                    && hash_point(bx, by).is_multiple_of(3);
                 if lit {
-                    let color = if hash_point(bx + 1, by) % 2 == 0 {
+                    let color = if hash_point(bx + 1, by).is_multiple_of(2) {
                         Color::Rgb(255, 221, 119)
                     } else {
                         Color::Rgb(106, 226, 225)

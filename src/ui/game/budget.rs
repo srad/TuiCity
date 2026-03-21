@@ -88,11 +88,11 @@ pub fn focus_at_position(
     );
     let side = budget_side(inner);
     if contains(side[0], col, row) {
-        Some(BudgetFocus::ResidentialTax)
+        Some(BudgetFocus::Residential)
     } else if contains(side[1], col, row) {
-        Some(BudgetFocus::CommercialTax)
+        Some(BudgetFocus::Commercial)
     } else if contains(side[2], col, row) {
-        Some(BudgetFocus::IndustrialTax)
+        Some(BudgetFocus::Industrial)
     } else {
         None
     }
@@ -471,7 +471,7 @@ impl<'a> Widget for BudgetContent<'a> {
             TaxSector::Residential,
             self.view.tax_rates.residential as usize,
             &self.view.residential_input,
-            self.view.focused == BudgetFocus::ResidentialTax,
+            self.view.focused == BudgetFocus::Residential,
             ui,
         );
         render_tax_panel(
@@ -480,7 +480,7 @@ impl<'a> Widget for BudgetContent<'a> {
             TaxSector::Commercial,
             self.view.tax_rates.commercial as usize,
             &self.view.commercial_input,
-            self.view.focused == BudgetFocus::CommercialTax,
+            self.view.focused == BudgetFocus::Commercial,
             ui,
         );
         render_tax_panel(
@@ -489,7 +489,7 @@ impl<'a> Widget for BudgetContent<'a> {
             TaxSector::Industrial,
             self.view.tax_rates.industrial as usize,
             &self.view.industrial_input,
-            self.view.focused == BudgetFocus::IndustrialTax,
+            self.view.focused == BudgetFocus::Industrial,
             ui,
         );
 
@@ -586,7 +586,7 @@ mod tests {
         let sim = SimState::default();
         let view = BudgetViewModel::from_sim(
             &sim,
-            BudgetFocus::ResidentialTax,
+            BudgetFocus::Residential,
             sim.tax_rates,
             "9".to_string(),
             "9".to_string(),

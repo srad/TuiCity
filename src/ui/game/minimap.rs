@@ -164,6 +164,7 @@ pub fn minimap_render_area(area: Rect, map_width: usize, map_height: usize) -> R
     )
 }
 
+#[allow(dead_code)]
 pub fn tile_at_minimap_click(
     area: Rect,
     map_width: usize,

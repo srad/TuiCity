@@ -449,6 +449,7 @@ mod tests {
                 age_months: 0,
                 max_life_months: 600,
                 capacity_mw: 500,
+                efficiency: 1.0,
             },
         );
         engine.map.set(1, 0, Tile::PowerLine);

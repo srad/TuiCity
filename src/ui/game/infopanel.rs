@@ -10,8 +10,9 @@ use ratatui::{
     style::{Color, Style},
     widgets::Widget,
 };
+use std::collections::VecDeque;
 
-pub struct InfoPanel<'a> {
+pub struct InfoPanel {
     pub tile: Tile,
     pub overlay: TileOverlay,
     pub zone: Option<ZoneKind>,
@@ -21,9 +22,9 @@ pub struct InfoPanel<'a> {
     pub demand_res: f32,
     pub demand_comm: f32,
     pub demand_ind: f32,
-    pub demand_history_res: &'a [f32],
-    pub demand_history_comm: &'a [f32],
-    pub demand_history_ind: &'a [f32],
+    pub demand_history_res: VecDeque<f32>,
+    pub demand_history_comm: VecDeque<f32>,
+    pub demand_history_ind: VecDeque<f32>,
     pub power_produced: u32,
     pub power_consumed: u32,
 }
@@ -52,7 +53,7 @@ fn bar_str(val: f32, bar_w: usize) -> String {
     s
 }
 
-impl<'a> Widget for InfoPanel<'a> {
+impl Widget for InfoPanel {
     fn render(self, area: Rect, buf: &mut Buffer) {
         if area.width == 0 || area.height == 0 {
             return;
@@ -148,7 +149,15 @@ impl<'a> Widget for InfoPanel<'a> {
             print_row!("Trend (24m):", ui.text_dim);
 
             if row < area.y + area.height {
-                let spark_r = sparkline_str(self.demand_history_res, spark_cols);
+                let spark_r = {
+                    let (front, back) = self.demand_history_res.as_slices();
+                    let data = if back.is_empty() {
+                        front.to_vec()
+                    } else {
+                        [front, back].concat()
+                    };
+                    sparkline_str(&data, spark_cols)
+                };
                 buf.set_string(
                     area.x,
                     row,
@@ -160,7 +169,15 @@ impl<'a> Widget for InfoPanel<'a> {
                 row += 1;
             }
             if row < area.y + area.height {
-                let spark_c = sparkline_str(self.demand_history_comm, spark_cols);
+                let spark_c = {
+                    let (front, back) = self.demand_history_comm.as_slices();
+                    let data = if back.is_empty() {
+                        front.to_vec()
+                    } else {
+                        [front, back].concat()
+                    };
+                    sparkline_str(&data, spark_cols)
+                };
                 buf.set_string(
                     area.x,
                     row,
@@ -172,7 +189,15 @@ impl<'a> Widget for InfoPanel<'a> {
                 row += 1;
             }
             if row < area.y + area.height {
-                let spark_i = sparkline_str(self.demand_history_ind, spark_cols);
+                let spark_i = {
+                    let (front, back) = self.demand_history_ind.as_slices();
+                    let data = if back.is_empty() {
+                        front.to_vec()
+                    } else {
+                        [front, back].concat()
+                    };
+                    sparkline_str(&data, spark_cols)
+                };
                 buf.set_string(
                     area.x,
                     row,
@@ -340,9 +365,9 @@ mod tests {
             demand_res: 0.0,
             demand_comm: 0.0,
             demand_ind: 0.0,
-            demand_history_res: &[],
-            demand_history_comm: &[],
-            demand_history_ind: &[],
+            demand_history_res: VecDeque::new(),
+            demand_history_comm: VecDeque::new(),
+            demand_history_ind: VecDeque::new(),
             power_produced: 10,
             power_consumed: 8,
         }

@@ -22,6 +22,25 @@ fn pop_estimate(tile: Tile) -> Option<(i32, &'static str)> {
     })
 }
 
+#[derive(Clone, Debug)]
+pub struct PlantInfo {
+    pub age_months: u32,
+    pub max_life_months: u32,
+    pub capacity_mw: u32,
+    pub efficiency: f32,
+}
+
+impl PlantInfo {
+    pub fn from_state(state: &crate::core::sim::PlantState) -> Self {
+        Self {
+            age_months: state.age_months,
+            max_life_months: state.max_life_months,
+            capacity_mw: state.capacity_mw,
+            efficiency: state.efficiency,
+        }
+    }
+}
+
 fn pct(val: u8) -> u8 {
     (val as u16 * 100 / 255) as u8
 }
@@ -39,6 +58,7 @@ fn lv_label(val: u8) -> &'static str {
 struct InspectContent<'a> {
     pos: (usize, usize),
     map: &'a Map,
+    plant_info: Option<PlantInfo>,
 }
 
 impl<'a> Widget for InspectContent<'a> {
@@ -79,6 +99,28 @@ impl<'a> Widget for InspectContent<'a> {
         if let Some(density) = self.map.zone_density(x, y) {
             put!(
                 format!("Density:    {}", density.label()),
+                Style::default().fg(ui.text_secondary)
+            );
+        }
+
+        if let Some(ref info) = self.plant_info {
+            let eff_pct = (info.efficiency * 100.0) as u8;
+            let remaining = info.max_life_months.saturating_sub(info.age_months);
+            let eff_color = if info.efficiency < 1.0 {
+                ui.warning
+            } else {
+                ui.success
+            };
+            put!(
+                format!("Capacity:   {} MW", info.capacity_mw),
+                Style::default().fg(ui.text_secondary)
+            );
+            put!(
+                format!("Efficiency: {}%", eff_pct),
+                Style::default().fg(eff_color)
+            );
+            put!(
+                format!("Age:       {}/{} mo", remaining, info.max_life_months),
                 Style::default().fg(ui.text_secondary)
             );
         }
@@ -171,8 +213,19 @@ impl<'a> Widget for InspectContent<'a> {
 }
 
 /// Render inspect content directly into `inner` (the area inside the window border).
-pub fn render_inspect_content(buf: &mut Buffer, inner: Rect, pos: (usize, usize), map: &Map) {
-    InspectContent { pos, map }.render(inner, buf);
+pub fn render_inspect_content(
+    buf: &mut Buffer,
+    inner: Rect,
+    pos: (usize, usize),
+    map: &Map,
+    plant_info: Option<PlantInfo>,
+) {
+    InspectContent {
+        pos,
+        map,
+        plant_info,
+    }
+    .render(inner, buf);
 }
 
 #[cfg(test)]

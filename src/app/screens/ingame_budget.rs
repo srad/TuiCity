@@ -7,16 +7,16 @@ use super::{AppContext, InGameScreen};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BudgetFocus {
-    ResidentialTax,
-    CommercialTax,
-    IndustrialTax,
+    Residential,
+    Commercial,
+    Industrial,
 }
 
 impl BudgetFocus {
     const ALL: [BudgetFocus; 3] = [
-        BudgetFocus::ResidentialTax,
-        BudgetFocus::CommercialTax,
-        BudgetFocus::IndustrialTax,
+        BudgetFocus::Residential,
+        BudgetFocus::Commercial,
+        BudgetFocus::Industrial,
     ];
 
     pub fn next(self) -> Self {
@@ -29,9 +29,9 @@ impl BudgetFocus {
 
     pub fn tax_sector(self) -> TaxSector {
         match self {
-            BudgetFocus::ResidentialTax => TaxSector::Residential,
-            BudgetFocus::CommercialTax => TaxSector::Commercial,
-            BudgetFocus::IndustrialTax => TaxSector::Industrial,
+            BudgetFocus::Residential => TaxSector::Residential,
+            BudgetFocus::Commercial => TaxSector::Commercial,
+            BudgetFocus::Industrial => TaxSector::Industrial,
         }
     }
 }
@@ -49,7 +49,7 @@ pub struct BudgetState {
 impl BudgetState {
     pub fn new() -> Self {
         Self {
-            focused: BudgetFocus::ResidentialTax,
+            focused: BudgetFocus::Residential,
             residential_tax: 9,
             commercial_tax: 9,
             industrial_tax: 9,
@@ -70,7 +70,7 @@ impl InGameScreen {
 
     pub fn open_budget(&mut self, context: &AppContext) {
         self.desktop.open(WindowId::Budget, true);
-        self.budget_ui.focused = BudgetFocus::ResidentialTax;
+        self.budget_ui.focused = BudgetFocus::Residential;
         self.sync_budget_tax_from_sim(context);
     }
 

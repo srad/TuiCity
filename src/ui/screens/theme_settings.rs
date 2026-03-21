@@ -21,7 +21,7 @@ pub fn render_theme_settings(
     state.row_areas.clear();
     paint_background(frame.buffer_mut(), area);
 
-    let panel_w = area.width.saturating_sub(18).min(72).max(54);
+    let panel_w = area.width.saturating_sub(18).clamp(54, 72);
     let content_h = 5 + view.themes.len() as u16 * 3;
     let available_h = area.height.saturating_sub(6).max(8);
     let panel_h = content_h.min(available_h).max(available_h.min(16));
@@ -302,10 +302,10 @@ fn paint_skyline(buf: &mut Buffer, area: Rect, base_y: u16) {
                     && bx + 1 < right
                     && by > top
                     && (bx - x) % 2 == 1
-                    && (base_y - by) % 2 == 0
-                    && hash_point(bx, by) % 3 == 0;
+                    && (base_y - by).is_multiple_of(2)
+                    && hash_point(bx, by).is_multiple_of(3);
                 if lit {
-                    let color = if hash_point(bx + 1, by) % 2 == 0 {
+                    let color = if hash_point(bx + 1, by).is_multiple_of(2) {
                         Color::Rgb(255, 221, 119)
                     } else {
                         Color::Rgb(106, 226, 225)

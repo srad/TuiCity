@@ -467,6 +467,14 @@ pub struct TileOverlay {
     /// Last successful trip cost, normalized to the simulation's cost scale.
     #[serde(default)]
     pub trip_cost: u8,
+    /// Consecutive months this building tile has been under-served
+    /// (no power OR no water OR no trip). Resets when properly serviced.
+    #[serde(default)]
+    pub neglected_months: u8,
+    /// Plant efficiency for power-plant tiles (255 = 100%, <255 = degrading near EOL).
+    /// Non-plant tiles are unaffected; defaults to 255.
+    #[serde(default)]
+    pub plant_efficiency: u8,
 }
 
 impl TileOverlay {

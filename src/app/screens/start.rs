@@ -2,18 +2,10 @@ use crate::app::{input::Action, ClickArea};
 
 use super::{AppContext, LoadCityScreen, NewCityScreen, Screen, ScreenTransition, SettingsScreen};
 
+#[derive(Default)]
 pub struct StartState {
     pub selected: usize,
     pub menu_areas: [ClickArea; 5],
-}
-
-impl Default for StartState {
-    fn default() -> Self {
-        Self {
-            selected: 0,
-            menu_areas: [ClickArea::default(); 5],
-        }
-    }
 }
 
 pub struct StartScreen {

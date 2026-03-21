@@ -7,11 +7,10 @@ use ratatui::{
 
 use crate::{
     app::{ClickArea, MapUiAreas, UiRect, WindowId},
+    core::map::Tile,
     game_info::GAME_NAME,
     ui::{
-        frontends::terminal::render_confirm_dialog,
-        game,
-        runtime::UiRect as RuntimeRect,
+        frontends::terminal::render_confirm_dialog, game, runtime::UiRect as RuntimeRect,
         view::InGameDesktopView,
     },
 };
@@ -228,9 +227,10 @@ pub fn render_ingame(
     view: &InGameDesktopView,
 ) {
     let ui = crate::ui::theme::ui_palette();
-    let desktop_layout = screen
-        .desktop
-        .layout(UiRect::new(area.x, area.y, area.width, area.height));
+    let desktop_layout =
+        screen
+            .desktop
+            .layout(UiRect::new(area.x, area.y, area.width, area.height));
     screen.ui_areas.desktop = desktop_layout.clone();
 
     let menu_area = to_rect(desktop_layout.menu_bar);
@@ -550,9 +550,9 @@ pub fn render_ingame(
                     demand_res: view.sim.demand_res,
                     demand_comm: view.sim.demand_comm,
                     demand_ind: view.sim.demand_ind,
-                    demand_history_res: &view.sim.demand_history_res,
-                    demand_history_comm: &view.sim.demand_history_comm,
-                    demand_history_ind: &view.sim.demand_history_ind,
+                    demand_history_res: view.sim.demand_history_res.clone(),
+                    demand_history_comm: view.sim.demand_history_comm.clone(),
+                    demand_history_ind: view.sim.demand_history_ind.clone(),
                     power_produced: view.sim.power_produced_mw,
                     power_consumed: view.sim.power_consumed_mw,
                 },
@@ -637,11 +637,32 @@ pub fn render_ingame(
                     inspect_outer,
                 );
                 render_close_button(frame, inspect_outer);
+
+                let plant_info = if matches!(
+                    view.map.surface_lot_tile(inspect_pos.0, inspect_pos.1),
+                    Tile::PowerPlantCoal | Tile::PowerPlantGas
+                ) {
+                    view.sim
+                        .plants
+                        .iter()
+                        .find(|(&(_x, _y), _)| {
+                            let (px, py) = (_x, _y);
+                            inspect_pos.0 >= px
+                                && inspect_pos.0 < px + 4
+                                && inspect_pos.1 >= py
+                                && inspect_pos.1 < py + 4
+                        })
+                        .map(|(_, state)| game::inspect_popup::PlantInfo::from_state(state))
+                } else {
+                    None
+                };
+
                 game::inspect_popup::render_inspect_content(
                     frame.buffer_mut(),
                     inspect_inner,
                     inspect_pos,
                     &view.map,
+                    plant_info,
                 );
             }
         }

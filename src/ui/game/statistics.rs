@@ -28,21 +28,21 @@ pub fn render_statistics_content(frame: &mut Frame, area: Rect, view: &Statistic
         frame,
         top[0],
         &format!("Treasury  {}", fmt_money(view.current_treasury)),
-        &series_from_i64(&view.treasury_history),
+        &series_from_i64(&view.treasury_history.iter().copied().collect::<Vec<_>>()),
         crate::ui::theme::ui_palette().accent,
     );
     render_series_chart(
         frame,
         top[1],
         &format!("Population  {}", fmt_number(view.current_population)),
-        &series_from_u64(&view.population_history),
+        &series_from_u64(&view.population_history.iter().copied().collect::<Vec<_>>()),
         crate::ui::theme::ui_palette().success,
     );
     render_series_chart(
         frame,
         bottom[0],
         &format!("Annual Income  {}", fmt_money(view.current_income)),
-        &series_from_i64(&view.income_history),
+        &series_from_i64(&view.income_history.iter().copied().collect::<Vec<_>>()),
         crate::ui::theme::ui_palette().warning,
     );
     let power_balance = view.current_power_produced as i32 - view.current_power_consumed as i32;
@@ -50,7 +50,13 @@ pub fn render_statistics_content(frame: &mut Frame, area: Rect, view: &Statistic
         frame,
         bottom[1],
         &format!("Power Balance  {} MW", power_balance),
-        &series_from_i32(&view.power_balance_history),
+        &series_from_i32(
+            &view
+                .power_balance_history
+                .iter()
+                .copied()
+                .collect::<Vec<_>>(),
+        ),
         crate::ui::theme::ui_palette().info,
     );
 }

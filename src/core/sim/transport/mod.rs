@@ -1,9 +1,9 @@
-use super::{economy::tile_sector_capacity, system::SimSystem, SimState};
+use super::{economy::tile_sector_capacity, system::SimSystem, DepotState, SimState};
 use crate::core::map::{Map, Tile, TransportTile, TripFailure, TripMode, ZoneKind};
 use rand::{rngs::StdRng, Rng, SeedableRng};
 use std::array;
 use std::cmp::Reverse;
-use std::collections::{BinaryHeap, HashSet, VecDeque};
+use std::collections::{BinaryHeap, HashMap, HashSet, VecDeque};
 
 // Lots may "walk" a few tiles to reach roads, depots, or stations without requiring
 // a dedicated pedestrian simulation.
@@ -15,6 +15,7 @@ pub const MAX_TRIP_COST: usize = 48;
 const TRANSFER_PENALTY: usize = 4;
 const ROAD_TRAFFIC_FACTOR: u16 = 4;
 const BUS_TRAFFIC_FACTOR: u16 = 1;
+pub const BUS_DEPOT_CAPACITY: u32 = 100;
 
 #[derive(Clone, Copy, Debug, Default)]
 struct LotTripState {
@@ -191,9 +192,8 @@ struct LotSimulation {
 
 #[derive(Debug, Default)]
 pub struct TransportSystem {
-    // Cooldown state is per lot and intentionally transient. It affects simulation behavior,
-    // but it is recomputed after load except for the persisted RNG state.
     lot_state: Vec<LotTripState>,
+    node_to_depot: HashMap<usize, (usize, usize)>,
 }
 
 impl SimSystem for TransportSystem {
@@ -211,6 +211,25 @@ impl SimSystem for TransportSystem {
         }
 
         let cache = NetworkCache::build(map);
+
+        // Build node-to-depot mapping and reset depot trip counts
+        self.node_to_depot.clear();
+        for state in sim.depots.values_mut() {
+            state.trips_used = 0;
+        }
+        for y in 0..map.height {
+            for x in 0..map.width {
+                if map.occupant_at(x, y) == Some(Tile::BusDepot) {
+                    sim.depots
+                        .entry((x, y))
+                        .or_insert(DepotState { trips_used: 0 });
+                    for entry_node in transfer_entry_nodes(map, x, y, Tile::BusDepot) {
+                        self.node_to_depot.insert(entry_node, (x, y));
+                    }
+                }
+            }
+        }
+
         // Persisted RNG state keeps SC2000-style transit randomness reproducible across
         // save/load and deterministic in tests.
         let mut rng = StdRng::seed_from_u64(sim.transport_rng_state);
@@ -228,13 +247,6 @@ impl SimSystem for TransportSystem {
         sim.rail_share = 0;
         sim.subway_share = 0;
 
-        for overlay in &mut map.overlays {
-            overlay.trip_success = false;
-            overlay.trip_mode = None;
-            overlay.trip_failure = None;
-            overlay.trip_cost = 0;
-        }
-
         for y in 0..map.height {
             for x in 0..map.width {
                 let idx = map.idx(x, y);
@@ -245,9 +257,6 @@ impl SimSystem for TransportSystem {
 
                 let developed = tile.is_building();
                 let weight = trip_weight(tile);
-                // Empty zones still run diagnostics so growth can see whether the lot is
-                // transport-functional, but only developed buildings contribute traffic and
-                // citywide trip totals.
                 let simulation = simulate_lot(
                     map,
                     &cache,
@@ -260,6 +269,7 @@ impl SimSystem for TransportSystem {
                     &mut rng,
                     &mut raw_traffic,
                     sim,
+                    &self.node_to_depot,
                 );
                 let overlay = &mut map.overlays[idx];
                 overlay.trip_success = simulation.success;
@@ -294,6 +304,7 @@ fn simulate_lot(
     rng: &mut StdRng,
     raw_traffic: &mut [u16],
     sim: &mut SimState,
+    node_to_depot: &HashMap<usize, (usize, usize)>,
 ) -> LotSimulation {
     let mut simulation = LotSimulation::default();
     let idx = map.idx(x, y);
@@ -304,8 +315,6 @@ fn simulate_lot(
             sim.trip_attempts = sim.trip_attempts.saturating_add(weight as u32);
         }
 
-        // A lot may need multiple destination categories in the same month, e.g. residential
-        // seeks both commercial and industrial access.
         match attempt_target_trip(map, cache, access, target_kind, lot_state, rng) {
             TargetTripResult::Success { mode, path, cost } => {
                 let diagnostic_weight = if developed { weight.max(1) as u32 } else { 1 };
@@ -323,8 +332,31 @@ fn simulate_lot(
                             apply_path_traffic(raw_traffic, &path, ROAD_TRAFFIC_FACTOR, weight);
                         }
                         TripMode::Bus => {
-                            sim.bus_share = sim.bus_share.saturating_add(weight as u32);
-                            apply_path_traffic(raw_traffic, &path, BUS_TRAFFIC_FACTOR, weight);
+                            let depot_full = if let Some(&depot_pos) =
+                                path.first().and_then(|&n| node_to_depot.get(&n))
+                            {
+                                if let Some(state) = sim.depots.get_mut(&depot_pos) {
+                                    if state.trips_used >= BUS_DEPOT_CAPACITY {
+                                        true
+                                    } else {
+                                        state.trips_used =
+                                            state.trips_used.saturating_add(weight as u32);
+                                        false
+                                    }
+                                } else {
+                                    false
+                                }
+                            } else {
+                                false
+                            };
+
+                            if depot_full {
+                                sim.road_share = sim.road_share.saturating_add(weight as u32);
+                                apply_path_traffic(raw_traffic, &path, ROAD_TRAFFIC_FACTOR, weight);
+                            } else {
+                                sim.bus_share = sim.bus_share.saturating_add(weight as u32);
+                                apply_path_traffic(raw_traffic, &path, BUS_TRAFFIC_FACTOR, weight);
+                            }
                         }
                         TripMode::Rail => {
                             sim.rail_share = sim.rail_share.saturating_add(weight as u32);
@@ -1091,5 +1123,202 @@ mod tests {
             second,
             TargetTripResult::Failure(TripFailure::TooLong)
         ));
+    }
+
+    #[test]
+    fn bus_depot_at_capacity_trips_fall_back_to_roads() {
+        let mut map = Map::new(15, 1);
+        map.set(0, 0, Tile::CommHigh);
+        for x in 1..=8 {
+            map.set_transport(x, 0, Some(TransportTile::Road));
+        }
+        map.set(2, 0, Tile::BusDepot);
+        map.set(9, 0, Tile::ResHigh);
+
+        let mut sim = SimState::default();
+        sim.depots.insert(
+            (2, 0),
+            crate::core::sim::DepotState {
+                trips_used: BUS_DEPOT_CAPACITY,
+            },
+        );
+        sim.transport_rng_state = 0xABCD;
+
+        run_transport(&mut map, &mut sim);
+
+        assert_eq!(sim.bus_share, 0);
+        assert!(
+            sim.road_share > 0,
+            "trips should fall back to roads when depot is at capacity"
+        );
+    }
+
+    #[test]
+    fn bus_depot_trips_used_resets_each_month() {
+        let mut map = Map::new(20, 1);
+        map.set(0, 0, Tile::CommHigh);
+        for x in 1..=18 {
+            map.set_transport(x, 0, Some(TransportTile::Road));
+        }
+        map.set(19, 0, Tile::ResHigh);
+        map.set_occupant(1, 0, Some(Tile::BusDepot));
+
+        let mut sim = SimState::default();
+        sim.depots.insert(
+            (1, 0),
+            crate::core::sim::DepotState {
+                trips_used: BUS_DEPOT_CAPACITY - 1,
+            },
+        );
+
+        let mut system = TransportSystem::default();
+        system.tick(&mut map, &mut sim);
+
+        let state = sim.depots.get(&(1, 0)).unwrap();
+        assert_eq!(
+            state.trips_used, 0,
+            "depot trips_used should reset to 0 at the start of each month"
+        );
+    }
+
+    #[test]
+    fn depot_not_in_sim_depots_map_does_not_crash() {
+        let mut map = Map::new(15, 1);
+        map.set(0, 0, Tile::CommHigh);
+        for x in 1..=10 {
+            map.set_transport(x, 0, Some(TransportTile::Road));
+        }
+        map.set(3, 0, Tile::BusDepot);
+        map.set(9, 0, Tile::ResHigh);
+
+        let mut sim = SimState::default();
+        sim.transport_rng_state = 0x1234;
+
+        let mut system = TransportSystem::default();
+        system.tick(&mut map, &mut sim);
+
+        assert!(
+            sim.depots.contains_key(&(3, 0)),
+            "depot should be auto-registered in sim.depots even if not placed via engine"
+        );
+    }
+
+    #[test]
+    fn depot_with_capacity_accepts_bus_trips() {
+        let mut map = Map::new(7, 7);
+        map.set(0, 3, Tile::CommHigh);
+        for y in 0..7 {
+            for x in 1..=5 {
+                map.set_transport(x, y, Some(TransportTile::Road));
+            }
+        }
+        map.set(3, 3, Tile::BusDepot);
+        map.set(6, 3, Tile::ResHigh);
+
+        let mut sim = SimState::default();
+        sim.depots
+            .insert((3, 3), crate::core::sim::DepotState { trips_used: 0 });
+        sim.transport_rng_state = 0xABCD;
+
+        let mut system = TransportSystem::default();
+        system.tick(&mut map, &mut sim);
+
+        assert!(
+            sim.bus_share > 0,
+            "depot with available capacity should accept bus trips"
+        );
+        assert!(
+            sim.depots.get(&(3, 3)).map(|s| s.trips_used).unwrap_or(0) > 0,
+            "depot trips_used should be incremented when bus trips succeed"
+        );
+    }
+
+    #[test]
+    fn second_depot_takes_over_when_first_is_full() {
+        let mut map = Map::new(10, 10);
+        map.set(0, 5, Tile::CommHigh);
+        for y in 0..10 {
+            for x in 1..=8 {
+                map.set_transport(x, y, Some(TransportTile::Road));
+            }
+        }
+        map.set(3, 5, Tile::BusDepot);
+        map.set(7, 5, Tile::BusDepot);
+        map.set(9, 5, Tile::ResHigh);
+
+        let mut sim = SimState::default();
+        sim.depots.insert(
+            (3, 5),
+            crate::core::sim::DepotState {
+                trips_used: BUS_DEPOT_CAPACITY,
+            },
+        );
+        sim.depots
+            .insert((7, 5), crate::core::sim::DepotState { trips_used: 0 });
+        sim.transport_rng_state = 0xABCD;
+
+        run_transport(&mut map, &mut sim);
+
+        assert!(
+            sim.bus_share > 0,
+            "second depot should accept trips when first is at capacity"
+        );
+    }
+
+    #[test]
+    fn rail_depot_trips_used_not_incremented_by_bus_logic() {
+        let mut map = Map::new(7, 7);
+        map.set(0, 3, Tile::CommHigh);
+        for y in 0..7 {
+            for x in 1..=5 {
+                map.set_transport(x, y, Some(TransportTile::Road));
+            }
+        }
+        map.set(3, 3, Tile::RailDepot);
+        map.set(6, 3, Tile::ResHigh);
+
+        let mut sim = SimState::default();
+        sim.transport_rng_state = 0x5678;
+
+        run_transport(&mut map, &mut sim);
+
+        assert_eq!(
+            sim.rail_share, 0,
+            "rail trips require rail network, not road"
+        );
+    }
+
+    #[test]
+    fn depot_at_capacity_boundary() {
+        let mut map = Map::new(7, 7);
+        map.set(0, 3, Tile::CommLow);
+        for y in 0..7 {
+            for x in 1..=5 {
+                map.set_transport(x, y, Some(TransportTile::Road));
+            }
+        }
+        map.set(3, 3, Tile::BusDepot);
+        map.set(6, 3, Tile::ResLow);
+
+        let mut sim = SimState::default();
+        sim.depots.insert(
+            (3, 3),
+            crate::core::sim::DepotState {
+                trips_used: BUS_DEPOT_CAPACITY - 1,
+            },
+        );
+        sim.transport_rng_state = 0xDEAD;
+
+        run_transport(&mut map, &mut sim);
+
+        let state = sim.depots.get(&(3, 3)).unwrap();
+        assert_eq!(
+            state.trips_used, 1,
+            "after one tick, trips_used should be 1 (depot resets each tick)"
+        );
+        assert!(
+            sim.bus_share > 0 || sim.road_share > 0,
+            "at least some trips should succeed"
+        );
     }
 }

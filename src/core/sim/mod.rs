@@ -5,8 +5,7 @@ pub mod systems;
 pub mod transport;
 
 pub use economy::{TaxRates, TaxSector};
-
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 
 fn default_transport_rng_state() -> u64 {
     // Fixed non-zero seed so deterministic tests and legacy saves start from a stable baseline.
@@ -52,23 +51,30 @@ impl Default for DisasterConfig {
 
 // ── Power Plant State ────────────────────────────────────────────────────────
 
-#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+fn plant_efficiency_default() -> f32 {
+    1.0
+}
+
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PlantState {
     pub age_months: u32,
     pub max_life_months: u32,
     pub capacity_mw: u32,
+    /// 1.0 = full output, 0.0 = no output. Degrades to 0 over the last 12 months of life.
+    #[serde(default = "plant_efficiency_default")]
+    pub efficiency: f32,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct DepotState {
+    pub trips_used: u32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub enum UnlockMode {
+    #[default]
     Historical,
     Sandbox,
-}
-
-impl Default for UnlockMode {
-    fn default() -> Self {
-        Self::Historical
-    }
 }
 
 // ── SimState ──────────────────────────────────────────────────────────────────
@@ -88,19 +94,19 @@ pub struct SimState {
     pub demand_ind: f32,
     pub tax_rates: TaxRates,
     #[serde(default)]
-    pub demand_history_res: Vec<f32>,
+    pub demand_history_res: VecDeque<f32>,
     #[serde(default)]
-    pub demand_history_comm: Vec<f32>,
+    pub demand_history_comm: VecDeque<f32>,
     #[serde(default)]
-    pub demand_history_ind: Vec<f32>,
+    pub demand_history_ind: VecDeque<f32>,
     #[serde(default)]
-    pub treasury_history: Vec<i64>,
+    pub treasury_history: VecDeque<i64>,
     #[serde(default)]
-    pub population_history: Vec<u64>,
+    pub population_history: VecDeque<u64>,
     #[serde(default)]
-    pub income_history: Vec<i64>,
+    pub income_history: VecDeque<i64>,
     #[serde(default)]
-    pub power_balance_history: Vec<i32>,
+    pub power_balance_history: VecDeque<i32>,
     #[serde(default)]
     pub disasters: DisasterConfig,
     #[serde(default)]
@@ -119,6 +125,10 @@ pub struct SimState {
     pub water_consumed_units: u32,
     #[serde(default = "default_transport_rng_state")]
     pub transport_rng_state: u64,
+    #[serde(default = "default_transport_rng_state")]
+    pub disaster_rng_state: u64,
+    #[serde(default = "default_transport_rng_state")]
+    pub growth_rng_state: u64,
     // Monthly transport summaries are persisted mainly for UI/debugging and to make save/load
     // roundtrips exact; they are recalculated every simulation tick.
     #[serde(default)]
@@ -139,6 +149,8 @@ pub struct SimState {
     pub unlock_mode: UnlockMode,
     #[serde(default, with = "plant_map_serde")]
     pub plants: HashMap<(usize, usize), PlantState>,
+    #[serde(default, with = "depot_map_serde")]
+    pub depots: HashMap<(usize, usize), DepotState>,
 }
 
 impl Default for SimState {
@@ -156,13 +168,13 @@ impl Default for SimState {
             demand_comm: 0.5,
             demand_ind: 0.4,
             tax_rates: TaxRates::default(),
-            demand_history_res: Vec::new(),
-            demand_history_comm: Vec::new(),
-            demand_history_ind: Vec::new(),
-            treasury_history: Vec::new(),
-            population_history: Vec::new(),
-            income_history: Vec::new(),
-            power_balance_history: Vec::new(),
+            demand_history_res: VecDeque::new(),
+            demand_history_comm: VecDeque::new(),
+            demand_history_ind: VecDeque::new(),
+            treasury_history: VecDeque::new(),
+            population_history: VecDeque::new(),
+            income_history: VecDeque::new(),
+            power_balance_history: VecDeque::new(),
             disasters: DisasterConfig::default(),
             last_income: 0,
             last_breakdown: MaintenanceBreakdown::default(),
@@ -171,6 +183,8 @@ impl Default for SimState {
             water_produced_units: 0,
             water_consumed_units: 0,
             transport_rng_state: default_transport_rng_state(),
+            disaster_rng_state: default_transport_rng_state(),
+            growth_rng_state: default_transport_rng_state(),
             trip_attempts: 0,
             trip_successes: 0,
             trip_failures: 0,
@@ -180,6 +194,7 @@ impl Default for SimState {
             subway_share: 0,
             unlock_mode: UnlockMode::default(),
             plants: HashMap::new(),
+            depots: HashMap::new(),
         }
     }
 }
@@ -221,6 +236,50 @@ mod plant_map_serde {
         D: Deserializer<'de>,
     {
         let entries = Vec::<PlantEntry>::deserialize(deserializer)?;
+        Ok(entries
+            .into_iter()
+            .map(|entry| ((entry.x, entry.y), entry.state))
+            .collect())
+    }
+}
+
+mod depot_map_serde {
+    use super::DepotState;
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+    use std::collections::HashMap;
+
+    #[derive(Serialize, Deserialize)]
+    struct DepotEntry {
+        x: usize,
+        y: usize,
+        state: DepotState,
+    }
+
+    pub fn serialize<S>(
+        depots: &HashMap<(usize, usize), DepotState>,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let entries: Vec<DepotEntry> = depots
+            .iter()
+            .map(|(&(x, y), state)| DepotEntry {
+                x,
+                y,
+                state: state.clone(),
+            })
+            .collect();
+        entries.serialize(serializer)
+    }
+
+    pub fn deserialize<'de, D>(
+        deserializer: D,
+    ) -> Result<HashMap<(usize, usize), DepotState>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let entries = Vec::<DepotEntry>::deserialize(deserializer)?;
         Ok(entries
             .into_iter()
             .map(|entry| ((entry.x, entry.y), entry.state))

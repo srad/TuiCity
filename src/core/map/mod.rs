@@ -158,6 +158,17 @@ impl Map {
         self.overlays[idx] = overlay;
     }
 
+    pub(crate) fn reset_service_overlays(&mut self) {
+        for overlay in &mut self.overlays {
+            overlay.power_level = 0;
+            overlay.water_service = 0;
+            overlay.trip_success = false;
+            overlay.trip_mode = None;
+            overlay.trip_failure = None;
+            overlay.trip_cost = 0;
+        }
+    }
+
     pub fn terrain_at(&self, x: usize, y: usize) -> TerrainTile {
         self.terrain[self.idx(x, y)]
     }
@@ -439,6 +450,7 @@ mod tests {
                 age_months: 0,
                 max_life_months: 600,
                 capacity_mw: 500,
+                efficiency: 1.0,
             },
         );
 
@@ -499,5 +511,75 @@ mod tests {
 
         assert_eq!(map.get(0, 0), Tile::PowerLine);
         assert_eq!(map.surface_lot_tile(0, 0), Tile::ZoneRes);
+    }
+
+    #[test]
+    fn reset_service_overlays_clears_service_fields() {
+        let mut map = Map::new(3, 3);
+        let idx = map.idx(1, 1);
+        map.overlays[idx].power_level = 200;
+        map.overlays[idx].water_service = 150;
+        map.overlays[idx].trip_success = true;
+        map.overlays[idx].trip_cost = 50;
+        map.overlays[idx].pollution = 100;
+        map.overlays[idx].crime = 80;
+        map.overlays[idx].fire_risk = 60;
+        map.overlays[idx].neglected_months = 10;
+        map.overlays[idx].on_fire = true;
+
+        map.reset_service_overlays();
+
+        assert_eq!(
+            map.overlays[idx].power_level, 0,
+            "power_level should be cleared"
+        );
+        assert_eq!(
+            map.overlays[idx].water_service, 0,
+            "water_service should be cleared"
+        );
+        assert!(
+            !map.overlays[idx].trip_success,
+            "trip_success should be cleared"
+        );
+        assert_eq!(
+            map.overlays[idx].trip_mode, None,
+            "trip_mode should be None"
+        );
+        assert_eq!(
+            map.overlays[idx].trip_failure, None,
+            "trip_failure should be None"
+        );
+        assert_eq!(
+            map.overlays[idx].trip_cost, 0,
+            "trip_cost should be cleared"
+        );
+    }
+
+    #[test]
+    fn reset_service_overlays_does_not_clear_pollution_crime_fire_risk() {
+        let mut map = Map::new(3, 3);
+        let idx = map.idx(1, 1);
+        map.overlays[idx].pollution = 100;
+        map.overlays[idx].crime = 80;
+        map.overlays[idx].fire_risk = 60;
+        map.overlays[idx].neglected_months = 10;
+        map.overlays[idx].on_fire = true;
+
+        map.reset_service_overlays();
+
+        assert_eq!(
+            map.overlays[idx].pollution, 100,
+            "pollution must NOT be cleared"
+        );
+        assert_eq!(map.overlays[idx].crime, 80, "crime must NOT be cleared");
+        assert_eq!(
+            map.overlays[idx].fire_risk, 60,
+            "fire_risk must NOT be cleared"
+        );
+        assert_eq!(
+            map.overlays[idx].neglected_months, 10,
+            "neglected_months must NOT be cleared"
+        );
+        assert!(map.overlays[idx].on_fire, "on_fire must NOT be cleared");
     }
 }

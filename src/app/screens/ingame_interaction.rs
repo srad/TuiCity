@@ -454,7 +454,6 @@ impl InGameScreen {
                 drop(engine);
                 self.place_current_tool(context);
             }
-            return;
         }
     }
 
@@ -479,10 +478,10 @@ impl InGameScreen {
                 }
 
                 // Window Dragging (Title Bar)
-                if hit == crate::ui::runtime::WindowHit::TitleBar {
-                    if self.desktop.begin_drag(win_id, col, row) {
-                        return true;
-                    }
+                if hit == crate::ui::runtime::WindowHit::TitleBar
+                    && self.desktop.begin_drag(win_id, col, row)
+                {
+                    return true;
                 }
 
                 // Handle other hits (Close, Scroll, etc.)
@@ -519,7 +518,8 @@ impl InGameScreen {
         }
 
         // 4. Fallback to Map Interactions (Zoning, etc.)
-        if Tool::uses_line_drag(self.current_tool) && self.ui_areas.map.viewport.contains(col, row) {
+        if Tool::uses_line_drag(self.current_tool) && self.ui_areas.map.viewport.contains(col, row)
+        {
             let (mx, my) = self.screen_to_map_clamped(col, row, context);
             self.camera.cursor_x = mx;
             self.camera.cursor_y = my;

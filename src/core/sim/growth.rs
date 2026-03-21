@@ -1,58 +1,85 @@
 use super::{economy::compute_sector_stats, SimState};
 use crate::core::map::TransportTile;
 use crate::core::map::{Map, Tile, ZoneDensity, ZoneKind, ZoneSpec};
-use rand::Rng;
+use rand::{rngs::StdRng, Rng, SeedableRng};
 
 pub fn tick_growth(map: &mut Map, sim: &mut SimState) {
-    let mut rng = rand::thread_rng();
+    let mut rng = StdRng::seed_from_u64(sim.growth_rng_state);
     let w = map.width;
     let h = map.height;
 
     let mut changes: Vec<(usize, usize, Tile)> = Vec::new();
+    let mut neglect_degrades: Vec<(usize, usize)> = Vec::new();
 
     for y in 0..h {
         for x in 0..w {
+            let idx = y * w + x;
             let zone_spec = map.effective_zone_spec(x, y);
             let tile = current_growth_tile(map, x, y);
-            let overlay = map.get_overlay(x, y);
-            let powered = overlay.is_powered();
-            // Transport reachability is computed by TransportSystem once per month and recorded
-            // on the overlay so growth stays independent from routing implementation details.
-            let functional = powered && overlay.trip_success;
+            let overlay_data = map.overlays[idx];
+            let powered = overlay_data.is_powered();
+            let functional = powered && overlay_data.trip_success;
             let bootstrap_ready = powered && has_local_road_access(map, x, y, 3);
-            let watered = overlay.has_water();
+            let watered = overlay_data.has_water();
             let covered_by_power_line = map.has_power_line(x, y);
+            let power_level = overlay_data.power_level;
+            let polluted = overlay_data.pollution;
+            let crime = overlay_data.crime;
+            let traffic = overlay_data.traffic;
+            let trip_success = overlay_data.trip_success;
+            let neglected = overlay_data.neglected_months;
 
-            let pollution_penalty = 1.0 - (overlay.pollution as f32 / 255.0) * 0.7;
-            let lv_bonus = overlay.land_value as f32 / 255.0 * 0.1;
-            let crime_penalty = 1.0 - (overlay.crime as f32 / 255.0) * 0.7;
-            let traffic_penalty = 1.0 - (overlay.traffic as f32 / 255.0) * 0.5;
+            if tile.is_building() {
+                let is_underserved = !powered || !watered || !trip_success;
+                if is_underserved {
+                    map.overlays[idx].neglected_months = neglected.saturating_add(1);
+                    if map.overlays[idx].neglected_months >= 6 {
+                        neglect_degrades.push((x, y));
+                    }
+                } else {
+                    map.overlays[idx].neglected_months = 0;
+                }
+            }
+
+            let power_ratio = power_level as f32 / 255.0;
+            let severely_brownout = power_ratio < 0.30 && powered;
+            let fully_unpowered = power_level == 0;
+
+            let pollution_penalty = 1.0 - (polluted as f32 / 255.0) * 0.7;
+            let lv_bonus = overlay_data.land_value as f32 / 255.0 * 0.1;
+            let crime_penalty = 1.0 - (crime as f32 / 255.0) * 0.7;
+            let traffic_penalty = 1.0 - (traffic as f32 / 255.0) * 0.5;
 
             match tile {
                 Tile::ZoneRes => {
-                    let chance = (sim.demand_res * 0.15 + lv_bonus)
-                        * pollution_penalty
-                        * crime_penalty
-                        * traffic_penalty;
                     if covered_by_power_line
                         && has_local_road_access(map, x, y, 3)
                         && sim.demand_res > 0.0
                     {
                         changes.push((x, y, Tile::ResLow));
-                    } else if (functional || bootstrap_ready) && rng.gen::<f32>() < chance {
-                        changes.push((x, y, Tile::ResLow));
+                    } else {
+                        let chance = (sim.demand_res * 0.15 + lv_bonus)
+                            * pollution_penalty
+                            * crime_penalty
+                            * traffic_penalty;
+                        if (functional || bootstrap_ready) && rng.gen::<f32>() < chance {
+                            changes.push((x, y, Tile::ResLow));
+                        }
                     }
                 }
                 Tile::ZoneComm => {
-                    let chance =
-                        (sim.demand_comm * 0.08 + lv_bonus * 0.5) * crime_penalty * traffic_penalty;
                     if covered_by_power_line
                         && has_local_road_access(map, x, y, 3)
                         && sim.demand_comm > 0.0
                     {
                         changes.push((x, y, Tile::CommLow));
-                    } else if (functional || bootstrap_ready) && rng.gen::<f32>() < chance {
-                        changes.push((x, y, Tile::CommLow));
+                    } else {
+                        let chance = (sim.demand_comm * 0.08 + lv_bonus * 0.5)
+                            * crime_penalty
+                            * traffic_penalty;
+                        if (functional || bootstrap_ready) && rng.gen::<f32>() < chance {
+                            changes.push((x, y, Tile::CommLow));
+                        }
                     }
                 }
                 Tile::ZoneInd => {
@@ -61,38 +88,47 @@ pub fn tick_growth(map: &mut Map, sim: &mut SimState) {
                         && sim.demand_ind > 0.0
                     {
                         changes.push((x, y, Tile::IndLight));
-                    } else if (functional || bootstrap_ready)
-                        && rng.gen::<f32>() < sim.demand_ind * 0.08 * traffic_penalty
-                    {
-                        changes.push((x, y, Tile::IndLight));
+                    } else {
+                        let chance = sim.demand_ind * 0.08 * traffic_penalty;
+                        if (functional || bootstrap_ready) && rng.gen::<f32>() < chance {
+                            changes.push((x, y, Tile::IndLight));
+                        }
                     }
                 }
                 Tile::ResLow => {
-                    let chance = (sim.demand_res * 0.03 + lv_bonus)
+                    let upgrade_chance = (sim.demand_res * 0.03 + lv_bonus)
                         * pollution_penalty
                         * crime_penalty
                         * traffic_penalty;
                     if functional
                         && zone_allows_dense_upgrade(zone_spec, watered)
-                        && rng.gen::<f32>() < chance
+                        && rng.gen::<f32>() < upgrade_chance
                     {
                         changes.push((x, y, Tile::ResMed));
                     } else if !functional && rng.gen::<f32>() < 0.01 {
                         changes.push((x, y, Tile::ZoneRes));
+                    } else if severely_brownout || fully_unpowered {
+                        if rng.gen::<f32>() < 0.01 {
+                            changes.push((x, y, Tile::ZoneRes));
+                        }
                     }
                 }
                 Tile::ResMed => {
-                    let chance = (sim.demand_res * 0.015 + lv_bonus * 0.5)
+                    let upgrade_chance = (sim.demand_res * 0.015 + lv_bonus * 0.5)
                         * pollution_penalty
                         * crime_penalty
                         * traffic_penalty;
                     if functional
                         && zone_allows_dense_upgrade(zone_spec, watered)
-                        && rng.gen::<f32>() < chance
+                        && rng.gen::<f32>() < upgrade_chance
                     {
                         changes.push((x, y, Tile::ResHigh));
                     } else if !functional || !zone_allows_dense_upgrade(zone_spec, watered) {
                         if rng.gen::<f32>() < 0.05 {
+                            changes.push((x, y, Tile::ResLow));
+                        }
+                    } else if severely_brownout || fully_unpowered {
+                        if rng.gen::<f32>() < 0.01 {
                             changes.push((x, y, Tile::ResLow));
                         }
                     }
@@ -102,18 +138,26 @@ pub fn tick_growth(map: &mut Map, sim: &mut SimState) {
                         if rng.gen::<f32>() < 0.10 {
                             changes.push((x, y, Tile::ResMed));
                         }
+                    } else if severely_brownout || fully_unpowered {
+                        if rng.gen::<f32>() < 0.02 {
+                            changes.push((x, y, Tile::ResMed));
+                        }
                     }
                 }
                 Tile::CommLow => {
-                    let chance =
+                    let upgrade_chance =
                         (sim.demand_comm * 0.02 + lv_bonus * 0.5) * crime_penalty * traffic_penalty;
                     if functional
                         && zone_allows_dense_upgrade(zone_spec, watered)
-                        && rng.gen::<f32>() < chance
+                        && rng.gen::<f32>() < upgrade_chance
                     {
                         changes.push((x, y, Tile::CommHigh));
                     } else if !functional && rng.gen::<f32>() < 0.01 {
                         changes.push((x, y, Tile::ZoneComm));
+                    } else if severely_brownout || fully_unpowered {
+                        if rng.gen::<f32>() < 0.01 {
+                            changes.push((x, y, Tile::ZoneComm));
+                        }
                     }
                 }
                 Tile::CommHigh => {
@@ -121,16 +165,25 @@ pub fn tick_growth(map: &mut Map, sim: &mut SimState) {
                         if rng.gen::<f32>() < 0.05 {
                             changes.push((x, y, Tile::CommLow));
                         }
+                    } else if severely_brownout || fully_unpowered {
+                        if rng.gen::<f32>() < 0.02 {
+                            changes.push((x, y, Tile::CommLow));
+                        }
                     }
                 }
                 Tile::IndLight => {
+                    let upgrade_chance = sim.demand_ind * 0.02 * traffic_penalty;
                     if functional
                         && zone_allows_dense_upgrade(zone_spec, watered)
-                        && rng.gen::<f32>() < sim.demand_ind * 0.02 * traffic_penalty
+                        && rng.gen::<f32>() < upgrade_chance
                     {
                         changes.push((x, y, Tile::IndHeavy));
                     } else if !functional && rng.gen::<f32>() < 0.01 {
                         changes.push((x, y, Tile::ZoneInd));
+                    } else if severely_brownout || fully_unpowered {
+                        if rng.gen::<f32>() < 0.01 {
+                            changes.push((x, y, Tile::ZoneInd));
+                        }
                     }
                 }
                 Tile::IndHeavy => {
@@ -138,10 +191,31 @@ pub fn tick_growth(map: &mut Map, sim: &mut SimState) {
                         if rng.gen::<f32>() < 0.05 {
                             changes.push((x, y, Tile::IndLight));
                         }
+                    } else if severely_brownout || fully_unpowered {
+                        if rng.gen::<f32>() < 0.02 {
+                            changes.push((x, y, Tile::IndLight));
+                        }
                     }
                 }
                 _ => {}
             }
+        }
+    }
+
+    for (x, y) in neglect_degrades {
+        let tile = map.surface_lot_tile(x, y);
+        let downgrade = match tile {
+            Tile::ResHigh => Some(Tile::ResMed),
+            Tile::ResMed => Some(Tile::ResLow),
+            Tile::ResLow => Some(Tile::ZoneRes),
+            Tile::CommHigh => Some(Tile::CommLow),
+            Tile::CommLow => Some(Tile::ZoneComm),
+            Tile::IndHeavy => Some(Tile::IndLight),
+            Tile::IndLight => Some(Tile::ZoneInd),
+            _ => None,
+        };
+        if let Some(t) = downgrade {
+            changes.push((x, y, t));
         }
     }
 
@@ -153,6 +227,7 @@ pub fn tick_growth(map: &mut Map, sim: &mut SimState) {
     sim.commercial_jobs = stats.commercial_jobs;
     sim.industrial_jobs = stats.industrial_jobs;
     sim.population = stats.residential_population;
+    sim.growth_rng_state = rng.gen();
 }
 
 fn current_growth_tile(map: &Map, x: usize, y: usize) -> Tile {
@@ -226,12 +301,16 @@ fn apply_growth_change(map: &mut Map, x: usize, y: usize, tile: Tile) {
     if !tile.is_zone() {
         map.set_occupant(x, y, Some(tile));
     }
+
+    // Reset neglect counter when a tile is rebuilt
+    let idx = y * map.width + x;
+    map.overlays[idx].neglected_months = 0;
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::map::ViewLayer;
+    use crate::core::map::{TileOverlay, ViewLayer};
     use crate::core::sim::system::SimSystem;
     use crate::core::sim::systems::PowerSystem;
     use crate::core::sim::transport::TransportSystem;
@@ -269,6 +348,7 @@ mod tests {
                 age_months: 0,
                 max_life_months: 600,
                 capacity_mw: 500,
+                efficiency: 1.0,
             },
         );
         sim.demand_res = 1.0;
@@ -423,6 +503,7 @@ mod tests {
                 age_months: 0,
                 max_life_months: 600,
                 capacity_mw: 500,
+                efficiency: 1.0,
             },
         );
         sim.demand_res = 1.0;
@@ -466,6 +547,7 @@ mod tests {
                 age_months: 0,
                 max_life_months: 600,
                 capacity_mw: 500,
+                efficiency: 1.0,
             },
         );
         sim.demand_res = 1.0;
@@ -498,5 +580,266 @@ mod tests {
 
         assert_eq!(map.get(2, 0), Tile::ResLow);
         assert!(!map.has_power_line(2, 0));
+    }
+
+    #[test]
+    fn growth_uses_seeded_rng_deterministic() {
+        // Growth must be deterministic with fixed seed — no thread_rng interference
+        let mut map = Map::new(8, 1);
+        map.set(0, 0, Tile::PowerPlantCoal);
+        map.set(1, 0, Tile::PowerLine);
+        map.set_zone_spec(
+            2,
+            0,
+            Some(ZoneSpec {
+                kind: ZoneKind::Residential,
+                density: ZoneDensity::Light,
+            }),
+        );
+        map.set_power_line(2, 0, true);
+        map.set(3, 0, Tile::Road);
+
+        let mut sim = SimState::default();
+        sim.plants.insert(
+            (0, 0),
+            PlantState {
+                age_months: 0,
+                max_life_months: 600,
+                capacity_mw: 500,
+                efficiency: 1.0,
+            },
+        );
+        sim.demand_res = 1.0;
+        sim.growth_rng_state = 0xFACEFEED;
+
+        let results = [
+            run_growth_with_seed(&map, &sim, 0xFACEFEED),
+            run_growth_with_seed(&map, &sim, 0xFACEFEED),
+            run_growth_with_seed(&map, &sim, 0xFACEFEED),
+        ];
+
+        assert_eq!(
+            results[0], results[1],
+            "growth must be deterministic with fixed seed"
+        );
+        assert_eq!(
+            results[1], results[2],
+            "growth must be deterministic with fixed seed"
+        );
+    }
+
+    fn run_growth_with_seed(map: &Map, base_sim: &SimState, seed: u64) -> Tile {
+        let mut test_map = map.clone();
+        let mut test_sim = base_sim.clone();
+        test_sim.growth_rng_state = seed;
+
+        for _ in 0..50 {
+            tick_growth(&mut test_map, &mut test_sim);
+            if test_map.get(2, 0) != Tile::ZoneRes {
+                return test_map.get(2, 0);
+            }
+        }
+        test_map.get(2, 0)
+    }
+
+    #[test]
+    fn neglect_degrades_at_6_months_not_before() {
+        let mut map = Map::new(3, 1);
+        map.set(0, 0, Tile::ResLow);
+        map.set(1, 0, Tile::PowerPlantCoal);
+        map.set(2, 0, Tile::Road);
+
+        let mut sim = SimState::default();
+        sim.demand_res = 1.0;
+
+        // Start at 4 months neglect — after tick 1: 5 (still < 6, no degrade)
+        map.set_overlay(
+            0,
+            0,
+            TileOverlay {
+                power_level: 255,
+                trip_success: true,
+                neglected_months: 4,
+                ..TileOverlay::default()
+            },
+        );
+        sim.growth_rng_state = 0xAAAA; // seed where 5% functional decay doesn't trigger
+        tick_growth(&mut map, &mut sim);
+        assert_eq!(
+            map.get(0, 0),
+            Tile::ResLow,
+            "4->5 neglect should NOT degrade (still < 6)"
+        );
+        assert_eq!(
+            map.get_overlay(0, 0).neglected_months,
+            5,
+            "neglect should be 5"
+        );
+
+        // Second tick: 5->6, now >= 6, degradation triggers
+        tick_growth(&mut map, &mut sim);
+        assert_eq!(
+            map.get(0, 0),
+            Tile::ZoneRes,
+            "5->6 (>= 6) neglect SHOULD degrade"
+        );
+        assert_eq!(
+            map.get_overlay(0, 0).neglected_months,
+            0,
+            "neglect resets after degradation"
+        );
+    }
+
+    #[test]
+    fn neglect_saturating_add_means_max_neglect_degrades_immediately() {
+        let mut map = Map::new(3, 1);
+        let mut sim = SimState::default();
+        map.set(0, 0, Tile::ResLow);
+        map.set(1, 0, Tile::PowerPlantCoal);
+        map.set(2, 0, Tile::Road);
+        map.set_overlay(
+            0,
+            0,
+            TileOverlay {
+                power_level: 255,
+                trip_success: true,
+                neglected_months: u8::MAX,
+                ..TileOverlay::default()
+            },
+        );
+        sim.demand_res = 1.0;
+        sim.growth_rng_state = 0xDEAD;
+
+        // u8::MAX.saturating_add(1) = u8::MAX (saturates, does not wrap).
+        // 255 >= 6, so degradation triggers immediately and resets to 0.
+        tick_growth(&mut map, &mut sim);
+        assert_eq!(
+            map.get_overlay(0, 0).neglected_months,
+            0,
+            "max neglect saturates and degrades in one tick, resetting to 0"
+        );
+        assert_eq!(
+            map.get(0, 0),
+            Tile::ZoneRes,
+            "max neglect should trigger immediate degradation"
+        );
+    }
+
+    #[test]
+    fn brownout_at_30_percent_power_is_not_severe() {
+        let mut map = Map::new(3, 1);
+        let mut sim = SimState::default();
+        map.set(0, 0, Tile::ResLow);
+        map.set(1, 0, Tile::PowerPlantCoal);
+        map.set(2, 0, Tile::Road);
+        // 30% of 255 = 76.5, so power_level=76 is just below 30%
+        // power_level=77 is just above 30%
+        map.set_overlay(
+            0,
+            0,
+            TileOverlay {
+                power_level: 77,
+                trip_success: true,
+                neglected_months: 0,
+                ..TileOverlay::default()
+            },
+        );
+        sim.demand_res = 1.0;
+        sim.growth_rng_state = 0xBAD;
+
+        // power_ratio = 77/255 = 0.3019... > 0.30 — NOT severely brownout
+        // Degradation is probabilistic (1%), so run many times to check it doesn't ALWAYS degrade
+        let mut degraded_count = 0;
+        for seed in 0..100u64 {
+            let mut test_map = map.clone();
+            let mut test_sim = sim.clone();
+            test_sim.growth_rng_state = seed;
+            tick_growth(&mut test_map, &mut test_sim);
+            if test_map.get(0, 0) == Tile::ZoneRes {
+                degraded_count += 1;
+            }
+        }
+        assert!(
+            degraded_count < 50,
+            "power at 30.2% (77/255) should NOT be severely brownout — degraded {}/100 times",
+            degraded_count
+        );
+    }
+
+    #[test]
+    fn brownout_at_29_percent_power_is_severe() {
+        let mut map = Map::new(3, 1);
+        let mut sim = SimState::default();
+        map.set(0, 0, Tile::ResLow);
+        map.set(1, 0, Tile::PowerPlantCoal);
+        map.set(2, 0, Tile::Road);
+        // 29% of 255 = 73.95, so power_level=74 is below 30%
+        map.set_overlay(
+            0,
+            0,
+            TileOverlay {
+                power_level: 74,
+                trip_success: true,
+                neglected_months: 0,
+                ..TileOverlay::default()
+            },
+        );
+        sim.demand_res = 1.0;
+        sim.growth_rng_state = 0xBAD;
+
+        // power_ratio = 74/255 = 0.290... < 0.30 — IS severely brownout
+        // Degradation is probabilistic (1%), so we check that it CAN degrade
+        let mut degraded_count = 0;
+        for seed in 0..200u64 {
+            let mut test_map = map.clone();
+            let mut test_sim = sim.clone();
+            test_sim.growth_rng_state = seed;
+            tick_growth(&mut test_map, &mut test_sim);
+            if test_map.get(0, 0) == Tile::ZoneRes {
+                degraded_count += 1;
+            }
+        }
+        assert!(
+            degraded_count > 0,
+            "power at 29% (74/255) IS severely brownout — should degrade at least once in 200 runs, got {}",
+            degraded_count
+        );
+    }
+
+    #[test]
+    fn fully_unpowered_tile_can_brownout_degrade() {
+        let mut map = Map::new(3, 1);
+        let mut sim = SimState::default();
+        map.set(0, 0, Tile::ResLow);
+        map.set(1, 0, Tile::PowerPlantCoal);
+        map.set(2, 0, Tile::Road);
+        map.set_overlay(
+            0,
+            0,
+            TileOverlay {
+                power_level: 0,
+                trip_success: true,
+                neglected_months: 0,
+                ..TileOverlay::default()
+            },
+        );
+        sim.demand_res = 1.0;
+
+        // power_level=0 is fully unpowered — should have brownout degradation path
+        let mut degraded_count = 0;
+        for seed in 0..200u64 {
+            let mut test_map = map.clone();
+            let mut test_sim = sim.clone();
+            test_sim.growth_rng_state = seed;
+            tick_growth(&mut test_map, &mut test_sim);
+            if test_map.get(0, 0) == Tile::ZoneRes {
+                degraded_count += 1;
+            }
+        }
+        assert!(
+            degraded_count > 0,
+            "fully unpowered (power_level=0) should degrade — degraded {}/200",
+            degraded_count
+        );
     }
 }

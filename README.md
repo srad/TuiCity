@@ -336,7 +336,7 @@ src/
 
 | # | System | What it does |
 |---|--------|--------------|
-| 1 | `PowerSystem` | Ages plants, spreads power SC2000-style, and applies connected-network brownouts |
+| 1 | `PowerSystem` | Ages plants, decays efficiency in final 12 months, spreads power with distance decay, and explodes expired plants |
 | 2 | `WaterSystem` | Produces water from powered utilities, spreads underground service, and applies connected-network shortages |
 | 3 | `TransportSystem` | Builds network caches, simulates trips, chooses modes, and accumulates road traffic |
 | 4 | `PollutionSystem` | Radial diffusion from industry and traffic; parks scrub nearby pollution |
@@ -347,7 +347,7 @@ src/
 | 9 | `FireSpreadSystem` | Rolls spontaneous ignition on high-risk buildings; spreads to neighbours; damaged buildings downgrade |
 | 10 | `FloodSystem` | Month 6 only (10% chance): expands water tiles one cell outward |
 | 11 | `TornadoSystem` | Month 3 only (2% chance): bulldozes a random 3-tile-wide path across the map |
-| 12 | `FinanceSystem` | Charges monthly maintenance; collects annual tax (month 1); recalculates demand ratios |
+| 12 | `FinanceSystem` | Charges monthly maintenance; collects 1/12th annual tax each month; recalculates demand ratios |
 | 13 | `HistorySystem` | Appends demand, treasury, population, income, and power balance to rolling buffers |
 
 ### Rendering Pipeline
@@ -379,6 +379,11 @@ src/
 4. **Optionally add an overlay** if the system produces per-tile data worth visualising: add a field to `TileOverlay` in `src/core/map/tile.rs` and handle the new overlay mode in `src/ui/game/map_view.rs` and `src/ui/theme.rs`.
 5. **Add regression tests** for edge cases and forbidden states. Complex simulation bugs are much easier to prevent with focused tests than to debug after the fact.
 
+### Related Documents
+
+- **RULES.md** — Full simulation mechanics reference (formulas, constants, capacities, thresholds)
+- **CHANGELOG.md** — Detailed history of changes and bug fixes
+
 ### Dependencies
 
 | Crate | Version | Purpose |
@@ -391,14 +396,7 @@ src/
 
 ### Todos
 
-- **Transport authenticity**: decide how far to push SC2000-style transit choice rules beyond the current simplified model. Open questions: failed-mode memory, rider split heuristics, and whether buses should get a richer simulation than depot-to-depot service on roads.
-- **Statistics coverage**: extend the statistics window to show water production/consumption, trip success rate, and transport mode shares so monthly simulation output is easier to audit.
-- **Testing depth**: keep expanding regression tests around layered interactions, especially binary save/load coverage, underground editing edge cases, and multi-system failures where power, water, and transport all interact.
-- **Map evolution**: decide whether to add more SC2000 terrain/infrastructure behavior such as bridges, tunnels, elevation effects, seaports, and airports, or keep the current flatter city model for clarity.
-- **Budget and policy depth**: decide how much of SC2000's budget/ordinance model is worth adding versus staying with the current simpler maintenance-and-tax approach.
-- **Utility/transit UX**: consider whether the UI should surface more simulation diagnostics directly in inspect/tool windows, or keep the current lighter presentation and rely on overlays and tests for debugging.
-- **Historical unlocks**: decide whether to expose unlock mode and year-based tool progression more visibly in the UI, including sandbox overrides inside in-game settings.
-
----
+- **Historical unlocks**: decide whether to expose unlock mode and year-based tool progression more visibly in the UI, including sandbox overrides inside in-game settings
+- **Testing depth**: keep expanding regression tests around layered interactions, especially binary save/load coverage, underground editing edge cases, and multi-system failures where power, water, and transport all interact
 
 *TuiCity 2000 is a hobby project. Contributions, bug reports, and feature requests are welcome via GitHub Issues.*

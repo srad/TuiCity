@@ -1,11 +1,11 @@
+use rand::seq::SliceRandom;
+use rodio::{Decoder, OutputStream, Sink};
+use std::fs::File;
+use std::io::BufReader;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{channel, Sender};
 use std::thread;
 use std::time::Duration;
-use rand::seq::SliceRandom;
-use rodio::{OutputStream, Sink, Decoder};
-use std::fs::File;
-use std::io::BufReader;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum MusicCue {
@@ -80,12 +80,10 @@ fn asset_path(relative: &str) -> Option<PathBuf> {
         }),
     ];
 
-    for candidate in candidates.into_iter().flatten() {
-        if candidate.exists() {
-            return Some(candidate);
-        }
-    }
-    None
+    candidates
+        .into_iter()
+        .flatten()
+        .find(|candidate| candidate.exists())
 }
 
 enum AudioCommand {
@@ -115,7 +113,7 @@ impl AudioBackend {
             };
 
             let mut player = AudioPlayer::new(enabled, sink);
-            
+
             loop {
                 match rx.recv_timeout(Duration::from_millis(200)) {
                     Ok(AudioCommand::EnsurePlaying) => {
@@ -182,7 +180,11 @@ impl AudioPlayer {
                         let path = entry.path();
                         if path.is_dir() {
                             dirs.push(path);
-                        } else if let Some(ext) = path.extension().and_then(|e| e.to_str()).map(|e| e.to_ascii_lowercase()) {
+                        } else if let Some(ext) = path
+                            .extension()
+                            .and_then(|e| e.to_str())
+                            .map(|e| e.to_ascii_lowercase())
+                        {
                             if ext == "mp3" {
                                 paths.push(path);
                             }
@@ -208,22 +210,20 @@ impl AudioPlayer {
 
         if !self.playing {
             self.play_current();
-        } else {
-            if self.sink.empty() {
-                self.next_track();
-            } else if self.sink.is_paused() {
-                self.sink.play();
-            }
+        } else if self.sink.empty() {
+            self.next_track();
+        } else if self.sink.is_paused() {
+            self.sink.play();
         }
     }
 
     fn play_current(&mut self) {
         self.sink.stop(); // Clear the sink
-        
+
         if self.playlist.is_empty() {
             return;
         }
-        
+
         let path = &self.playlist[self.current_track];
         if let Ok(file) = File::open(path) {
             let reader = BufReader::new(file);
