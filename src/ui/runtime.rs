@@ -93,8 +93,22 @@ impl ToolChooserKind {
                 Tool::WaterTreatment,
                 Tool::Desalination,
             ],
-            ToolChooserKind::PowerPlants => &[Tool::PowerPlantCoal, Tool::PowerPlantGas],
-            ToolChooserKind::Buildings => &[Tool::Park, Tool::Police, Tool::Fire],
+            ToolChooserKind::PowerPlants => &[
+                Tool::PowerPlantCoal,
+                Tool::PowerPlantGas,
+                Tool::PowerPlantNuclear,
+                Tool::PowerPlantWind,
+                Tool::PowerPlantSolar,
+            ],
+            ToolChooserKind::Buildings => &[
+                Tool::Park,
+                Tool::Police,
+                Tool::Fire,
+                Tool::Hospital,
+                Tool::School,
+                Tool::Stadium,
+                Tool::Library,
+            ],
         }
     }
 
@@ -120,8 +134,18 @@ impl ToolChooserKind {
             | Tool::WaterTower
             | Tool::WaterTreatment
             | Tool::Desalination => Some(ToolChooserKind::Utilities),
-            Tool::PowerPlantCoal | Tool::PowerPlantGas => Some(ToolChooserKind::PowerPlants),
-            Tool::Park | Tool::Police | Tool::Fire => Some(ToolChooserKind::Buildings),
+            Tool::PowerPlantCoal
+            | Tool::PowerPlantGas
+            | Tool::PowerPlantNuclear
+            | Tool::PowerPlantWind
+            | Tool::PowerPlantSolar => Some(ToolChooserKind::PowerPlants),
+            Tool::Park
+            | Tool::Police
+            | Tool::Fire
+            | Tool::Hospital
+            | Tool::School
+            | Tool::Stadium
+            | Tool::Library => Some(ToolChooserKind::Buildings),
             _ => None,
         }
     }
@@ -151,7 +175,7 @@ pub struct UiAreas {
     pub layer_surface_btn: ClickArea,
     pub layer_underground_btn: ClickArea,
     pub toolbar_items: Vec<ToolbarHitArea>,
-    pub tool_chooser_items: Vec<ClickArea>,
+    pub tool_chooser_items: Vec<(ClickArea, crate::core::tool::Tool)>,
     pub dialog_items: Vec<ClickArea>,
     pub desktop: DesktopLayout,
 }

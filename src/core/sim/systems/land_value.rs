@@ -1,7 +1,8 @@
 use crate::core::map::{Map, Tile};
 use crate::core::sim::constants::{
-    LV_BASELINE, LV_HOSPITAL_BONUS, LV_HOSPITAL_RADIUS, LV_PARK_BONUS, LV_PARK_RADIUS,
-    LV_POLLUTION_DIVISOR, LV_WATER_BONUS, LV_WATER_RADIUS,
+    LV_BASELINE, LV_HOSPITAL_BONUS, LV_HOSPITAL_RADIUS, LV_LIBRARY_BONUS, LV_LIBRARY_RADIUS,
+    LV_PARK_BONUS, LV_PARK_RADIUS, LV_POLLUTION_DIVISOR, LV_SCHOOL_BONUS, LV_SCHOOL_RADIUS,
+    LV_STADIUM_BONUS, LV_STADIUM_RADIUS, LV_WATER_BONUS, LV_WATER_RADIUS,
 };
 use crate::core::sim::system::SimSystem;
 use crate::core::sim::util::for_each_in_radius;
@@ -40,6 +41,21 @@ impl SimSystem for LandValueSystem {
             Tile::Hospital,
             LV_HOSPITAL_RADIUS,
             LV_HOSPITAL_BONUS,
+        );
+        apply_proximity_bonus(map, &mut lv, Tile::School, LV_SCHOOL_RADIUS, LV_SCHOOL_BONUS);
+        apply_proximity_bonus(
+            map,
+            &mut lv,
+            Tile::Stadium,
+            LV_STADIUM_RADIUS,
+            LV_STADIUM_BONUS,
+        );
+        apply_proximity_bonus(
+            map,
+            &mut lv,
+            Tile::Library,
+            LV_LIBRARY_RADIUS,
+            LV_LIBRARY_BONUS,
         );
 
         // Pollution penalty (each point of pollution reduces land value)

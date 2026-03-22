@@ -97,6 +97,17 @@ pub const GAS_PLANT_LIFE_MONTHS: u32 = 60 * 12;
 pub const COAL_PLANT_CAPACITY_MW: u32 = 500;
 pub const GAS_PLANT_CAPACITY_MW: u32 = 800;
 
+pub const NUCLEAR_PLANT_LIFE_MONTHS: u32 = 40 * 12; // 40-year license
+pub const NUCLEAR_PLANT_CAPACITY_MW: u32 = 2000;
+
+/// Wind farms are effectively permanent (≈833 years) — they never trigger meltdown.
+pub const WIND_FARM_LIFE_MONTHS: u32 = u32::MAX;
+pub const WIND_FARM_CAPACITY_MW: u32 = 40; // per turbine tile
+
+/// Solar power plants are effectively permanent and clean.
+pub const SOLAR_PLANT_LIFE_MONTHS: u32 = u32::MAX;
+pub const SOLAR_PLANT_CAPACITY_MW: u32 = 100; // per tile (2×2)
+
 // ── Neglect / brownout thresholds ─────────────────────────────────────────────
 
 /// Consecutive months a building must be underserved before it starts degrading.
@@ -141,6 +152,22 @@ pub const LV_PARK_BONUS: f32 = 30.0;
 /// Hospital proximity bonus: radius in tiles and maximum bonus at source.
 pub const LV_HOSPITAL_RADIUS: i32 = 4;
 pub const LV_HOSPITAL_BONUS: f32 = 20.0;
+
+/// School proximity bonus and crime reduction.
+pub const LV_SCHOOL_RADIUS: i32 = 5;
+pub const LV_SCHOOL_BONUS: f32 = 25.0;
+pub const SCHOOL_CRIME_RADIUS: i32 = 8;
+pub const SCHOOL_CRIME_REDUCTION: f32 = 40.0;
+
+/// Stadium proximity bonus (large civic attractor).
+pub const LV_STADIUM_RADIUS: i32 = 7;
+pub const LV_STADIUM_BONUS: f32 = 35.0;
+
+/// Library proximity bonus and mild crime reduction.
+pub const LV_LIBRARY_RADIUS: i32 = 4;
+pub const LV_LIBRARY_BONUS: f32 = 20.0;
+pub const LIBRARY_CRIME_RADIUS: i32 = 5;
+pub const LIBRARY_CRIME_REDUCTION: f32 = 20.0;
 
 /// Pollution divisor: each point of pollution reduces land value by 1/LV_POLLUTION_DIVISOR.
 pub const LV_POLLUTION_DIVISOR: u16 = 3;

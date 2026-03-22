@@ -2,7 +2,8 @@ use crate::core::map::{Map, Tile};
 use crate::core::sim::util::for_each_in_radius;
 use crate::core::sim::constants::{
     CRIME_BASE_DEFAULT, CRIME_BASE_HIGH_DENSITY, CRIME_BASE_MED_DENSITY, CRIME_BASE_RES_LOW,
-    POLICE_CRIME_REDUCTION, POLICE_RADIUS,
+    LIBRARY_CRIME_RADIUS, LIBRARY_CRIME_REDUCTION, POLICE_CRIME_REDUCTION, POLICE_RADIUS,
+    SCHOOL_CRIME_RADIUS, SCHOOL_CRIME_REDUCTION,
 };
 use crate::core::sim::system::SimSystem;
 use crate::core::sim::SimState;
@@ -35,6 +36,36 @@ impl SimSystem for PoliceSystem {
             let mut reductions: Vec<(usize, u8)> = Vec::new();
             for_each_in_radius(map, sx, sy, POLICE_RADIUS, |_nx, _ny, idx, falloff| {
                 reductions.push((idx, (POLICE_CRIME_REDUCTION * falloff) as u8));
+            });
+            for (idx, reduction) in reductions {
+                map.overlays[idx].crime = map.overlays[idx].crime.saturating_sub(reduction);
+            }
+        }
+
+        // Schools reduce crime in a smaller radius
+        let schools: Vec<(usize, usize)> = (0..map.height)
+            .flat_map(|y| (0..map.width).map(move |x| (x, y)))
+            .filter(|&(x, y)| map.get(x, y) == Tile::School)
+            .collect();
+        for (sx, sy) in schools {
+            let mut reductions: Vec<(usize, u8)> = Vec::new();
+            for_each_in_radius(map, sx, sy, SCHOOL_CRIME_RADIUS, |_nx, _ny, idx, falloff| {
+                reductions.push((idx, (SCHOOL_CRIME_REDUCTION * falloff) as u8));
+            });
+            for (idx, reduction) in reductions {
+                map.overlays[idx].crime = map.overlays[idx].crime.saturating_sub(reduction);
+            }
+        }
+
+        // Libraries provide a mild crime reduction
+        let libraries: Vec<(usize, usize)> = (0..map.height)
+            .flat_map(|y| (0..map.width).map(move |x| (x, y)))
+            .filter(|&(x, y)| map.get(x, y) == Tile::Library)
+            .collect();
+        for (lx, ly) in libraries {
+            let mut reductions: Vec<(usize, u8)> = Vec::new();
+            for_each_in_radius(map, lx, ly, LIBRARY_CRIME_RADIUS, |_nx, _ny, idx, falloff| {
+                reductions.push((idx, (LIBRARY_CRIME_REDUCTION * falloff) as u8));
             });
             for (idx, reduction) in reductions {
                 map.overlays[idx].crime = map.overlays[idx].crime.saturating_sub(reduction);

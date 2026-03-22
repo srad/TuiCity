@@ -40,12 +40,11 @@ impl InGameScreen {
     }
 
     fn tool_chooser_tool_at(&self, col: u16, row: u16) -> Option<Tool> {
-        let kind = self.open_tool_chooser?;
         self.ui_areas
             .tool_chooser_items
             .iter()
-            .position(|area| area.contains(col, row))
-            .and_then(|index| kind.tools().get(index).copied())
+            .find(|(area, _)| area.contains(col, row))
+            .map(|(_, tool)| *tool)
     }
 
     fn toolbar_target_at(&self, col: u16, row: u16) -> Option<ToolbarHitTarget> {

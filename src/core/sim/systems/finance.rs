@@ -21,9 +21,15 @@ struct TileCounts {
     water_structure_tiles: i64,
     coal_plant_tiles: i64,
     gas_plant_tiles: i64,
+    nuclear_plant_tiles: i64,
+    wind_farm_tiles: i64,
+    solar_plant_tiles: i64,
     police_tiles: i64,
     fire_tiles: i64,
     park_tiles: i64,
+    school_tiles: i64,
+    stadium_tiles: i64,
+    library_tiles: i64,
     res_tiles: i64,
     comm_tiles: i64,
     ind_tiles: i64,
@@ -42,9 +48,15 @@ impl TileCounts {
             water_structure_tiles: 0,
             coal_plant_tiles: 0,
             gas_plant_tiles: 0,
+            nuclear_plant_tiles: 0,
+            wind_farm_tiles: 0,
+            solar_plant_tiles: 0,
             police_tiles: 0,
             fire_tiles: 0,
             park_tiles: 0,
+            school_tiles: 0,
+            stadium_tiles: 0,
+            library_tiles: 0,
             res_tiles: 0,
             comm_tiles: 0,
             ind_tiles: 0,
@@ -73,9 +85,15 @@ impl TileCounts {
                 }
                 Tile::PowerPlantCoal => c.coal_plant_tiles += 1,
                 Tile::PowerPlantGas => c.gas_plant_tiles += 1,
+                Tile::PowerPlantNuclear => c.nuclear_plant_tiles += 1,
+                Tile::PowerPlantWind => c.wind_farm_tiles += 1,
+                Tile::PowerPlantSolar => c.solar_plant_tiles += 1,
                 Tile::Police => c.police_tiles += 1,
                 Tile::Fire => c.fire_tiles += 1,
                 Tile::Park => c.park_tiles += 1,
+                Tile::School => c.school_tiles += 1,
+                Tile::Stadium => c.stadium_tiles += 1,
+                Tile::Library => c.library_tiles += 1,
                 Tile::ZoneRes | Tile::ResLow | Tile::ResMed | Tile::ResHigh => c.res_tiles += 1,
                 Tile::ZoneComm | Tile::CommLow | Tile::CommHigh => c.comm_tiles += 1,
                 Tile::ZoneInd | Tile::IndLight | Tile::IndHeavy => c.ind_tiles += 1,
@@ -131,10 +149,18 @@ impl SimSystem for FinanceSystem {
             + c.bus_depot_tiles * 8
             + c.rail_depot_tiles * 12
             + c.subway_station_tiles * 10;
-        let power_plant_monthly = (c.coal_plant_tiles / 16) * 100 + (c.gas_plant_tiles / 16) * 150;
+        let power_plant_monthly = (c.coal_plant_tiles / 16) * 100
+            + (c.gas_plant_tiles / 16) * 150
+            + (c.nuclear_plant_tiles / 16) * 300
+            + c.wind_farm_tiles * 2
+            + (c.solar_plant_tiles / 4) * 10;
         let police_monthly = c.police_tiles * 10;
         let fire_monthly = c.fire_tiles * 10;
-        let park_monthly = c.park_tiles * 2;
+        // park_monthly covers parks and all civic buildings (school, stadium, library)
+        let park_monthly = c.park_tiles * 2
+            + c.school_tiles * 15
+            + (c.stadium_tiles / 16) * 200
+            + c.library_tiles * 8;
 
         let maintenance = road_monthly
             + highway_monthly

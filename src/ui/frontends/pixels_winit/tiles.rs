@@ -215,6 +215,12 @@ fn tile_pixels(tile: Tile) -> &'static [u32; 64] {
         Tile::WaterTower => &WATER_TOWER,
         Tile::WaterTreatment => &WATER_TREATMENT,
         Tile::Desalination => &DESALINATION,
+        Tile::PowerPlantNuclear => &NUCLEAR_PLANT,
+        Tile::PowerPlantWind => &WIND_FARM,
+        Tile::PowerPlantSolar => &SOLAR_PLANT,
+        Tile::School => &SCHOOL,
+        Tile::Stadium => &STADIUM,
+        Tile::Library => &LIBRARY,
         Tile::Rubble => &RUBBLE,
     }
 }
@@ -867,6 +873,106 @@ const DESALINATION: [u32; 64] = building!(
     DS_SH2, DS_PI, DS_PI, DS_WL,
     DS_OC, DS_PI, DS_OC, DS_WL,
     DS_WL, DS_WL, DS_WL, DS_WL
+);
+
+// ─── Nuclear Plant ────────────────────────────────────────────────────────────
+
+const NU_HL: u32 = 0xC0FFB0;
+const NU_SH: u32 = 0x101808;
+const NU_WL: u32 = 0x3A5828; // dark green wall
+const NU_CO: u32 = 0xD0E8C0; // cooling tower
+const NU_YW: u32 = 0xF0F050; // warning yellow
+const NU_DM: u32 = 0x708060; // dome grey
+
+const NUCLEAR_PLANT: [u32; 64] = building!(
+    SV_BG, NU_HL, NU_SH,
+    NU_WL, NU_CO, NU_CO, NU_WL,
+    NU_WL, NU_YW, NU_YW, NU_WL,
+    NU_DM, NU_DM, NU_DM, NU_DM,
+    NU_WL, NU_WL, NU_WL, NU_WL
+);
+
+// ─── Wind Farm ────────────────────────────────────────────────────────────────
+
+const WF_HL: u32 = 0xC8E8FF;
+const WF_SH: u32 = 0x080F18;
+const WF_SK: u32 = 0x2848A0; // sky blue
+const WF_MW: u32 = 0xD8D8D8; // mast white
+const WF_BL: u32 = 0xF0F0F0; // blade white
+
+const WIND_FARM: [u32; 64] = building!(
+    WF_SK, WF_HL, WF_SH,
+    WF_SK, WF_BL, WF_BL, WF_SK,
+    WF_SK, WF_MW, WF_SK, WF_SK,
+    WF_SK, WF_MW, WF_SK, WF_SK,
+    WF_SK, WF_MW, WF_SK, WF_SK
+);
+
+// ─── Solar Plant ──────────────────────────────────────────────────────────────
+
+const SP_HL: u32 = 0xFFE860;
+const SP_SH: u32 = 0x181000;
+const SP_BK: u32 = 0x181828; // panel dark
+const SP_BL: u32 = 0x3848A8; // panel blue
+const SP_RF: u32 = 0x6878C8; // panel reflection
+
+const SOLAR_PLANT: [u32; 64] = building!(
+    SV_BG, SP_HL, SP_SH,
+    SP_BL, SP_RF, SP_BL, SP_BK,
+    SP_RF, SP_BL, SP_RF, SP_BK,
+    SP_BL, SP_RF, SP_BL, SP_BK,
+    SP_BK, SP_BK, SP_BK, SP_BK
+);
+
+// ─── School ───────────────────────────────────────────────────────────────────
+
+const SC_HL: u32 = 0xFFF8A0;
+const SC_SH: u32 = 0x181200;
+const SC_WL: u32 = 0xD8C840; // yellow brick
+const SC_WN: u32 = 0x90C8F0; // window blue
+const SC_RD: u32 = 0xC85020; // red roof
+const SC_DK: u32 = 0x402808; // dark
+
+const SCHOOL: [u32; 64] = building!(
+    SV_BG, SC_HL, SC_SH,
+    SC_RD, SC_RD, SC_RD, SC_RD,
+    SC_WL, SC_WN, SC_WN, SC_WL,
+    SC_WL, SC_WN, SC_WN, SC_WL,
+    SC_DK, SC_WL, SC_WL, SC_DK
+);
+
+// ─── Stadium ──────────────────────────────────────────────────────────────────
+
+const ST_HL: u32 = 0xA0FF90;
+const ST_SH: u32 = 0x081008;
+const ST_WL: u32 = 0x506048; // concrete wall
+const ST_GR: u32 = 0x28A020; // grass green
+const ST_SD: u32 = 0xB09070; // seat tan
+const ST_TK: u32 = 0x806040; // track brown
+
+const STADIUM: [u32; 64] = building!(
+    SV_BG, ST_HL, ST_SH,
+    ST_WL, ST_WL, ST_WL, ST_WL,
+    ST_SD, ST_GR, ST_GR, ST_SD,
+    ST_SD, ST_GR, ST_GR, ST_SD,
+    ST_TK, ST_TK, ST_TK, ST_TK
+);
+
+// ─── Library ──────────────────────────────────────────────────────────────────
+
+const LB_HL: u32 = 0xFFD8A0;
+const LB_SH: u32 = 0x181000;
+const LB_WL: u32 = 0xC09050; // tan sandstone
+const LB_WN: u32 = 0x90C8F0; // window
+const LB_RF: u32 = 0x806030; // roof brown
+const LB_DK: u32 = 0x302010;
+
+const LIBRARY: [u32; 64] = building!(
+    SV_BG, LB_HL, LB_SH,
+    LB_RF, LB_RF, LB_RF, LB_RF,
+    LB_WL, LB_WN, LB_WN, LB_WL,
+    LB_WL, LB_WN, LB_WN, LB_WL,
+    LB_DK, LB_WL, LB_WL, LB_DK
 );
 
 // ─── Rubble ───────────────────────────────────────────────────────────────────

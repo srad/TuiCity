@@ -913,8 +913,8 @@ impl<'a> InGamePainter for PixelPainter<'a> {
         areas
     }
 
-    fn paint_tool_chooser(&mut self, chooser: &ToolChooserViewModel) -> Vec<ClickArea> {
-        let mut items = Vec::new();
+    fn paint_tool_chooser(&mut self, chooser: &ToolChooserViewModel) -> Vec<(ClickArea, Tool)> {
+        let mut items: Vec<(ClickArea, Tool)> = Vec::new();
 
         let max_name = chooser.tools.iter().map(|t| t.label().len()).max().unwrap_or(10);
         let pop_cols = (max_name + 12).max(24) as u32;
@@ -931,19 +931,37 @@ impl<'a> InGamePainter for PixelPainter<'a> {
         draw_str(self.buf, self.width, px + self.cw, py, "Tool Selection", WIN_TITLE_FG, WIN_TITLE_BG, self.scale);
         draw_str(self.buf, self.width, px + pop_w - 4 * self.cw, py, "[X]", DANGER_FG, WIN_TITLE_BG, self.scale);
 
-        for (i, tool) in chooser.tools.iter().enumerate() {
+        for (i, &tool) in chooser.tools.iter().enumerate() {
             let item_y = py + self.ch + i as u32 * self.ch;
-            let selected = *tool == chooser.selected_tool;
-            let (fg, bg) = if selected { (SELECT_FG, SELECT_BG) } else { (TEXT_FG, POPUP_BG) };
-            fill_rect(self.buf, self.width, px + 1, item_y, pop_w - 2, self.ch, bg);
-            let cost = tool.cost();
-            let label = if cost > 0 {
-                format!(" {:<20} ${}", tool.label(), cost)
+            let available = tool.is_available(&chooser.ctx);
+            let reason = tool.unavailable_reason(&chooser.ctx);
+            let selected = tool == chooser.selected_tool && available;
+
+            let (fg, bg) = if !available {
+                (DIM_FG, POPUP_BG)
+            } else if selected {
+                (SELECT_FG, SELECT_BG)
             } else {
-                format!(" {}", tool.label())
+                (TEXT_FG, POPUP_BG)
+            };
+
+            fill_rect(self.buf, self.width, px + 1, item_y, pop_w - 2, self.ch, bg);
+            let label = match reason {
+                Some(r) => format!("  {:<20} ({})", tool.label(), r),
+                None => {
+                    let cost = tool.cost();
+                    if cost > 0 {
+                        format!(" {:<20} ${}", tool.label(), cost)
+                    } else {
+                        format!(" {}", tool.label())
+                    }
+                }
             };
             draw_str(self.buf, self.width, px + 1, item_y, &trunc(&label, pop_cols as usize - 1), fg, bg, self.scale);
-            items.push(self.click_area(px + 1, item_y, pop_w - 2, self.ch));
+
+            if available {
+                items.push((self.click_area(px + 1, item_y, pop_w - 2, self.ch), tool));
+            }
         }
 
         items

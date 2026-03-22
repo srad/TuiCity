@@ -43,6 +43,9 @@ impl WaterSystem {
             Tile::ResHigh => 40,
             Tile::Police | Tile::Fire | Tile::Hospital => 10,
             Tile::BusDepot | Tile::RailDepot | Tile::SubwayStation => 8,
+            Tile::School => 15,
+            Tile::Stadium => 50,
+            Tile::Library => 8,
             Tile::ZoneRes | Tile::ZoneComm | Tile::ZoneInd => match (zone_kind, zone_density) {
                 (Some(_), Some(ZoneDensity::Dense)) => 4,
                 (Some(_), _) => 2,

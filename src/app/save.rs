@@ -662,7 +662,7 @@ mod tests {
         };
         sim.plants.insert(
             (3, 0),
-            PlantState { age_months: 12, max_life_months: 600, capacity_mw: 500, efficiency: 1.0 },
+            PlantState { age_months: 12, max_life_months: 600, capacity_mw: 500, efficiency: 1.0, footprint: 4 },
         );
         sim
     }

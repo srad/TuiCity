@@ -161,7 +161,7 @@ pub trait InGamePainter {
     ) -> PanelAreas;
 
     /// Render the tool chooser popup (zone/transport/utility selection).
-    fn paint_tool_chooser(&mut self, chooser: &ToolChooserViewModel) -> Vec<ClickArea>;
+    fn paint_tool_chooser(&mut self, chooser: &ToolChooserViewModel) -> Vec<(ClickArea, Tool)>;
 
     /// Render a modal confirm dialog (Yes/No/Cancel).
     fn paint_confirm_dialog(&mut self, dialog: &ConfirmDialogViewModel) -> Vec<ClickArea>;
@@ -426,7 +426,7 @@ pub mod tests {
             PanelAreas::default()
         }
 
-        fn paint_tool_chooser(&mut self, _chooser: &ToolChooserViewModel) -> Vec<ClickArea> {
+        fn paint_tool_chooser(&mut self, _chooser: &ToolChooserViewModel) -> Vec<(ClickArea, Tool)> {
             self.calls.push("paint_tool_chooser");
             Vec::new()
         }

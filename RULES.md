@@ -71,6 +71,9 @@ efficiency = min(remaining_months / 12, 1.0)
 |-------|----------|----------|------|
 | Coal Plant | 500 MW | 600 months (50 years) | $3,000 |
 | Gas Plant | 800 MW | 720 months (60 years) | $6,000 |
+| Nuclear Plant | 2000 MW | 480 months (40 years) | $15,000 | Unlocks 1955; meltdown on expiry |
+| Wind Farm | 40 MW | Permanent (1×1) | $500 | Unlocks 1970; no pollution, no EOL explosion |
+| Solar Plant | 100 MW | Permanent (2×2) | $1,000 | Unlocks 1990; no pollution, no EOL explosion |
 
 ### Power Consumption per Tile
 
@@ -90,6 +93,9 @@ efficiency = min(remaining_months / 12, 1.0)
 | WaterTower | 15 |
 | WaterTreatment | 60 |
 | Desalination | 90 |
+| School | 50 |
+| Stadium | 300 |
+| Library | 30 |
 | ZoneRes / ZoneComm / ZoneInd | 2 |
 
 ### Conduction Rules
@@ -123,6 +129,9 @@ All require power to produce. If unpowered, production = 0.
 | ResMed / CommHigh / IndHeavy | 18 |
 | ResHigh | 40 |
 | Police / Fire Dept / Hospital | 10 |
+| School | 15 |
+| Stadium | 50 |
+| Library | 8 |
 | BusDepot / RailDepot / SubwayStation | 8 |
 | Dense zones | 4 |
 | Light zones | 2 |

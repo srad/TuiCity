@@ -200,7 +200,7 @@ mod tests {
             })
             .unwrap_err();
 
-        assert_eq!(err, "Subway unlocks in 1910");
+        assert_eq!(err, "unlocks 1910");
     }
 
     #[test]

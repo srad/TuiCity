@@ -5,7 +5,7 @@ use crate::{
         config, input::Action, save, Camera, DesktopState, LineDrag, RectDrag, Tool, UiAreas,
         WindowId,
     },
-    core::engine::EngineCommand,
+    core::{engine::EngineCommand, tool::ToolContext},
     game_info::GAME_NAME,
     ui::{
         runtime::ToolChooserKind,
@@ -104,11 +104,23 @@ fn build_legend_lines() -> Vec<String> {
         "Industrial (Light, Heavy)",
         &[Tile::IndLight, Tile::IndHeavy],
     );
-    push_legend("Power Plant", &[Tile::PowerPlantCoal]);
+    push_legend(
+        "Power Plants (Coal, Gas, Nuclear, Wind, Solar)",
+        &[
+            Tile::PowerPlantCoal,
+            Tile::PowerPlantGas,
+            Tile::PowerPlantNuclear,
+            Tile::PowerPlantWind,
+            Tile::PowerPlantSolar,
+        ],
+    );
     push_legend("Police Station", &[Tile::Police]);
     push_legend("Fire Station", &[Tile::Fire]);
     push_legend("Hospital", &[Tile::Hospital]);
     push_legend("Park", &[Tile::Park]);
+    push_legend("School", &[Tile::School]);
+    push_legend("Stadium", &[Tile::Stadium]);
+    push_legend("Library", &[Tile::Library]);
     push_legend(
         "Water (Pump, Tower, Treatment, Desalination)",
         &[
@@ -461,13 +473,14 @@ impl InGameScreen {
             commercial: self.budget_ui.commercial_tax as u8,
             industrial: self.budget_ui.industrial_tax as u8,
         };
+        let tool_ctx = ToolContext { year: sim.year, unlock_mode: sim.economy.unlock_mode };
         InGameDesktopView {
             map: map.clone(),
             sim: sim.clone(),
             camera: self.camera.clone(),
             current_tool: self.current_tool,
             toolbar: self.toolbar_view_model(),
-            tool_chooser: self.tool_chooser_view_model(),
+            tool_chooser: self.tool_chooser_view_model(tool_ctx),
             confirm_dialog: self.confirm_dialog_view_model(),
             paused: self.paused,
             overlay_mode: self.overlay_mode,
@@ -547,11 +560,12 @@ impl InGameScreen {
         }
     }
 
-    fn tool_chooser_view_model(&self) -> Option<ToolChooserViewModel> {
+    fn tool_chooser_view_model(&self, ctx: ToolContext) -> Option<ToolChooserViewModel> {
         let kind = self.open_tool_chooser?;
         Some(ToolChooserViewModel {
             selected_tool: self.remembered_tool_for_chooser(kind),
             tools: kind.tools().to_vec(),
+            ctx,
         })
     }
 
@@ -1014,6 +1028,8 @@ impl Screen for InGameScreen {
                 } else if self.line_drag.is_some() {
                     self.line_drag = None;
                     self.message = None;
+                } else if self.current_tool != Tool::Inspect {
+                    self.select_tool(Tool::Inspect);
                 } else {
                     self.open_confirm_prompt(ConfirmPromptAction::ReturnToStart);
                 }
@@ -1101,7 +1117,15 @@ impl Screen for InGameScreen {
                     _ => None,
                 };
                 if let Some(tool) = new_tool {
-                    self.select_tool(tool);
+                    let engine = context.engine.read().unwrap();
+                    let ctx = ToolContext {
+                        year: engine.sim.year,
+                        unlock_mode: engine.sim.economy.unlock_mode,
+                    };
+                    drop(engine);
+                    if tool.is_available(&ctx) {
+                        self.select_tool(tool);
+                    }
                 }
             }
             Action::MouseMiddleDown { col, row } => {

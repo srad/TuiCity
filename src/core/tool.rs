@@ -31,7 +31,25 @@ pub enum Tool {
     Park,
     Police,
     Fire,
+    Hospital,
+    School,
+    Stadium,
+    Library,
+    PowerPlantNuclear,
+    PowerPlantWind,
+    PowerPlantSolar,
     Bulldoze,
+}
+
+/// Snapshot of world state used to determine whether a tool can be selected.
+///
+/// Extend this struct when new availability conditions are added (budget thresholds,
+/// population requirements, prerequisite buildings, etc.).  All condition logic lives
+/// in `Tool::is_available` and `Tool::unavailable_reason`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ToolContext {
+    pub year: i32,
+    pub unlock_mode: UnlockMode,
 }
 
 impl Tool {
@@ -59,6 +77,13 @@ impl Tool {
             Tool::Park => 80,
             Tool::Police => 500,
             Tool::Fire => 500,
+            Tool::Hospital => 1_200,
+            Tool::School => 800,
+            Tool::Stadium => 5_000,
+            Tool::Library => 300,
+            Tool::PowerPlantNuclear => 15_000,
+            Tool::PowerPlantWind => 500,
+            Tool::PowerPlantSolar => 1_000,
             Tool::Bulldoze => 1,
         }
     }
@@ -88,6 +113,13 @@ impl Tool {
             Tool::Park => Some(Tile::Park),
             Tool::Police => Some(Tile::Police),
             Tool::Fire => Some(Tile::Fire),
+            Tool::Hospital => Some(Tile::Hospital),
+            Tool::School => Some(Tile::School),
+            Tool::Stadium => Some(Tile::Stadium),
+            Tool::Library => Some(Tile::Library),
+            Tool::PowerPlantNuclear => Some(Tile::PowerPlantNuclear),
+            Tool::PowerPlantWind => Some(Tile::PowerPlantWind),
+            Tool::PowerPlantSolar => Some(Tile::PowerPlantSolar),
             Tool::Bulldoze => Some(Tile::Grass),
         }
     }
@@ -150,6 +182,13 @@ impl Tool {
             Tool::Park => "Park",
             Tool::Police => "Police",
             Tool::Fire => "Fire Dept",
+            Tool::Hospital => "Hospital",
+            Tool::School => "School",
+            Tool::Stadium => "Stadium",
+            Tool::Library => "Library",
+            Tool::PowerPlantNuclear => "Nuclear Plant",
+            Tool::PowerPlantWind => "Wind Farm",
+            Tool::PowerPlantSolar => "Solar Plant",
             Tool::Bulldoze => "Bulldoze",
         }
     }
@@ -182,6 +221,13 @@ impl Tool {
             Tool::Park => 'k',
             Tool::Police => 's',
             Tool::Fire => 'f',
+            Tool::Hospital => 'h',
+            Tool::School => 'j',
+            Tool::Stadium => 'x',
+            Tool::Library => 'q',
+            Tool::PowerPlantNuclear => 'n',
+            Tool::PowerPlantWind => 'v',
+            Tool::PowerPlantSolar => 'o',
             Tool::Bulldoze => 'b',
         }
     }
@@ -191,12 +237,29 @@ impl Tool {
             Tool::Subway | Tool::SubwayStation => 1910,
             Tool::BusDepot => 1920,
             Tool::Highway | Tool::Onramp => 1930,
+            Tool::PowerPlantNuclear => 1955,
+            Tool::PowerPlantWind => 1970,
+            Tool::PowerPlantSolar => 1990,
             _ => 0,
         }
     }
 
-    pub fn is_unlocked(self, year: i32, mode: UnlockMode) -> bool {
-        mode == UnlockMode::Sandbox || year >= self.unlock_year()
+    /// Returns `true` when the player can select and place this tool.
+    pub fn is_available(self, ctx: &ToolContext) -> bool {
+        ctx.unlock_mode == UnlockMode::Sandbox || ctx.year >= self.unlock_year()
+    }
+
+    /// Returns a short reason string when the tool is locked, `None` when available.
+    /// Used to render "(unlocks 1955)" next to greyed-out tools.
+    pub fn unavailable_reason(self, ctx: &ToolContext) -> Option<String> {
+        if ctx.unlock_mode == UnlockMode::Sandbox {
+            return None;
+        }
+        let yr = self.unlock_year();
+        if ctx.year < yr {
+            return Some(format!("unlocks {yr}"));
+        }
+        None
     }
 
     pub fn uses_underground_layer(self) -> bool {
@@ -271,6 +334,9 @@ impl Tool {
             // be cleared explicitly by the player.
             Tool::PowerPlantCoal
             | Tool::PowerPlantGas
+            | Tool::PowerPlantNuclear
+            | Tool::PowerPlantWind
+            | Tool::PowerPlantSolar
             | Tool::BusDepot
             | Tool::RailDepot
             | Tool::SubwayStation
@@ -280,7 +346,11 @@ impl Tool {
             | Tool::Desalination
             | Tool::Park
             | Tool::Police
-            | Tool::Fire => matches!(
+            | Tool::Fire
+            | Tool::Hospital
+            | Tool::School
+            | Tool::Stadium
+            | Tool::Library => matches!(
                 tile,
                 Tile::Grass | Tile::Trees | Tile::Dirt | Tile::Rubble | Tile::PowerLine
             ),
@@ -327,10 +397,17 @@ impl Tool {
 
     pub fn footprint(&self) -> (usize, usize) {
         match self {
-            Tool::PowerPlantCoal | Tool::PowerPlantGas => (4, 4),
+            Tool::PowerPlantCoal
+            | Tool::PowerPlantGas
+            | Tool::PowerPlantNuclear
+            | Tool::Stadium => (4, 4),
             Tool::Police | Tool::Fire => (3, 3),
             Tool::WaterTreatment | Tool::Desalination => (3, 3),
-            Tool::WaterTower | Tool::Park | Tool::BusDepot | Tool::RailDepot => (2, 2),
+            Tool::WaterTower
+            | Tool::Park
+            | Tool::BusDepot
+            | Tool::RailDepot
+            | Tool::PowerPlantSolar => (2, 2),
             _ => (1, 1),
         }
     }

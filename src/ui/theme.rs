@@ -1235,6 +1235,36 @@ pub fn tile_glyph(tile: Tile, overlay: TileOverlay) -> TileGlyph {
             fg: Color::Rgb(220, 250, 255),
             bg: Color::Rgb(25, 70, 110),
         },
+        Tile::PowerPlantNuclear => TileGlyph {
+            ch: 'N',
+            fg: Color::Rgb(180, 255, 180),
+            bg: Color::Rgb(20, 50, 20),
+        },
+        Tile::PowerPlantWind => TileGlyph {
+            ch: 'W',
+            fg: Color::Rgb(200, 240, 255),
+            bg: Color::Rgb(30, 50, 80),
+        },
+        Tile::PowerPlantSolar => TileGlyph {
+            ch: 'S',
+            fg: Color::Rgb(255, 240, 100),
+            bg: Color::Rgb(50, 40, 10),
+        },
+        Tile::School => TileGlyph {
+            ch: 'S',
+            fg: Color::Rgb(255, 255, 180),
+            bg: Color::Rgb(90, 70, 10),
+        },
+        Tile::Stadium => TileGlyph {
+            ch: 'O',
+            fg: Color::Rgb(200, 255, 200),
+            bg: Color::Rgb(10, 60, 10),
+        },
+        Tile::Library => TileGlyph {
+            ch: 'L',
+            fg: Color::Rgb(255, 200, 150),
+            bg: Color::Rgb(80, 45, 15),
+        },
         Tile::Rubble => TileGlyph {
             ch: '░',
             fg: Color::Rgb(80, 80, 80),
@@ -1268,6 +1298,12 @@ pub fn tile_sprite(tile: Tile, overlay: TileOverlay) -> TileSprite {
         Tile::WaterTreatment => ('[', 'C'),
         Tile::Desalination => ('[', 'D'),
         Tile::PowerPlantCoal | Tile::PowerPlantGas => ('@', '@'),
+        Tile::PowerPlantNuclear => ('[', 'N'),
+        Tile::PowerPlantWind => ('(', ')'),
+        Tile::PowerPlantSolar => ('[', 'S'),
+        Tile::School => ('[', 'S'),
+        Tile::Stadium => ('[', 'O'),
+        Tile::Library => ('[', 'L'),
         _ => (glyph.ch, glyph.ch),
     };
 
@@ -1280,10 +1316,14 @@ pub fn tile_sprite(tile: Tile, overlay: TileOverlay) -> TileSprite {
 /// Mirrors `Tool::footprint()` but keyed on tile type for the renderer.
 pub fn tile_footprint_size(tile: Tile) -> (usize, usize) {
     match tile {
-        Tile::PowerPlantCoal | Tile::PowerPlantGas => (4, 4),
+        Tile::PowerPlantCoal | Tile::PowerPlantGas | Tile::PowerPlantNuclear | Tile::Stadium => {
+            (4, 4)
+        }
         Tile::Police | Tile::Fire => (3, 3),
         Tile::WaterTreatment | Tile::Desalination => (3, 3),
-        Tile::WaterTower | Tile::Park | Tile::BusDepot | Tile::RailDepot => (2, 2),
+        Tile::WaterTower | Tile::Park | Tile::BusDepot | Tile::RailDepot | Tile::PowerPlantSolar => {
+            (2, 2)
+        }
         _ => (1, 1),
     }
 }
@@ -1329,6 +1369,25 @@ const GAS_PLANT_ART: [(char, char); 16] = [
     ('└', '─'), ('─', '─'), ('─', '─'), ('─', '┘'),
 ];
 
+const NUCLEAR_PLANT_ART: [(char, char); 16] = [
+    ('┌', '─'), ('─', '─'), ('─', '─'), ('─', '┐'),
+    ('│', ' '), ('N', 'U'), ('C', ' '), (' ', '│'),
+    ('│', ' '), (' ', '☢'), ('☢', ' '), (' ', '│'),
+    ('└', '─'), ('─', '─'), ('─', '─'), ('─', '┘'),
+];
+
+const SOLAR_PLANT_ART: [(char, char); 4] = [
+    ('┌', 'S'), ('L', '┐'),
+    ('└', '─'), ('─', '┘'),
+];
+
+const STADIUM_ART: [(char, char); 16] = [
+    ('┌', '─'), ('─', '─'), ('─', '─'), ('─', '┐'),
+    ('│', '('), (' ', ' '), (' ', ')'), (' ', '│'),
+    ('│', '('), (' ', ' '), (' ', ')'), (' ', '│'),
+    ('└', '─'), ('─', '─'), ('─', '─'), ('─', '┘'),
+];
+
 const PARK_ART: [(char, char); 4] = [
     ('"', '^'), ('^', '"'),
     ('"', '.'), ('.', '"'),
@@ -1358,6 +1417,9 @@ pub fn building_art(tile: Tile) -> Option<&'static [(char, char)]> {
         Tile::Desalination => Some(&DESALINATION_ART),
         Tile::PowerPlantCoal => Some(&COAL_PLANT_ART),
         Tile::PowerPlantGas => Some(&GAS_PLANT_ART),
+        Tile::PowerPlantNuclear => Some(&NUCLEAR_PLANT_ART),
+        Tile::PowerPlantSolar => Some(&SOLAR_PLANT_ART),
+        Tile::Stadium => Some(&STADIUM_ART),
         Tile::Park => Some(&PARK_ART),
         Tile::WaterTower => Some(&WATER_TOWER_ART),
         Tile::BusDepot => Some(&BUS_DEPOT_ART),

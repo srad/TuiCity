@@ -450,6 +450,7 @@ mod tests {
                 max_life_months: 600,
                 capacity_mw: 500,
                 efficiency: 1.0,
+            footprint: 4,
             },
         );
         engine.map.set(1, 0, Tile::PowerLine);

@@ -26,6 +26,9 @@ impl PowerSystem {
             Tile::WaterTower => 15,
             Tile::WaterTreatment => 60,
             Tile::Desalination => 90,
+            Tile::School => 50,
+            Tile::Stadium => 300,
+            Tile::Library => 30,
             Tile::ZoneRes | Tile::ZoneComm | Tile::ZoneInd => 2, // Minimal for zones
             _ => 0,
         }
@@ -39,7 +42,8 @@ impl SimSystem for PowerSystem {
     fn tick(&mut self, map: &mut Map, sim: &mut SimState) {
         // 1. Age plants, compute efficiency decay, handle explosion
         let mut to_remove = Vec::new();
-        let mut exploded = Vec::new();
+        // (x, y, footprint) tuples for explosion processing
+        let mut exploded: Vec<(usize, usize, usize)> = Vec::new();
 
         for (&(x, y), state) in sim.plants.iter_mut() {
             state.age_months += 1;
@@ -50,17 +54,17 @@ impl SimSystem for PowerSystem {
                 1.0
             };
             if state.age_months >= state.max_life_months {
-                exploded.push((x, y));
+                exploded.push((x, y, state.footprint as usize));
                 to_remove.push((x, y));
             }
         }
 
-        for (x, y) in exploded {
-            // Explode: replace 4x4 area with Rubble
-            for dy in 0..4 {
-                for dx in 0..4 {
-                    if map.in_bounds(x as i32 + dx, y as i32 + dy) {
-                        map.set(x + dx as usize, y + dy as usize, Tile::Rubble);
+        for (x, y, fp) in exploded {
+            // Explode: replace footprint area with Rubble
+            for dy in 0..fp {
+                for dx in 0..fp {
+                    if map.in_bounds(x as i32 + dx as i32, y as i32 + dy as i32) {
+                        map.set(x + dx, y + dy, Tile::Rubble);
                     }
                 }
             }
@@ -75,17 +79,19 @@ impl SimSystem for PowerSystem {
 
         // 3. Calculate total effective production and distribute
         let mut total_capacity = 0;
-        let mut plant_positions = Vec::new();
+        // (x, y, footprint) for BFS seeding
+        let mut plant_positions: Vec<(usize, usize, usize)> = Vec::new();
         for (&(x, y), state) in sim.plants.iter() {
             let effective = (state.capacity_mw as f32 * state.efficiency) as u32;
             total_capacity += effective;
-            plant_positions.push((x, y));
+            let fp = state.footprint as usize;
+            plant_positions.push((x, y, fp));
             // Mark all footprint tiles with current efficiency for the renderer
             let eff_u8 = (state.efficiency * 255.0) as u8;
-            for dy in 0..4 {
-                for dx in 0..4 {
-                    if map.in_bounds(x as i32 + dx, y as i32 + dy) {
-                        let idx = (y + dy as usize) * map.width + (x + dx as usize);
+            for dy in 0..fp {
+                for dx in 0..fp {
+                    if map.in_bounds(x as i32 + dx as i32, y as i32 + dy as i32) {
+                        let idx = (y + dy) * map.width + (x + dx);
                         map.overlays[idx].plant_efficiency = eff_u8;
                     }
                 }
@@ -98,11 +104,11 @@ impl SimSystem for PowerSystem {
         // - empty zones can receive power, but do not relay it onward
         // - roads do not conduct unless there is a power line on the tile
         let mut queue = std::collections::VecDeque::new();
-        for (px, py) in plant_positions {
-            for dy in 0..4 {
-                for dx in 0..4 {
-                    let sx = px + dx as usize;
-                    let sy = py + dy as usize;
+        for (px, py, fp) in plant_positions {
+            for dy in 0..fp {
+                for dx in 0..fp {
+                    let sx = px + dx;
+                    let sy = py + dy;
                     if map.in_bounds(sx as i32, sy as i32) {
                         let idx = sy * map.width + sx;
                         map.overlays[idx].power_level = 255;
@@ -124,6 +130,9 @@ impl SimSystem for PowerSystem {
                 let conductive = tile.power_connects()
                     || lot_tile == Tile::PowerPlantCoal
                     || lot_tile == Tile::PowerPlantGas
+                    || lot_tile == Tile::PowerPlantNuclear
+                    || lot_tile == Tile::PowerPlantWind
+                    || lot_tile == Tile::PowerPlantSolar
                     || lot_tile.is_conductive_structure();
                 let receivable = conductive || lot_tile.receives_power();
 
@@ -193,6 +202,7 @@ mod tests {
                 max_life_months: 600,
                 capacity_mw: 500,
                 efficiency: 1.0,
+            footprint: 4,
             },
         );
         for dy in 0..4 {
@@ -235,6 +245,7 @@ mod tests {
                 max_life_months: 600,
                 capacity_mw: 500,
                 efficiency: 1.0,
+            footprint: 4,
             },
         );
         for dy in 0..4 {
@@ -267,6 +278,7 @@ mod tests {
                 max_life_months: 600,
                 capacity_mw: 500,
                 efficiency: 1.0,
+            footprint: 4,
             },
         );
         for dy in 0..4 {
@@ -305,6 +317,7 @@ mod tests {
                 max_life_months: 600,
                 capacity_mw: 500,
                 efficiency: 1.0,
+            footprint: 4,
             },
         );
         for dy in 0..4 {
@@ -346,6 +359,7 @@ mod tests {
                 max_life_months: 600,
                 capacity_mw: 500,
                 efficiency: 1.0,
+            footprint: 4,
             },
         );
         for dy in 0..4 {
@@ -388,6 +402,7 @@ mod tests {
                 max_life_months: 600,
                 capacity_mw: 100,
                 efficiency: 1.0,
+            footprint: 4,
             },
         );
         for dy in 0..4 {
@@ -414,6 +429,7 @@ mod tests {
                 max_life_months: 600,
                 capacity_mw: 100,
                 efficiency: 1.0,
+            footprint: 4,
             },
         );
         for dy in 0..4 {
@@ -448,6 +464,7 @@ mod tests {
                 max_life_months: 600,
                 capacity_mw: 100,
                 efficiency: 1.0,
+            footprint: 4,
             },
         );
         for dy in 0..4 {
@@ -475,6 +492,7 @@ mod tests {
                 max_life_months: 600,
                 capacity_mw: 120,
                 efficiency: 1.0,
+            footprint: 4,
             },
         );
         for dy in 1..5 {
@@ -519,6 +537,7 @@ mod tests {
                 max_life_months: 600,
                 capacity_mw: 100,
                 efficiency: 1.0,
+            footprint: 4,
             },
         );
         for dy in 0..4 {
@@ -556,6 +575,7 @@ mod tests {
                 max_life_months: 600,
                 capacity_mw: 100,
                 efficiency: 1.0,
+            footprint: 4,
             },
         );
         for dy in 0..4 {

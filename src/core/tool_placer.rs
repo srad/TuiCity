@@ -1,6 +1,6 @@
 use super::map::{Map, Tile, TransportTile, ViewLayer};
 use super::sim::SimState;
-use super::tool::Tool;
+use super::tool::{Tool, ToolContext};
 
 // ── ToolPlacer ────────────────────────────────────────────────────────────────
 //
@@ -173,14 +173,13 @@ impl<'a> ToolPlacer<'a> {
     // ── Private helpers ───────────────────────────────────────────────────────
 
     fn ensure_tool_unlocked(&self, tool: Tool) -> Result<(), String> {
-        if tool.is_unlocked(self.sim.year, self.sim.economy.unlock_mode) {
+        let ctx = ToolContext { year: self.sim.year, unlock_mode: self.sim.economy.unlock_mode };
+        if tool.is_available(&ctx) {
             Ok(())
         } else {
-            Err(format!(
-                "{} unlocks in {}",
-                tool.label(),
-                tool.unlock_year()
-            ))
+            Err(tool
+                .unavailable_reason(&ctx)
+                .unwrap_or_else(|| format!("{} not available", tool.label())))
         }
     }
 
@@ -239,8 +238,9 @@ impl<'a> ToolPlacer<'a> {
         let zone = self.map.effective_zone_spec(x, y);
 
         if let Some((px, py)) = self.find_plant_at(x, y) {
-            for dy in 0..4 {
-                for dx in 0..4 {
+            let fp = self.sim.plants.get(&(px, py)).map(|s| s.footprint as usize).unwrap_or(4);
+            for dy in 0..fp {
+                for dx in 0..fp {
                     let tx = px + dx;
                     let ty = py + dy;
                     if self.map.in_bounds(tx as i32, ty as i32) {
@@ -279,9 +279,12 @@ impl<'a> ToolPlacer<'a> {
     fn find_plant_at(&self, x: usize, y: usize) -> Option<(usize, usize)> {
         self.sim
             .plants
-            .keys()
-            .find(|&&(px, py)| x >= px && x < px + 4 && y >= py && y < py + 4)
-            .copied()
+            .iter()
+            .find(|(&(px, py), state)| {
+                let fp = state.footprint as usize;
+                x >= px && x < px + fp && y >= py && y < py + fp
+            })
+            .map(|(&pos, _)| pos)
     }
 
     fn can_place_footprint(
@@ -338,6 +341,7 @@ impl<'a> ToolPlacer<'a> {
                         max_life_months: COAL_PLANT_LIFE_MONTHS,
                         capacity_mw: COAL_PLANT_CAPACITY_MW,
                         efficiency: 1.0,
+                        footprint: 4,
                     },
                 );
             }
@@ -350,6 +354,48 @@ impl<'a> ToolPlacer<'a> {
                         max_life_months: GAS_PLANT_LIFE_MONTHS,
                         capacity_mw: GAS_PLANT_CAPACITY_MW,
                         efficiency: 1.0,
+                        footprint: 4,
+                    },
+                );
+            }
+            Tool::PowerPlantNuclear => {
+                use super::sim::constants::{
+                    NUCLEAR_PLANT_CAPACITY_MW, NUCLEAR_PLANT_LIFE_MONTHS,
+                };
+                self.sim.plants.insert(
+                    (ax, ay),
+                    super::sim::PlantState {
+                        age_months: 0,
+                        max_life_months: NUCLEAR_PLANT_LIFE_MONTHS,
+                        capacity_mw: NUCLEAR_PLANT_CAPACITY_MW,
+                        efficiency: 1.0,
+                        footprint: 4,
+                    },
+                );
+            }
+            Tool::PowerPlantWind => {
+                use super::sim::constants::{WIND_FARM_CAPACITY_MW, WIND_FARM_LIFE_MONTHS};
+                self.sim.plants.insert(
+                    (ax, ay),
+                    super::sim::PlantState {
+                        age_months: 0,
+                        max_life_months: WIND_FARM_LIFE_MONTHS,
+                        capacity_mw: WIND_FARM_CAPACITY_MW,
+                        efficiency: 1.0,
+                        footprint: 1,
+                    },
+                );
+            }
+            Tool::PowerPlantSolar => {
+                use super::sim::constants::{SOLAR_PLANT_CAPACITY_MW, SOLAR_PLANT_LIFE_MONTHS};
+                self.sim.plants.insert(
+                    (ax, ay),
+                    super::sim::PlantState {
+                        age_months: 0,
+                        max_life_months: SOLAR_PLANT_LIFE_MONTHS,
+                        capacity_mw: SOLAR_PLANT_CAPACITY_MW,
+                        efficiency: 1.0,
+                        footprint: 2,
                     },
                 );
             }

@@ -22,7 +22,7 @@ impl SimSystem for FireSystem {
             map.overlays[i].fire_risk = match map.tiles[i] {
                 Tile::IndHeavy => FIRE_RISK_IND_HEAVY,
                 Tile::IndLight | Tile::PowerPlantCoal => FIRE_RISK_IND_LIGHT_OR_COAL,
-                Tile::PowerPlantGas | Tile::ResHigh | Tile::CommHigh => {
+                Tile::PowerPlantGas | Tile::PowerPlantNuclear | Tile::ResHigh | Tile::CommHigh => {
                     FIRE_RISK_RES_HIGH_OR_COMM_HIGH_OR_GAS
                 }
                 Tile::ResMed | Tile::CommLow => FIRE_RISK_RES_MED_OR_COMM_LOW,

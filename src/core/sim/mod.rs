@@ -52,6 +52,10 @@ fn plant_efficiency_default() -> f32 {
     1.0
 }
 
+fn plant_footprint_default() -> u8 {
+    4
+}
+
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PlantState {
     pub age_months: u32,
@@ -60,6 +64,9 @@ pub struct PlantState {
     /// 1.0 = full output, 0.0 = no output. Degrades to 0 over the last 12 months of life.
     #[serde(default = "plant_efficiency_default")]
     pub efficiency: f32,
+    /// Side length of the square footprint in tiles (4 for coal/gas/nuclear, 1 for wind).
+    #[serde(default = "plant_footprint_default")]
+    pub footprint: u8,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

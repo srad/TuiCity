@@ -220,6 +220,12 @@ pub enum Tile {
     WaterTower = 70,
     WaterTreatment = 71,
     Desalination = 72,
+    PowerPlantNuclear = 73,
+    PowerPlantWind = 74,
+    School = 75,
+    Stadium = 76,
+    Library = 77,
+    PowerPlantSolar = 78,
     Rubble = 80,
 }
 
@@ -261,6 +267,12 @@ impl Tile {
             70 => Tile::WaterTower,
             71 => Tile::WaterTreatment,
             72 => Tile::Desalination,
+            73 => Tile::PowerPlantNuclear,
+            74 => Tile::PowerPlantWind,
+            75 => Tile::School,
+            76 => Tile::Stadium,
+            77 => Tile::Library,
+            78 => Tile::PowerPlantSolar,
             80 => Tile::Rubble,
             _ => Tile::Grass,
         }
@@ -297,6 +309,9 @@ impl Tile {
                 | Tile::WaterTower
                 | Tile::WaterTreatment
                 | Tile::Desalination
+                | Tile::School
+                | Tile::Stadium
+                | Tile::Library
         )
     }
 
@@ -329,6 +344,9 @@ impl Tile {
                     | Tile::WaterTower
                     | Tile::WaterTreatment
                     | Tile::Desalination
+                    | Tile::School
+                    | Tile::Stadium
+                    | Tile::Library
             )
     }
 
@@ -347,6 +365,9 @@ impl Tile {
                     | Tile::WaterTower
                     | Tile::WaterTreatment
                     | Tile::Desalination
+                    | Tile::School
+                    | Tile::Stadium
+                    | Tile::Library
             )
     }
 
@@ -414,6 +435,12 @@ impl Tile {
             Tile::WaterTower => "Water Tower",
             Tile::WaterTreatment => "Water Treatment",
             Tile::Desalination => "Desalination Plant",
+            Tile::PowerPlantNuclear => "Nuclear Power Plant",
+            Tile::PowerPlantWind => "Wind Farm",
+            Tile::School => "School",
+            Tile::Stadium => "Stadium",
+            Tile::Library => "Library",
+            Tile::PowerPlantSolar => "Solar Power Plant",
             Tile::Rubble => "Rubble",
         }
     }

@@ -212,8 +212,8 @@ fn chooser_key(kind: ToolChooserKind) -> &'static str {
         ToolChooserKind::Zones => "[1-6]",
         ToolChooserKind::Transport => "[R/H/O/L]",
         ToolChooserKind::Utilities => "[P/W/M]",
-        ToolChooserKind::PowerPlants => "[E/G]",
-        ToolChooserKind::Buildings => "[S/F/K]",
+        ToolChooserKind::PowerPlants => "[E/G/N/V/O]",
+        ToolChooserKind::Buildings => "[S/F/K/H/J/X/Q]",
     }
 }
 

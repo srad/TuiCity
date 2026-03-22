@@ -8,7 +8,7 @@ use crate::{
     core::{
         map::{Map, ViewLayer},
         sim::{MaintenanceBreakdown, SimState, TaxRates},
-        tool::Tool,
+        tool::{Tool, ToolContext},
     },
     ui::{
         runtime::ToolChooserKind,
@@ -112,6 +112,7 @@ pub struct ToolbarPaletteViewModel {
 pub struct ToolChooserViewModel {
     pub selected_tool: Tool,
     pub tools: Vec<Tool>,
+    pub ctx: ToolContext,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

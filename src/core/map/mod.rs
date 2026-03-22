@@ -457,6 +457,7 @@ mod tests {
                 max_life_months: 600,
                 capacity_mw: 500,
                 efficiency: 1.0,
+            footprint: 4,
             },
         );
 

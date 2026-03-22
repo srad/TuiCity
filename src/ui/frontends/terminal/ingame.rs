@@ -675,7 +675,7 @@ impl<'a, 'f> InGamePainter for TerminalPainter<'a, 'f> {
         areas
     }
 
-    fn paint_tool_chooser(&mut self, chooser: &ToolChooserViewModel) -> Vec<ClickArea> {
+    fn paint_tool_chooser(&mut self, chooser: &ToolChooserViewModel) -> Vec<(ClickArea, Tool)> {
         let ui = crate::ui::theme::ui_palette();
         let dl = self.dl();
         let power_outer = to_rect(dl.window(WindowId::PowerPicker).outer);
