@@ -41,7 +41,11 @@ pub fn render_new_city(
     frame.render_widget(
         MapPreview {
             map: &view.preview_map,
-            cursor: if view.map_cursor_active { Some(view.cursor) } else { None },
+            cursor: if view.map_cursor_active {
+                Some(view.cursor)
+            } else {
+                None
+            },
         },
         inner_map,
     );
@@ -116,6 +120,36 @@ fn render_controls(
             is_focused,
             ui.input_fg,
             ui.input_bg,
+        );
+        row += 2;
+    }
+
+    {
+        let is_focused = view.focused_field == NewCityField::GenerateNameBtn;
+        let label = if view.llm_name_pending {
+            "[Generating...]"
+        } else {
+            "[Generate Name]"
+        };
+        state.field_areas[NewCityField::GenerateNameBtn as usize] = crate::app::ClickArea {
+            x: area.x,
+            y: row,
+            width: w,
+            height: 1,
+        };
+        let style = if is_focused {
+            Style::default()
+                .fg(ui.button_focus_fg)
+                .bg(ui.button_focus_bg)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(ui.button_fg).bg(ui.button_bg)
+        };
+        buf.set_string(
+            area.x,
+            row,
+            format!("{:<width$}", label, width = w as usize),
+            style,
         );
         row += 2;
     }
@@ -222,14 +256,22 @@ fn render_controls(
         buf.set_string(area.x, row, brush_label, brush_style);
         row += 1;
 
-        let brushes: [Option<TerrainBrush>; 4] =
-            [None, Some(TerrainBrush::Water), Some(TerrainBrush::Land), Some(TerrainBrush::Trees)];
+        let brushes: [Option<TerrainBrush>; 4] = [
+            None,
+            Some(TerrainBrush::Water),
+            Some(TerrainBrush::Land),
+            Some(TerrainBrush::Trees),
+        ];
         let labels = ["None", "Water", "Land", "Trees"];
         // Each button gets equal width; any leftover goes to the last button.
         let btn_w = (w / 4).max(1);
         for (i, (brush_opt, label)) in brushes.iter().zip(labels.iter()).enumerate() {
             let bx = area.x + (i as u16) * btn_w;
-            let bw = if i == 3 { w.saturating_sub(btn_w * 3) } else { btn_w };
+            let bw = if i == 3 {
+                w.saturating_sub(btn_w * 3)
+            } else {
+                btn_w
+            };
             let is_active = view.terrain_brush == *brush_opt;
             let style = if is_active {
                 Style::default()
@@ -245,7 +287,12 @@ fn render_controls(
                 format!("{:<width$}", label, width = bw as usize),
                 style,
             );
-            state.brush_areas[i] = ClickArea { x: bx, y: row, width: bw, height: 1 };
+            state.brush_areas[i] = ClickArea {
+                x: bx,
+                y: row,
+                width: bw,
+                height: 1,
+            };
         }
         row += 2;
     }

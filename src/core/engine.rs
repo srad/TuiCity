@@ -75,8 +75,19 @@ impl SimulationEngine {
         #[cfg(debug_assertions)]
         {
             const EXPECTED_ORDER: &[&str] = &[
-                "Power", "Water", "Transport", "Pollution", "LandValue", "Police",
-                "Fire", "Growth", "FireSpread", "Flood", "Tornado", "Finance", "History",
+                "Power",
+                "Water",
+                "Transport",
+                "Pollution",
+                "LandValue",
+                "Police",
+                "Fire",
+                "Growth",
+                "FireSpread",
+                "Flood",
+                "Tornado",
+                "Finance",
+                "History",
             ];
             let actual: Vec<&str> = engine.systems.iter().map(|s| s.name()).collect();
             assert_eq!(

@@ -82,8 +82,7 @@ mod tests {
             assert!(
                 !overlay.trip_success,
                 "iteration {}: trip should not succeed with seed {}",
-                iteration,
-                seed
+                iteration, seed
             );
         }
     }

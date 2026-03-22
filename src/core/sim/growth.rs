@@ -46,7 +46,11 @@ fn evaluate_res(tile: Tile, ctx: &TileCtx, demand: f32, rng: &mut StdRng) -> Opt
             } else if !ctx.functional && rng.gen::<f32>() < 0.01 {
                 Some(Tile::ZoneRes)
             } else if ctx.severely_brownout || ctx.fully_unpowered {
-                if rng.gen::<f32>() < 0.01 { Some(Tile::ZoneRes) } else { None }
+                if rng.gen::<f32>() < 0.01 {
+                    Some(Tile::ZoneRes)
+                } else {
+                    None
+                }
             } else {
                 None
             }
@@ -59,18 +63,34 @@ fn evaluate_res(tile: Tile, ctx: &TileCtx, demand: f32, rng: &mut StdRng) -> Opt
             if ctx.functional && dense && rng.gen::<f32>() < upgrade_chance {
                 Some(Tile::ResHigh)
             } else if !ctx.functional || !dense {
-                if rng.gen::<f32>() < 0.05 { Some(Tile::ResLow) } else { None }
+                if rng.gen::<f32>() < 0.05 {
+                    Some(Tile::ResLow)
+                } else {
+                    None
+                }
             } else if ctx.severely_brownout || ctx.fully_unpowered {
-                if rng.gen::<f32>() < 0.01 { Some(Tile::ResLow) } else { None }
+                if rng.gen::<f32>() < 0.01 {
+                    Some(Tile::ResLow)
+                } else {
+                    None
+                }
             } else {
                 None
             }
         }
         Tile::ResHigh => {
             if !ctx.functional || !dense {
-                if rng.gen::<f32>() < 0.10 { Some(Tile::ResMed) } else { None }
+                if rng.gen::<f32>() < 0.10 {
+                    Some(Tile::ResMed)
+                } else {
+                    None
+                }
             } else if ctx.severely_brownout || ctx.fully_unpowered {
-                if rng.gen::<f32>() < 0.02 { Some(Tile::ResMed) } else { None }
+                if rng.gen::<f32>() < 0.02 {
+                    Some(Tile::ResMed)
+                } else {
+                    None
+                }
             } else {
                 None
             }
@@ -84,9 +104,8 @@ fn evaluate_comm(tile: Tile, ctx: &TileCtx, demand: f32, rng: &mut StdRng) -> Op
     let dense = zone_allows_dense_upgrade(ctx.zone_spec, ctx.watered);
     match tile {
         Tile::ZoneComm => {
-            let chance = (demand * 0.08 + ctx.lv_bonus * 0.5)
-                * ctx.crime_penalty
-                * ctx.traffic_penalty;
+            let chance =
+                (demand * 0.08 + ctx.lv_bonus * 0.5) * ctx.crime_penalty * ctx.traffic_penalty;
             if (ctx.functional || ctx.bootstrap_ready) && rng.gen::<f32>() < chance {
                 Some(Tile::CommLow)
             } else {
@@ -101,16 +120,28 @@ fn evaluate_comm(tile: Tile, ctx: &TileCtx, demand: f32, rng: &mut StdRng) -> Op
             } else if !ctx.functional && rng.gen::<f32>() < 0.01 {
                 Some(Tile::ZoneComm)
             } else if ctx.severely_brownout || ctx.fully_unpowered {
-                if rng.gen::<f32>() < 0.01 { Some(Tile::ZoneComm) } else { None }
+                if rng.gen::<f32>() < 0.01 {
+                    Some(Tile::ZoneComm)
+                } else {
+                    None
+                }
             } else {
                 None
             }
         }
         Tile::CommHigh => {
             if !ctx.functional || !dense {
-                if rng.gen::<f32>() < 0.05 { Some(Tile::CommLow) } else { None }
+                if rng.gen::<f32>() < 0.05 {
+                    Some(Tile::CommLow)
+                } else {
+                    None
+                }
             } else if ctx.severely_brownout || ctx.fully_unpowered {
-                if rng.gen::<f32>() < 0.02 { Some(Tile::CommLow) } else { None }
+                if rng.gen::<f32>() < 0.02 {
+                    Some(Tile::CommLow)
+                } else {
+                    None
+                }
             } else {
                 None
             }
@@ -138,16 +169,28 @@ fn evaluate_ind(tile: Tile, ctx: &TileCtx, demand: f32, rng: &mut StdRng) -> Opt
             } else if !ctx.functional && rng.gen::<f32>() < 0.01 {
                 Some(Tile::ZoneInd)
             } else if ctx.severely_brownout || ctx.fully_unpowered {
-                if rng.gen::<f32>() < 0.01 { Some(Tile::ZoneInd) } else { None }
+                if rng.gen::<f32>() < 0.01 {
+                    Some(Tile::ZoneInd)
+                } else {
+                    None
+                }
             } else {
                 None
             }
         }
         Tile::IndHeavy => {
             if !ctx.functional || !dense {
-                if rng.gen::<f32>() < 0.05 { Some(Tile::IndLight) } else { None }
+                if rng.gen::<f32>() < 0.05 {
+                    Some(Tile::IndLight)
+                } else {
+                    None
+                }
             } else if ctx.severely_brownout || ctx.fully_unpowered {
-                if rng.gen::<f32>() < 0.02 { Some(Tile::IndLight) } else { None }
+                if rng.gen::<f32>() < 0.02 {
+                    Some(Tile::IndLight)
+                } else {
+                    None
+                }
             } else {
                 None
             }
@@ -366,7 +409,7 @@ mod tests {
                 max_life_months: 600,
                 capacity_mw: 500,
                 efficiency: 1.0,
-            footprint: 4,
+                footprint: 4,
             },
         );
         sim.demand.res = 1.0;
@@ -522,7 +565,7 @@ mod tests {
                 max_life_months: 600,
                 capacity_mw: 500,
                 efficiency: 1.0,
-            footprint: 4,
+                footprint: 4,
             },
         );
         sim.demand.res = 1.0;
@@ -568,7 +611,7 @@ mod tests {
                 max_life_months: 600,
                 capacity_mw: 500,
                 efficiency: 1.0,
-            footprint: 4,
+                footprint: 4,
             },
         );
         sim.demand.res = 1.0;
@@ -581,7 +624,11 @@ mod tests {
             }
         }
 
-        assert_eq!(map.get(2, 0), Tile::ResLow, "Zone should develop within 50 ticks");
+        assert_eq!(
+            map.get(2, 0),
+            Tile::ResLow,
+            "Zone should develop within 50 ticks"
+        );
         assert!(!map.has_power_line(2, 0));
     }
 
@@ -610,7 +657,7 @@ mod tests {
                 max_life_months: 600,
                 capacity_mw: 500,
                 efficiency: 1.0,
-            footprint: 4,
+                footprint: 4,
             },
         );
         sim.demand.res = 1.0;
@@ -623,7 +670,11 @@ mod tests {
             }
         }
 
-        assert_eq!(map.get(3, 0), Tile::ResLow, "Zone should develop within 50 ticks");
+        assert_eq!(
+            map.get(3, 0),
+            Tile::ResLow,
+            "Zone should develop within 50 ticks"
+        );
     }
 
     #[test]
@@ -651,7 +702,7 @@ mod tests {
                 max_life_months: 600,
                 capacity_mw: 500,
                 efficiency: 1.0,
-            footprint: 4,
+                footprint: 4,
             },
         );
         sim.demand.res = 1.0;
@@ -918,7 +969,10 @@ mod tests {
                 evaluate_res(Tile::ZoneRes, &ctx, 0.8, &mut rng) == Some(Tile::ResLow)
             })
             .count();
-        assert!(developed > 0, "ZoneRes should develop in at least some seeds (got 0/200)");
+        assert!(
+            developed > 0,
+            "ZoneRes should develop in at least some seeds (got 0/200)"
+        );
     }
 
     #[test]
@@ -956,7 +1010,10 @@ mod tests {
                 degraded += 1;
             }
         }
-        assert!(degraded > 0, "ResLow should degrade occasionally when not functional");
+        assert!(
+            degraded > 0,
+            "ResLow should degrade occasionally when not functional"
+        );
     }
 
     #[test]
@@ -968,7 +1025,10 @@ mod tests {
                 evaluate_comm(Tile::ZoneComm, &ctx, 0.8, &mut rng) == Some(Tile::CommLow)
             })
             .count();
-        assert!(developed > 0, "ZoneComm should develop in at least some seeds (got 0/200)");
+        assert!(
+            developed > 0,
+            "ZoneComm should develop in at least some seeds (got 0/200)"
+        );
     }
 
     #[test]
@@ -980,7 +1040,10 @@ mod tests {
                 evaluate_ind(Tile::ZoneInd, &ctx, 0.8, &mut rng) == Some(Tile::IndLight)
             })
             .count();
-        assert!(developed > 0, "ZoneInd should develop in at least some seeds (got 0/200)");
+        assert!(
+            developed > 0,
+            "ZoneInd should develop in at least some seeds (got 0/200)"
+        );
     }
 
     #[test]

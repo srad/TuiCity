@@ -25,11 +25,13 @@ pub struct AppState {
     pub cmd_tx: Option<Sender<EngineCommand>>,
     pub running: bool,
     pub music: MusicManager,
+    pub textgen: crate::textgen::TextGenService,
 }
 
 impl AppState {
     pub fn new() -> Self {
         config::apply_user_config();
+        let textgen = crate::textgen::TextGenService::start(crate::textgen::default_model_dir());
         let mut app = Self {
             screens: vec![Box::new(StartScreen::new())],
             engine: Arc::new(RwLock::new(crate::core::engine::SimulationEngine::new(
@@ -39,18 +41,27 @@ impl AppState {
             cmd_tx: None,
             running: true,
             music: MusicManager::new(),
+            textgen,
         };
         app.sync_music();
         app
     }
 
     pub fn on_tick(&mut self) {
-        let context = AppContext {
-            engine: &self.engine,
-            cmd_tx: &self.cmd_tx,
+        let transition = {
+            let context = AppContext {
+                engine: &self.engine,
+                cmd_tx: &self.cmd_tx,
+                textgen: &self.textgen,
+            };
+            if let Some(screen) = self.screens.last_mut() {
+                screen.on_tick(context)
+            } else {
+                None
+            }
         };
-        if let Some(screen) = self.screens.last_mut() {
-            screen.on_tick(context);
+        if let Some(transition) = transition {
+            self.apply_transition(transition);
         }
         self.sync_music();
     }
@@ -60,6 +71,7 @@ impl AppState {
             let context = AppContext {
                 engine: &self.engine,
                 cmd_tx: &self.cmd_tx,
+                textgen: &self.textgen,
             };
             if let Some(screen) = self.screens.last_mut() {
                 screen.on_event(event, context)
@@ -93,6 +105,7 @@ impl AppState {
             let context = AppContext {
                 engine: &self.engine,
                 cmd_tx: &self.cmd_tx,
+                textgen: &self.textgen,
             };
             if let Some(screen) = self.screens.last_mut() {
                 screen.on_action(action, context)
@@ -126,6 +139,10 @@ impl AppState {
             ScreenTransition::Quit => {
                 self.running = false;
                 self.music.stop_all();
+            }
+            ScreenTransition::ReinitTextGen => {
+                self.textgen =
+                    crate::textgen::TextGenService::start(crate::textgen::default_model_dir());
             }
         }
         self.sync_music();

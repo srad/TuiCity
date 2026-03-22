@@ -31,6 +31,8 @@ pub struct UserConfig {
     pub music_enabled: Option<bool>,
     #[serde(default)]
     pub frontend: Option<FrontendKind>,
+    #[serde(default)]
+    pub llm_enabled: Option<bool>,
 }
 
 pub fn apply_user_config() {
@@ -62,6 +64,16 @@ pub fn get_frontend_kind() -> FrontendKind {
 pub fn persist_frontend_preference(kind: FrontendKind) -> io::Result<()> {
     let mut config = load_user_config();
     config.frontend = Some(kind);
+    save_user_config(&config)
+}
+
+pub fn is_llm_enabled() -> bool {
+    load_user_config().llm_enabled.unwrap_or(true)
+}
+
+pub fn persist_llm_preference(enabled: bool) -> io::Result<()> {
+    let mut config = load_user_config();
+    config.llm_enabled = Some(enabled);
     save_user_config(&config)
 }
 

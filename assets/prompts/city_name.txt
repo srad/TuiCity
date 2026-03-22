@@ -1,0 +1,5 @@
+Generate a single fictional city name for a city-building game. Reply with ONLY the city name, nothing else. No state, no comma, no period, no explanation.
+
+Examples: Riverside, Oakdale, Fairview, Pinecrest, Maplewood, Cedarville, Brookhaven, Stonebridge, Willowdale, Crestwood, Lakewood, Ashford, Greenville, Clearwater, Thornton, Windham, Foxborough, Ironwood, Cliffside, Bayport, Silverton, Redfield, Millbrook, Northgate, Sunnyvale, Havenwood, Westbrook, Springdale, Ridgemont, Hartfield
+
+City name:

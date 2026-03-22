@@ -10,12 +10,12 @@ use crate::{
             FrameLayout, InGamePainter, MapPreview, MenuBarAreas, MenuPopupAreas, PanelAreas,
             StatusBarAreas,
         },
-        runtime::{ToolbarHitArea, ToolbarHitTarget, ToolChooserKind, UiRect, WindowId},
+        runtime::{ToolChooserKind, ToolbarHitArea, ToolbarHitTarget, UiRect, WindowId},
         theme::{self, OverlayMode},
         view::{
-            BudgetViewModel, ConfirmDialogViewModel, NewsTickerViewModel, ScreenView,
-            SettingsViewModel, StartViewModel, StatisticsWindowViewModel, TextWindowViewModel,
-            ToolChooserViewModel, ToolbarPaletteViewModel,
+            AdvisorViewModel, BudgetViewModel, ConfirmDialogViewModel, NewsTickerViewModel,
+            ScreenView, SettingsViewModel, StartViewModel, StatisticsWindowViewModel,
+            TextWindowViewModel, ToolChooserViewModel, ToolbarPaletteViewModel,
         },
     },
 };
@@ -95,7 +95,24 @@ pub fn paint_frame(
         }
         ScreenView::ThemeSettings(v) => {
             let labels: Vec<String> = v.themes.iter().map(|t| t.label().to_string()).collect();
-            paint_list(buf, width, height, scale, "Theme Settings", &labels, v.selected);
+            paint_list(
+                buf,
+                width,
+                height,
+                scale,
+                "Theme Settings",
+                &labels,
+                v.selected,
+            );
+        }
+        ScreenView::LlmSetup(_) => {
+            paint_simple_text(
+                buf,
+                width,
+                height,
+                scale,
+                "LLM Setup  --  use Terminal mode to configure",
+            );
         }
         ScreenView::InGame(v) => {
             let ingame = ingame.expect("InGame view requires InGameScreen reference");
@@ -103,7 +120,9 @@ pub fn paint_frame(
             let ch = cell_h(scale);
             let total_cols = (width / cw) as u16;
             let total_rows = (height / ch) as u16;
-            let desktop_layout = ingame.desktop.layout(UiRect::new(0, 0, total_cols, total_rows));
+            let desktop_layout = ingame
+                .desktop
+                .layout(UiRect::new(0, 0, total_cols, total_rows));
             // Pixel layout: menu bar + status bar at top, ticker at bottom
             let menu_h = ch;
             let status_h = ch;
@@ -200,9 +219,16 @@ fn paint_settings(buf: &mut [u32], width: u32, height: u32, scale: u32, view: &S
         scale,
     );
 
+    let llm_label = match &view.llm_status {
+        crate::ui::view::LlmStatus::Active => "LLM: Active",
+        crate::ui::view::LlmStatus::Unavailable => "LLM: No Model",
+        crate::ui::view::LlmStatus::Disabled => "LLM: Off",
+        crate::ui::view::LlmStatus::Downloading(_) => "LLM: Downloading...",
+        crate::ui::view::LlmStatus::DownloadFailed(_) => "LLM: Download Failed",
+    };
     let info = format!(
-        "Theme: {}  |  Renderer: {}",
-        view.current_theme_label, view.current_frontend_label
+        "Theme: {}  |  Renderer: {}  |  {}",
+        view.current_theme_label, view.current_frontend_label, llm_label
     );
     draw_str(
         buf,
@@ -272,9 +298,18 @@ fn paint_list(
 
     let start_y = ch * 4;
     let max_visible = ((height.saturating_sub(start_y + ch * 2)) / ch) as usize;
-    let scroll_start = if selected >= max_visible { selected - max_visible + 1 } else { 0 };
+    let scroll_start = if selected >= max_visible {
+        selected - max_visible + 1
+    } else {
+        0
+    };
 
-    for (i, item) in items.iter().enumerate().skip(scroll_start).take(max_visible) {
+    for (i, item) in items
+        .iter()
+        .enumerate()
+        .skip(scroll_start)
+        .take(max_visible)
+    {
         let sel = i == selected;
         let row_y = start_y + (i - scroll_start) as u32 * ch;
         let text = format!("  {}  ", item);
@@ -379,10 +414,36 @@ impl<'a> PixelPainter<'a> {
         fill_rect(self.buf, self.width, wx + 3, wy + 3, ww, wh, SHADOW_COLOR);
         fill_rect(self.buf, self.width, wx, wy, ww, wh, POPUP_BG);
         draw_rect_outline(self.buf, self.width, wx, wy, ww, wh, BORDER_FG);
-        fill_rect(self.buf, self.width, wx + 1, wy, ww - 2, self.ch, WIN_TITLE_BG);
-        draw_str(self.buf, self.width, wx + self.cw, wy, title, WIN_TITLE_FG, WIN_TITLE_BG, self.scale);
+        fill_rect(
+            self.buf,
+            self.width,
+            wx + 1,
+            wy,
+            ww - 2,
+            self.ch,
+            WIN_TITLE_BG,
+        );
+        draw_str(
+            self.buf,
+            self.width,
+            wx + self.cw,
+            wy,
+            title,
+            WIN_TITLE_FG,
+            WIN_TITLE_BG,
+            self.scale,
+        );
         if ww >= 5 * self.cw {
-            draw_str(self.buf, self.width, wx + ww - 4 * self.cw, wy, "[X]", DANGER_FG, WIN_TITLE_BG, self.scale);
+            draw_str(
+                self.buf,
+                self.width,
+                wx + ww - 4 * self.cw,
+                wy,
+                "[X]",
+                DANGER_FG,
+                WIN_TITLE_BG,
+                self.scale,
+            );
         }
     }
 
@@ -406,7 +467,15 @@ impl<'a> InGamePainter for PixelPainter<'a> {
         // Clear frame
         fill_rect(self.buf, self.width, 0, 0, self.width, self.height, BG);
         // Map background
-        fill_rect(self.buf, self.width, 0, self.map_px_y, self.width, self.map_px_h, 0x101018);
+        fill_rect(
+            self.buf,
+            self.width,
+            0,
+            self.map_px_y,
+            self.width,
+            self.map_px_h,
+            0x101018,
+        );
     }
 
     fn paint_map(
@@ -456,8 +525,18 @@ impl<'a> InGamePainter for PixelPainter<'a> {
                 let py = map_px_y + tile_row as u32 * tile_px;
 
                 tiles::draw_tile(
-                    self.buf, self.width, px, py, tile, &overlay, self.scale,
-                    self.fire_ph, self.traffic_ph, self.util_ph, self.blink, road_bits,
+                    self.buf,
+                    self.width,
+                    px,
+                    py,
+                    tile,
+                    &overlay,
+                    self.scale,
+                    self.fire_ph,
+                    self.traffic_ph,
+                    self.util_ph,
+                    self.blink,
+                    road_bits,
                 );
 
                 if overlay_mode != OverlayMode::None {
@@ -539,9 +618,28 @@ impl<'a> InGamePainter for PixelPainter<'a> {
         // Overlay mode label
         let overlay_label = overlay_mode.label();
         if !overlay_label.is_empty() {
-            let lx = self.width.saturating_sub(overlay_label.len() as u32 * self.cw + self.cw);
-            fill_rect(self.buf, self.width, lx, map_px_y, overlay_label.len() as u32 * self.cw, self.ch, 0x000000);
-            draw_str(self.buf, self.width, lx, map_px_y, overlay_label, TITLE_FG, 0x000000, self.scale);
+            let lx = self
+                .width
+                .saturating_sub(overlay_label.len() as u32 * self.cw + self.cw);
+            fill_rect(
+                self.buf,
+                self.width,
+                lx,
+                map_px_y,
+                overlay_label.len() as u32 * self.cw,
+                self.ch,
+                0x000000,
+            );
+            draw_str(
+                self.buf,
+                self.width,
+                lx,
+                map_px_y,
+                overlay_label,
+                TITLE_FG,
+                0x000000,
+                self.scale,
+            );
         }
 
         MapUiAreas {
@@ -566,7 +664,9 @@ impl<'a> InGamePainter for PixelPainter<'a> {
         fill_rect(self.buf, self.width, 0, 0, self.width, self.ch, MENU_BG);
 
         let title = " TuiCity 2000 ";
-        draw_str(self.buf, self.width, 0, 0, title, TITLE_FG, MENU_BG, self.scale);
+        draw_str(
+            self.buf, self.width, 0, 0, title, TITLE_FG, MENU_BG, self.scale,
+        );
         let mut x = title.len() as u32 * self.cw;
 
         areas.menu_bar = self.click_area(0, 0, self.width, self.ch);
@@ -603,7 +703,11 @@ impl<'a> InGamePainter for PixelPainter<'a> {
             return areas;
         }
 
-        let max_label = rows.iter().map(|r| r.label.len() + r.right.len() + 4).max().unwrap_or(16);
+        let max_label = rows
+            .iter()
+            .map(|r| r.label.len() + r.right.len() + 4)
+            .max()
+            .unwrap_or(16);
         let pop_cols = max_label.max(16) as u32;
         let pop_rows = rows.len() as u32;
         let pop_w = pop_cols * self.cw;
@@ -612,7 +716,15 @@ impl<'a> InGamePainter for PixelPainter<'a> {
         let px = (anchor.x as u32 * self.cw).min(self.width.saturating_sub(pop_w));
         let py = self.ch;
 
-        fill_rect(self.buf, self.width, px + 2, py + 2, pop_w, pop_h, SHADOW_COLOR);
+        fill_rect(
+            self.buf,
+            self.width,
+            px + 2,
+            py + 2,
+            pop_w,
+            pop_h,
+            SHADOW_COLOR,
+        );
         fill_rect(self.buf, self.width, px, py, pop_w, pop_h, POPUP_BG);
         draw_rect_outline(self.buf, self.width, px, py, pop_w, pop_h, BORDER_FG);
 
@@ -621,17 +733,34 @@ impl<'a> InGamePainter for PixelPainter<'a> {
         for (i, row) in rows.iter().enumerate() {
             let item_y = py + self.ch + i as u32 * self.ch;
             let selected = i == menu_item_selected;
-            let (fg, bg) = if selected { (SELECT_FG, SELECT_BG) } else { (TEXT_FG, POPUP_BG) };
+            let (fg, bg) = if selected {
+                (SELECT_FG, SELECT_BG)
+            } else {
+                (TEXT_FG, POPUP_BG)
+            };
 
             fill_rect(self.buf, self.width, px + 1, item_y, pop_w - 2, self.ch, bg);
             let label = format!(" {}", row.label);
-            draw_str(self.buf, self.width, px + 1, item_y, &trunc(&label, (pop_cols - 1) as usize), fg, bg, self.scale);
+            draw_str(
+                self.buf,
+                self.width,
+                px + 1,
+                item_y,
+                &trunc(&label, (pop_cols - 1) as usize),
+                fg,
+                bg,
+                self.scale,
+            );
             if !row.right.is_empty() {
                 let rx = px + pop_w - (row.right.len() as u32 + 1) * self.cw;
-                draw_str(self.buf, self.width, rx, item_y, row.right, DIM_FG, bg, self.scale);
+                draw_str(
+                    self.buf, self.width, rx, item_y, row.right, DIM_FG, bg, self.scale,
+                );
             }
 
-            areas.menu_popup_items.push(self.click_area(px, item_y, pop_w, self.ch));
+            areas
+                .menu_popup_items
+                .push(self.click_area(px, item_y, pop_w, self.ch));
         }
 
         areas
@@ -647,8 +776,20 @@ impl<'a> InGamePainter for PixelPainter<'a> {
         let mut areas = StatusBarAreas::default();
         let menu_h = self.menu_h;
 
-        fill_rect(self.buf, self.width, 0, menu_h, self.width, self.status_h, STATUS_BG);
-        let income_sign = if sim.economy.last_income >= 0 { "+" } else { "" };
+        fill_rect(
+            self.buf,
+            self.width,
+            0,
+            menu_h,
+            self.width,
+            self.status_h,
+            STATUS_BG,
+        );
+        let income_sign = if sim.economy.last_income >= 0 {
+            "+"
+        } else {
+            ""
+        };
         let status = format!(
             " {}  ${:+}  Pop:{}  {}{}  {}{}  {} ",
             sim.city_name,
@@ -660,7 +801,9 @@ impl<'a> InGamePainter for PixelPainter<'a> {
             sim.economy.last_income,
             if paused { "[PAUSED]" } else { "       " },
         );
-        draw_str(self.buf, self.width, 0, menu_h, &status, TEXT_FG, STATUS_BG, self.scale);
+        draw_str(
+            self.buf, self.width, 0, menu_h, &status, TEXT_FG, STATUS_BG, self.scale,
+        );
 
         // Right-side controls
         let pause_label = if paused { "[>]" } else { "[||]" };
@@ -668,29 +811,69 @@ impl<'a> InGamePainter for PixelPainter<'a> {
         let underground_label = "[Ugr]";
 
         let mut rx = self.width.saturating_sub(
-            (pause_label.len() + surface_label.len() + underground_label.len() + 3) as u32 * self.cw,
+            (pause_label.len() + surface_label.len() + underground_label.len() + 3) as u32
+                * self.cw,
         );
 
         let pw = pause_label.len() as u32 * self.cw;
         let pause_fg = if paused { TITLE_FG } else { TEXT_FG };
-        draw_str(self.buf, self.width, rx, menu_h, pause_label, pause_fg, STATUS_BG, self.scale);
+        draw_str(
+            self.buf,
+            self.width,
+            rx,
+            menu_h,
+            pause_label,
+            pause_fg,
+            STATUS_BG,
+            self.scale,
+        );
         areas.pause_btn = self.click_area(rx, menu_h, pw, self.ch);
         rx += pw + self.cw;
 
         let sw = surface_label.len() as u32 * self.cw;
-        let sfg = if matches!(view_layer, ViewLayer::Surface) { TITLE_FG } else { DIM_FG };
-        draw_str(self.buf, self.width, rx, menu_h, surface_label, sfg, STATUS_BG, self.scale);
+        let sfg = if matches!(view_layer, ViewLayer::Surface) {
+            TITLE_FG
+        } else {
+            DIM_FG
+        };
+        draw_str(
+            self.buf,
+            self.width,
+            rx,
+            menu_h,
+            surface_label,
+            sfg,
+            STATUS_BG,
+            self.scale,
+        );
         areas.layer_surface_btn = self.click_area(rx, menu_h, sw, self.ch);
         rx += sw + self.cw;
 
         let uw = underground_label.len() as u32 * self.cw;
-        let ufg = if matches!(view_layer, ViewLayer::Underground) { TITLE_FG } else { DIM_FG };
-        draw_str(self.buf, self.width, rx, menu_h, underground_label, ufg, STATUS_BG, self.scale);
+        let ufg = if matches!(view_layer, ViewLayer::Underground) {
+            TITLE_FG
+        } else {
+            DIM_FG
+        };
+        draw_str(
+            self.buf,
+            self.width,
+            rx,
+            menu_h,
+            underground_label,
+            ufg,
+            STATUS_BG,
+            self.scale,
+        );
         areas.layer_underground_btn = self.click_area(rx, menu_h, uw, self.ch);
 
         if let Some(msg) = status_message {
-            let rx = self.width.saturating_sub(msg.len() as u32 * self.cw + self.cw + 25 * self.cw);
-            draw_str(self.buf, self.width, rx, menu_h, msg, TITLE_FG, STATUS_BG, self.scale);
+            let rx = self
+                .width
+                .saturating_sub(msg.len() as u32 * self.cw + self.cw + 25 * self.cw);
+            draw_str(
+                self.buf, self.width, rx, menu_h, msg, TITLE_FG, STATUS_BG, self.scale,
+            );
         }
 
         areas
@@ -716,10 +899,36 @@ impl<'a> InGamePainter for PixelPainter<'a> {
         fill_rect(self.buf, self.width, wx + 3, wy + 3, ww, wh, SHADOW_COLOR);
         fill_rect(self.buf, self.width, wx, wy, ww, wh, SIDEBAR_BG);
         draw_rect_outline(self.buf, self.width, wx, wy, ww, wh, BORDER_FG);
-        fill_rect(self.buf, self.width, wx + 1, wy, ww - 2, self.ch, WIN_TITLE_BG);
-        draw_str(self.buf, self.width, wx + self.cw, wy, " TOOLBOX ", WIN_TITLE_FG, WIN_TITLE_BG, self.scale);
+        fill_rect(
+            self.buf,
+            self.width,
+            wx + 1,
+            wy,
+            ww - 2,
+            self.ch,
+            WIN_TITLE_BG,
+        );
+        draw_str(
+            self.buf,
+            self.width,
+            wx + self.cw,
+            wy,
+            " TOOLBOX ",
+            WIN_TITLE_FG,
+            WIN_TITLE_BG,
+            self.scale,
+        );
         if ww >= 5 * self.cw {
-            draw_str(self.buf, self.width, wx + ww - 4 * self.cw, wy, "[X]", DANGER_FG, WIN_TITLE_BG, self.scale);
+            draw_str(
+                self.buf,
+                self.width,
+                wx + ww - 4 * self.cw,
+                wy,
+                "[X]",
+                DANGER_FG,
+                WIN_TITLE_BG,
+                self.scale,
+            );
         }
 
         let cx = wx + self.cw;
@@ -734,11 +943,26 @@ impl<'a> InGamePainter for PixelPainter<'a> {
             ("B Bulldoze", Tool::Bulldoze, 0xff6644),
         ];
         for (label, tool, color) in tool_rows {
-            if row_y + self.ch > wy + wh { break; }
+            if row_y + self.ch > wy + wh {
+                break;
+            }
             let active = toolbar.current_tool == *tool;
-            let (fg, bg) = if active { (SELECT_FG, SELECT_BG) } else { (*color, BTN_BG) };
+            let (fg, bg) = if active {
+                (SELECT_FG, SELECT_BG)
+            } else {
+                (*color, BTN_BG)
+            };
             fill_rect(self.buf, self.width, cx, row_y, iw, self.ch, bg);
-            draw_str(self.buf, self.width, cx, row_y, &trunc(label, cols), fg, bg, self.scale);
+            draw_str(
+                self.buf,
+                self.width,
+                cx,
+                row_y,
+                &trunc(label, cols),
+                fg,
+                bg,
+                self.scale,
+            );
             areas.toolbar_items.push(ToolbarHitArea {
                 area: self.click_area(cx, row_y, iw, self.ch),
                 target: ToolbarHitTarget::SelectTool(*tool),
@@ -748,18 +972,53 @@ impl<'a> InGamePainter for PixelPainter<'a> {
 
         let chooser_rows: &[(&str, ToolChooserKind, Tool, u32)] = &[
             ("Zones", ToolChooserKind::Zones, toolbar.zone_tool, RES_FG),
-            ("Transport", ToolChooserKind::Transport, toolbar.transport_tool, 0xaaaaaa),
-            ("Utilities", ToolChooserKind::Utilities, toolbar.utility_tool, POWER_FG),
-            ("Plants", ToolChooserKind::PowerPlants, toolbar.power_plant_tool, 0xff4444),
-            ("Buildings", ToolChooserKind::Buildings, toolbar.building_tool, COMM_FG),
+            (
+                "Transport",
+                ToolChooserKind::Transport,
+                toolbar.transport_tool,
+                0xaaaaaa,
+            ),
+            (
+                "Utilities",
+                ToolChooserKind::Utilities,
+                toolbar.utility_tool,
+                POWER_FG,
+            ),
+            (
+                "Plants",
+                ToolChooserKind::PowerPlants,
+                toolbar.power_plant_tool,
+                0xff4444,
+            ),
+            (
+                "Buildings",
+                ToolChooserKind::Buildings,
+                toolbar.building_tool,
+                COMM_FG,
+            ),
         ];
         for (prefix, kind, tool, color) in chooser_rows {
-            if row_y + self.ch > wy + wh { break; }
+            if row_y + self.ch > wy + wh {
+                break;
+            }
             let active = toolbar.current_tool == *tool;
-            let (fg, bg) = if active { (SELECT_FG, BTN_SEL_BG) } else { (*color, BTN_BG) };
+            let (fg, bg) = if active {
+                (SELECT_FG, BTN_SEL_BG)
+            } else {
+                (*color, BTN_BG)
+            };
             let label = format!("{}: {}", prefix, tool.label());
             fill_rect(self.buf, self.width, cx, row_y, iw, self.ch, bg);
-            draw_str(self.buf, self.width, cx, row_y, &trunc(&label, cols), fg, bg, self.scale);
+            draw_str(
+                self.buf,
+                self.width,
+                cx,
+                row_y,
+                &trunc(&label, cols),
+                fg,
+                bg,
+                self.scale,
+            );
             areas.toolbar_items.push(ToolbarHitArea {
                 area: self.click_area(cx, row_y, iw, self.ch),
                 target: ToolbarHitTarget::OpenChooser(*kind),
@@ -772,7 +1031,9 @@ impl<'a> InGamePainter for PixelPainter<'a> {
         if cost > 0 && row_y + self.ch <= wy + wh {
             let cost_str = format!("${}", cost);
             fill_rect(self.buf, self.width, cx, row_y, iw, self.ch, SIDEBAR_BG);
-            draw_str(self.buf, self.width, cx, row_y, &cost_str, DIM_FG, SIDEBAR_BG, self.scale);
+            draw_str(
+                self.buf, self.width, cx, row_y, &cost_str, DIM_FG, SIDEBAR_BG, self.scale,
+            );
             row_y += self.ch;
         }
 
@@ -784,7 +1045,9 @@ impl<'a> InGamePainter for PixelPainter<'a> {
         // RCI demand
         if row_y + self.ch <= wy + wh {
             fill_rect(self.buf, self.width, cx, row_y, iw, self.ch, SIDEBAR_BG);
-            draw_str(self.buf, self.width, cx, row_y, "DEMAND:", DIM_FG, SIDEBAR_BG, self.scale);
+            draw_str(
+                self.buf, self.width, cx, row_y, "DEMAND:", DIM_FG, SIDEBAR_BG, self.scale,
+            );
             row_y += self.ch;
         }
 
@@ -794,16 +1057,40 @@ impl<'a> InGamePainter for PixelPainter<'a> {
             ("C:", sim.demand.comm, COMM_FG),
             ("I:", sim.demand.ind, IND_FG),
         ] {
-            if row_y + self.ch > wy + wh { break; }
+            if row_y + self.ch > wy + wh {
+                break;
+            }
             let fill = ((demand.clamp(0.0, 1.0) * bar_cols as f32) as usize).min(bar_cols);
-            let bar: String = (0..bar_cols).map(|i| if i < fill { '#' } else { '.' }).collect();
+            let bar: String = (0..bar_cols)
+                .map(|i| if i < fill { '#' } else { '.' })
+                .collect();
             fill_rect(self.buf, self.width, cx, row_y, iw, self.ch, SIDEBAR_BG);
-            draw_str(self.buf, self.width, cx, row_y, label, DIM_FG, SIDEBAR_BG, self.scale);
+            draw_str(
+                self.buf, self.width, cx, row_y, label, DIM_FG, SIDEBAR_BG, self.scale,
+            );
             let bar_x = cx + 3 * self.cw;
             let filled_bar: String = bar.chars().take(fill).collect();
             let empty_bar: String = bar.chars().skip(fill).collect();
-            draw_str(self.buf, self.width, bar_x, row_y, &filled_bar, color, SIDEBAR_BG, self.scale);
-            draw_str(self.buf, self.width, bar_x + fill as u32 * self.cw, row_y, &empty_bar, DIM_FG, SIDEBAR_BG, self.scale);
+            draw_str(
+                self.buf,
+                self.width,
+                bar_x,
+                row_y,
+                &filled_bar,
+                color,
+                SIDEBAR_BG,
+                self.scale,
+            );
+            draw_str(
+                self.buf,
+                self.width,
+                bar_x + fill as u32 * self.cw,
+                row_y,
+                &empty_bar,
+                DIM_FG,
+                SIDEBAR_BG,
+                self.scale,
+            );
             row_y += self.ch;
         }
 
@@ -811,10 +1098,26 @@ impl<'a> InGamePainter for PixelPainter<'a> {
         if row_y + self.ch <= wy + wh {
             let util = &sim.utilities;
             let surplus = util.power_produced_mw as i32 - util.power_consumed_mw as i32;
-            let pw_color = if surplus >= 0 { 0x66cc44u32 } else { 0xff4444u32 };
-            let pw_str = format!("Pwr:{}/{}MW", util.power_produced_mw, util.power_consumed_mw);
+            let pw_color = if surplus >= 0 {
+                0x66cc44u32
+            } else {
+                0xff4444u32
+            };
+            let pw_str = format!(
+                "Pwr:{}/{}MW",
+                util.power_produced_mw, util.power_consumed_mw
+            );
             fill_rect(self.buf, self.width, cx, row_y, iw, self.ch, SIDEBAR_BG);
-            draw_str(self.buf, self.width, cx, row_y, &trunc(&pw_str, cols), pw_color, SIDEBAR_BG, self.scale);
+            draw_str(
+                self.buf,
+                self.width,
+                cx,
+                row_y,
+                &trunc(&pw_str, cols),
+                pw_color,
+                SIDEBAR_BG,
+                self.scale,
+            );
             row_y += self.ch;
         }
 
@@ -827,19 +1130,32 @@ impl<'a> InGamePainter for PixelPainter<'a> {
                 if row_y + self.ch <= wy + wh {
                     let pos_str = format!("({},{})", tile_cx, tile_cy);
                     fill_rect(self.buf, self.width, cx, row_y, iw, self.ch, SIDEBAR_BG);
-                    draw_str(self.buf, self.width, cx, row_y, &pos_str, DIM_FG, SIDEBAR_BG, self.scale);
+                    draw_str(
+                        self.buf, self.width, cx, row_y, &pos_str, DIM_FG, SIDEBAR_BG, self.scale,
+                    );
                     row_y += self.ch;
                 }
                 if row_y + self.ch <= wy + wh {
                     fill_rect(self.buf, self.width, cx, row_y, iw, self.ch, SIDEBAR_BG);
-                    draw_str(self.buf, self.width, cx, row_y, &trunc(tile.name(), cols), TITLE_FG, SIDEBAR_BG, self.scale);
+                    draw_str(
+                        self.buf,
+                        self.width,
+                        cx,
+                        row_y,
+                        &trunc(tile.name(), cols),
+                        TITLE_FG,
+                        SIDEBAR_BG,
+                        self.scale,
+                    );
                     row_y += self.ch;
                 }
                 if tile_ov.power_level > 0 && row_y + self.ch <= wy + wh {
                     let pct = tile_ov.power_level as u32 * 100 / 255;
                     let s = format!("Pwr {}%", pct);
                     fill_rect(self.buf, self.width, cx, row_y, iw, self.ch, SIDEBAR_BG);
-                    draw_str(self.buf, self.width, cx, row_y, &s, POWER_FG, SIDEBAR_BG, self.scale);
+                    draw_str(
+                        self.buf, self.width, cx, row_y, &s, POWER_FG, SIDEBAR_BG, self.scale,
+                    );
                     row_y += self.ch;
                 }
             }
@@ -855,7 +1171,9 @@ impl<'a> InGamePainter for PixelPainter<'a> {
         if minimap_avail_h > 8 && iw > 8 {
             if row_y + self.ch <= wy + wh {
                 fill_rect(self.buf, self.width, cx, row_y, iw, self.ch, SIDEBAR_BG);
-                draw_str(self.buf, self.width, cx, row_y, "MINIMAP:", DIM_FG, SIDEBAR_BG, self.scale);
+                draw_str(
+                    self.buf, self.width, cx, row_y, "MINIMAP:", DIM_FG, SIDEBAR_BG, self.scale,
+                );
                 row_y += self.ch;
             }
 
@@ -873,8 +1191,16 @@ impl<'a> InGamePainter for PixelPainter<'a> {
 
             for row in 0..rows_count {
                 for col in 0..cols_count {
-                    let map_x = if cols_count <= 1 { 0 } else { col * (mw - 1) / (cols_count - 1) };
-                    let map_y = if rows_count <= 1 { 0 } else { row * (mh - 1) / (rows_count - 1) };
+                    let map_x = if cols_count <= 1 {
+                        0
+                    } else {
+                        col * (mw - 1) / (cols_count - 1)
+                    };
+                    let map_y = if rows_count <= 1 {
+                        0
+                    } else {
+                        row * (mh - 1) / (rows_count - 1)
+                    };
                     let idx = map.idx(map_x, map_y);
                     let tile = map.tiles[idx];
                     let ov = map.overlays[idx];
@@ -888,24 +1214,67 @@ impl<'a> InGamePainter for PixelPainter<'a> {
 
             // Viewport rectangle on minimap
             let cam = &ingame.camera;
-            let vx0 = if mw <= 1 || cols_count <= 1 { 0u32 }
-            else { (cam.offset_x.max(0) as u32 * (cols_count as u32 - 1) / (mw as u32 - 1)) * 2 };
-            let vy0 = if mh <= 1 || rows_count <= 1 { 0u32 }
-            else { cam.offset_y.max(0) as u32 * (rows_count as u32 - 1) / (mh as u32 - 1) };
-            let vx1 = if mw <= 1 || cols_count <= 1 { mm_w.saturating_sub(1) }
-            else { (((cam.offset_x + cam.view_w as i32).max(0) as u32).min(mw as u32 - 1)
-                * (cols_count as u32 - 1) / (mw as u32 - 1)) * 2 };
-            let vy1 = if mh <= 1 || rows_count <= 1 { mm_h.saturating_sub(1) }
-            else { ((cam.offset_y + cam.view_h as i32).max(0) as u32).min(mh as u32 - 1)
-                * (rows_count as u32 - 1) / (mh as u32 - 1) };
+            let vx0 = if mw <= 1 || cols_count <= 1 {
+                0u32
+            } else {
+                (cam.offset_x.max(0) as u32 * (cols_count as u32 - 1) / (mw as u32 - 1)) * 2
+            };
+            let vy0 = if mh <= 1 || rows_count <= 1 {
+                0u32
+            } else {
+                cam.offset_y.max(0) as u32 * (rows_count as u32 - 1) / (mh as u32 - 1)
+            };
+            let vx1 = if mw <= 1 || cols_count <= 1 {
+                mm_w.saturating_sub(1)
+            } else {
+                (((cam.offset_x + cam.view_w as i32).max(0) as u32).min(mw as u32 - 1)
+                    * (cols_count as u32 - 1)
+                    / (mw as u32 - 1))
+                    * 2
+            };
+            let vy1 = if mh <= 1 || rows_count <= 1 {
+                mm_h.saturating_sub(1)
+            } else {
+                ((cam.offset_y + cam.view_h as i32).max(0) as u32).min(mh as u32 - 1)
+                    * (rows_count as u32 - 1)
+                    / (mh as u32 - 1)
+            };
             let ax = mm_x + vx0.min(mm_w.saturating_sub(1));
             let ay = mm_y + vy0.min(mm_h.saturating_sub(1));
             let bx = mm_x + vx1.min(mm_w.saturating_sub(1));
             let by = mm_y + vy1.min(mm_h.saturating_sub(1));
-            font::hline(self.buf, self.width, ax, ay, bx.saturating_sub(ax) + 1, 0xffffff);
-            font::hline(self.buf, self.width, ax, by, bx.saturating_sub(ax) + 1, 0xffffff);
-            font::vline(self.buf, self.width, ax, ay, by.saturating_sub(ay) + 1, 0xffffff);
-            font::vline(self.buf, self.width, bx, ay, by.saturating_sub(ay) + 1, 0xffffff);
+            font::hline(
+                self.buf,
+                self.width,
+                ax,
+                ay,
+                bx.saturating_sub(ax) + 1,
+                0xffffff,
+            );
+            font::hline(
+                self.buf,
+                self.width,
+                ax,
+                by,
+                bx.saturating_sub(ax) + 1,
+                0xffffff,
+            );
+            font::vline(
+                self.buf,
+                self.width,
+                ax,
+                ay,
+                by.saturating_sub(ay) + 1,
+                0xffffff,
+            );
+            font::vline(
+                self.buf,
+                self.width,
+                bx,
+                ay,
+                by.saturating_sub(ay) + 1,
+                0xffffff,
+            );
 
             areas.minimap = self.click_area(mm_x, mm_y, mm_w, mm_h);
         }
@@ -916,7 +1285,12 @@ impl<'a> InGamePainter for PixelPainter<'a> {
     fn paint_tool_chooser(&mut self, chooser: &ToolChooserViewModel) -> Vec<(ClickArea, Tool)> {
         let mut items: Vec<(ClickArea, Tool)> = Vec::new();
 
-        let max_name = chooser.tools.iter().map(|t| t.label().len()).max().unwrap_or(10);
+        let max_name = chooser
+            .tools
+            .iter()
+            .map(|t| t.label().len())
+            .max()
+            .unwrap_or(10);
         let pop_cols = (max_name + 12).max(24) as u32;
         let pop_rows = (chooser.tools.len() + 3) as u32;
         let pop_w = pop_cols * self.cw;
@@ -924,12 +1298,46 @@ impl<'a> InGamePainter for PixelPainter<'a> {
         let px = self.width.saturating_sub(pop_w) / 2;
         let py = self.height.saturating_sub(pop_h) / 2;
 
-        fill_rect(self.buf, self.width, px + 3, py + 3, pop_w, pop_h, SHADOW_COLOR);
+        fill_rect(
+            self.buf,
+            self.width,
+            px + 3,
+            py + 3,
+            pop_w,
+            pop_h,
+            SHADOW_COLOR,
+        );
         fill_rect(self.buf, self.width, px, py, pop_w, pop_h, POPUP_BG);
         draw_rect_outline(self.buf, self.width, px, py, pop_w, pop_h, BORDER_FG);
-        fill_rect(self.buf, self.width, px + 1, py, pop_w - 2, self.ch, WIN_TITLE_BG);
-        draw_str(self.buf, self.width, px + self.cw, py, "Tool Selection", WIN_TITLE_FG, WIN_TITLE_BG, self.scale);
-        draw_str(self.buf, self.width, px + pop_w - 4 * self.cw, py, "[X]", DANGER_FG, WIN_TITLE_BG, self.scale);
+        fill_rect(
+            self.buf,
+            self.width,
+            px + 1,
+            py,
+            pop_w - 2,
+            self.ch,
+            WIN_TITLE_BG,
+        );
+        draw_str(
+            self.buf,
+            self.width,
+            px + self.cw,
+            py,
+            "Tool Selection",
+            WIN_TITLE_FG,
+            WIN_TITLE_BG,
+            self.scale,
+        );
+        draw_str(
+            self.buf,
+            self.width,
+            px + pop_w - 4 * self.cw,
+            py,
+            "[X]",
+            DANGER_FG,
+            WIN_TITLE_BG,
+            self.scale,
+        );
 
         for (i, &tool) in chooser.tools.iter().enumerate() {
             let item_y = py + self.ch + i as u32 * self.ch;
@@ -957,7 +1365,16 @@ impl<'a> InGamePainter for PixelPainter<'a> {
                     }
                 }
             };
-            draw_str(self.buf, self.width, px + 1, item_y, &trunc(&label, pop_cols as usize - 1), fg, bg, self.scale);
+            draw_str(
+                self.buf,
+                self.width,
+                px + 1,
+                item_y,
+                &trunc(&label, pop_cols as usize - 1),
+                fg,
+                bg,
+                self.scale,
+            );
 
             if available {
                 items.push((self.click_area(px + 1, item_y, pop_w - 2, self.ch), tool));
@@ -977,11 +1394,36 @@ impl<'a> InGamePainter for PixelPainter<'a> {
         let px = self.width.saturating_sub(pop_w) / 2;
         let py = self.height.saturating_sub(pop_h) / 2;
 
-        fill_rect(self.buf, self.width, px + 3, py + 3, pop_w, pop_h, SHADOW_COLOR);
+        fill_rect(
+            self.buf,
+            self.width,
+            px + 3,
+            py + 3,
+            pop_w,
+            pop_h,
+            SHADOW_COLOR,
+        );
         fill_rect(self.buf, self.width, px, py, pop_w, pop_h, POPUP_BG);
         draw_rect_outline(self.buf, self.width, px, py, pop_w, pop_h, BORDER_FG);
-        fill_rect(self.buf, self.width, px + 1, py, pop_w - 2, self.ch, WIN_TITLE_BG);
-        draw_str(self.buf, self.width, px + self.cw, py, &trunc(&dialog.title, pop_cols as usize - 2), WIN_TITLE_FG, WIN_TITLE_BG, self.scale);
+        fill_rect(
+            self.buf,
+            self.width,
+            px + 1,
+            py,
+            pop_w - 2,
+            self.ch,
+            WIN_TITLE_BG,
+        );
+        draw_str(
+            self.buf,
+            self.width,
+            px + self.cw,
+            py,
+            &trunc(&dialog.title, pop_cols as usize - 2),
+            WIN_TITLE_FG,
+            WIN_TITLE_BG,
+            self.scale,
+        );
 
         let msg_x = px + self.cw;
         let msg_max = (pop_cols - 2) as usize;
@@ -996,22 +1438,50 @@ impl<'a> InGamePainter for PixelPainter<'a> {
             };
             lines.push(line);
             rest = tail;
-            if lines.len() >= msg_rows as usize { break; }
+            if lines.len() >= msg_rows as usize {
+                break;
+            }
         }
         for (i, line) in lines.iter().enumerate() {
             let ly = py + self.ch + i as u32 * self.ch;
-            fill_rect(self.buf, self.width, px + 1, ly, pop_w - 2, self.ch, POPUP_BG);
-            draw_str(self.buf, self.width, msg_x, ly, line, TEXT_FG, POPUP_BG, self.scale);
+            fill_rect(
+                self.buf,
+                self.width,
+                px + 1,
+                ly,
+                pop_w - 2,
+                self.ch,
+                POPUP_BG,
+            );
+            draw_str(
+                self.buf, self.width, msg_x, ly, line, TEXT_FG, POPUP_BG, self.scale,
+            );
         }
 
         let btn_y = py + pop_h - 2 * self.ch;
-        fill_rect(self.buf, self.width, px + 1, btn_y, pop_w - 2, self.ch, POPUP_BG);
-        let btn_total_w: u32 = dialog.buttons.iter().map(|b| (b.label.len() as u32 + 4) * self.cw).sum();
+        fill_rect(
+            self.buf,
+            self.width,
+            px + 1,
+            btn_y,
+            pop_w - 2,
+            self.ch,
+            POPUP_BG,
+        );
+        let btn_total_w: u32 = dialog
+            .buttons
+            .iter()
+            .map(|b| (b.label.len() as u32 + 4) * self.cw)
+            .sum();
         let mut bx = px + pop_w.saturating_sub(btn_total_w) / 2;
         for (i, btn) in dialog.buttons.iter().enumerate() {
             let bw = (btn.label.len() as u32 + 4) * self.cw;
             let selected = i == dialog.selected;
-            let (fg, bg) = if selected { (SELECT_FG, SELECT_BG) } else { (TEXT_FG, BTN_BG) };
+            let (fg, bg) = if selected {
+                (SELECT_FG, SELECT_BG)
+            } else {
+                (TEXT_FG, BTN_BG)
+            };
             fill_rect(self.buf, self.width, bx, btn_y, bw, self.ch, bg);
             let text = format!("[ {} ]", btn.label);
             draw_str(self.buf, self.width, bx, btn_y, &text, fg, bg, self.scale);
@@ -1024,7 +1494,9 @@ impl<'a> InGamePainter for PixelPainter<'a> {
 
     fn paint_budget_window(&mut self, budget: &BudgetViewModel, ingame: &InGameScreen) {
         let (wx, wy, ww, wh) = self.win_rect(ingame, WindowId::Budget);
-        if ww < 8 || wh < 6 { return; }
+        if ww < 8 || wh < 6 {
+            return;
+        }
 
         self.window_chrome(wx, wy, ww, wh, "Budget Control Center");
 
@@ -1037,10 +1509,29 @@ impl<'a> InGamePainter for PixelPainter<'a> {
             ("Commercial Tax ", budget.tax_rates.commercial),
             ("Industrial Tax  ", budget.tax_rates.industrial),
         ] {
-            if iy + self.ch > wy + wh { break; }
+            if iy + self.ch > wy + wh {
+                break;
+            }
             let s = format!("{}: {}%", label, pct);
-            fill_rect(self.buf, self.width, ix, iy, ww - 2 * self.cw, self.ch, POPUP_BG);
-            draw_str(self.buf, self.width, ix, iy, &trunc(&s, icols), TEXT_FG, POPUP_BG, self.scale);
+            fill_rect(
+                self.buf,
+                self.width,
+                ix,
+                iy,
+                ww - 2 * self.cw,
+                self.ch,
+                POPUP_BG,
+            );
+            draw_str(
+                self.buf,
+                self.width,
+                ix,
+                iy,
+                &trunc(&s, icols),
+                TEXT_FG,
+                POPUP_BG,
+                self.scale,
+            );
             iy += self.ch;
         }
 
@@ -1049,22 +1540,63 @@ impl<'a> InGamePainter for PixelPainter<'a> {
             iy += 1;
         }
 
-        let income_sign = if budget.current_annual_tax >= 0 { "+" } else { "" };
+        let income_sign = if budget.current_annual_tax >= 0 {
+            "+"
+        } else {
+            ""
+        };
         for (label, val, color) in [
-            ("Treasury", format!("${}", budget.treasury), if budget.treasury >= 0 { RES_FG } else { DANGER_FG }),
-            ("Annual Tax", format!("{}{}", income_sign, budget.current_annual_tax), TEXT_FG),
+            (
+                "Treasury",
+                format!("${}", budget.treasury),
+                if budget.treasury >= 0 {
+                    RES_FG
+                } else {
+                    DANGER_FG
+                },
+            ),
+            (
+                "Annual Tax",
+                format!("{}{}", income_sign, budget.current_annual_tax),
+                TEXT_FG,
+            ),
         ] {
-            if iy + self.ch > wy + wh { break; }
+            if iy + self.ch > wy + wh {
+                break;
+            }
             let s = format!("{}: {}", label, val);
-            fill_rect(self.buf, self.width, ix, iy, ww - 2 * self.cw, self.ch, POPUP_BG);
-            draw_str(self.buf, self.width, ix, iy, &trunc(&s, icols), color, POPUP_BG, self.scale);
+            fill_rect(
+                self.buf,
+                self.width,
+                ix,
+                iy,
+                ww - 2 * self.cw,
+                self.ch,
+                POPUP_BG,
+            );
+            draw_str(
+                self.buf,
+                self.width,
+                ix,
+                iy,
+                &trunc(&s, icols),
+                color,
+                POPUP_BG,
+                self.scale,
+            );
             iy += self.ch;
         }
     }
 
-    fn paint_statistics_window(&mut self, stats: &StatisticsWindowViewModel, ingame: &InGameScreen) {
+    fn paint_statistics_window(
+        &mut self,
+        stats: &StatisticsWindowViewModel,
+        ingame: &InGameScreen,
+    ) {
         let (wx, wy, ww, wh) = self.win_rect(ingame, WindowId::Statistics);
-        if ww < 8 || wh < 6 { return; }
+        if ww < 8 || wh < 6 {
+            return;
+        }
 
         self.window_chrome(wx, wy, ww, wh, "City Statistics");
 
@@ -1077,31 +1609,103 @@ impl<'a> InGamePainter for PixelPainter<'a> {
             format!("Population: {}", stats.current_population),
             format!("Treasury: ${}", stats.current_treasury),
             format!("Annual Income: ${}", stats.current_income),
-            format!("Power: {} / {} MW", stats.current_power_consumed, stats.current_power_produced),
+            format!(
+                "Power: {} / {} MW",
+                stats.current_power_consumed, stats.current_power_produced
+            ),
             String::new(),
             format!("History: {} months", stats.treasury_history.len()),
         ];
 
         for line in &lines {
-            if iy + self.ch > wy + wh { break; }
-            fill_rect(self.buf, self.width, ix, iy, ww - 2 * self.cw, self.ch, POPUP_BG);
-            draw_str(self.buf, self.width, ix, iy, &trunc(line, icols), TEXT_FG, POPUP_BG, self.scale);
+            if iy + self.ch > wy + wh {
+                break;
+            }
+            fill_rect(
+                self.buf,
+                self.width,
+                ix,
+                iy,
+                ww - 2 * self.cw,
+                self.ch,
+                POPUP_BG,
+            );
+            draw_str(
+                self.buf,
+                self.width,
+                ix,
+                iy,
+                &trunc(line, icols),
+                TEXT_FG,
+                POPUP_BG,
+                self.scale,
+            );
             iy += self.ch;
         }
 
-        if iy + self.ch <= wy + wh { iy += self.ch / 2; }
+        if iy + self.ch <= wy + wh {
+            iy += self.ch / 2;
+        }
         let chart_w = ((ww - 2 * self.cw) / self.cw) as usize;
         for (label, data, color) in [
-            ("Treasury", stats_sparkline_i64(&stats.treasury_history, chart_w), BORDER_FG),
-            ("Population", stats_sparkline_u64(&stats.population_history, chart_w), RES_FG),
-            ("Income", stats_sparkline_i64(&stats.income_history, chart_w), IND_FG),
+            (
+                "Treasury",
+                stats_sparkline_i64(&stats.treasury_history, chart_w),
+                BORDER_FG,
+            ),
+            (
+                "Population",
+                stats_sparkline_u64(&stats.population_history, chart_w),
+                RES_FG,
+            ),
+            (
+                "Income",
+                stats_sparkline_i64(&stats.income_history, chart_w),
+                IND_FG,
+            ),
         ] {
-            if iy + self.ch * 2 > wy + wh { break; }
-            fill_rect(self.buf, self.width, ix, iy, ww - 2 * self.cw, self.ch, POPUP_BG);
-            draw_str(self.buf, self.width, ix, iy, &trunc(label, icols), DIM_FG, POPUP_BG, self.scale);
+            if iy + self.ch * 2 > wy + wh {
+                break;
+            }
+            fill_rect(
+                self.buf,
+                self.width,
+                ix,
+                iy,
+                ww - 2 * self.cw,
+                self.ch,
+                POPUP_BG,
+            );
+            draw_str(
+                self.buf,
+                self.width,
+                ix,
+                iy,
+                &trunc(label, icols),
+                DIM_FG,
+                POPUP_BG,
+                self.scale,
+            );
             iy += self.ch;
-            fill_rect(self.buf, self.width, ix, iy, ww - 2 * self.cw, self.ch, POPUP_BG);
-            draw_str(self.buf, self.width, ix, iy, &trunc(&data, icols), color, POPUP_BG, self.scale);
+            fill_rect(
+                self.buf,
+                self.width,
+                ix,
+                iy,
+                ww - 2 * self.cw,
+                self.ch,
+                POPUP_BG,
+            );
+            draw_str(
+                self.buf,
+                self.width,
+                ix,
+                iy,
+                &trunc(&data, icols),
+                color,
+                POPUP_BG,
+                self.scale,
+            );
             iy += self.ch;
         }
     }
@@ -1114,7 +1718,9 @@ impl<'a> InGamePainter for PixelPainter<'a> {
         ingame: &InGameScreen,
     ) {
         let (wx, wy, ww, wh) = self.win_rect(ingame, WindowId::Inspect);
-        if ww < 8 || wh < 6 { return; }
+        if ww < 8 || wh < 6 {
+            return;
+        }
 
         self.window_chrome(wx, wy, ww, wh, "Inspect");
 
@@ -1141,15 +1747,51 @@ impl<'a> InGamePainter for PixelPainter<'a> {
                 ];
 
                 for line in &lines {
-                    if iy + self.ch > wy + wh { break; }
-                    fill_rect(self.buf, self.width, ix, iy, ww - 2 * self.cw, self.ch, POPUP_BG);
-                    draw_str(self.buf, self.width, ix, iy, &trunc(line, icols), TEXT_FG, POPUP_BG, self.scale);
+                    if iy + self.ch > wy + wh {
+                        break;
+                    }
+                    fill_rect(
+                        self.buf,
+                        self.width,
+                        ix,
+                        iy,
+                        ww - 2 * self.cw,
+                        self.ch,
+                        POPUP_BG,
+                    );
+                    draw_str(
+                        self.buf,
+                        self.width,
+                        ix,
+                        iy,
+                        &trunc(line, icols),
+                        TEXT_FG,
+                        POPUP_BG,
+                        self.scale,
+                    );
                     iy += self.ch;
                 }
             }
         } else {
-            fill_rect(self.buf, self.width, ix, iy, ww - 2 * self.cw, self.ch, POPUP_BG);
-            draw_str(self.buf, self.width, ix, iy, "Move cursor to inspect", DIM_FG, POPUP_BG, self.scale);
+            fill_rect(
+                self.buf,
+                self.width,
+                ix,
+                iy,
+                ww - 2 * self.cw,
+                self.ch,
+                POPUP_BG,
+            );
+            draw_str(
+                self.buf,
+                self.width,
+                ix,
+                iy,
+                "Move cursor to inspect",
+                DIM_FG,
+                POPUP_BG,
+                self.scale,
+            );
         }
     }
 
@@ -1165,7 +1807,9 @@ impl<'a> InGamePainter for PixelPainter<'a> {
         let wy = win.y as u32 * self.ch;
         let ww = (win.width as u32 * self.cw).min(self.width.saturating_sub(wx));
         let wh = (win.height as u32 * self.ch).min(self.height.saturating_sub(wy));
-        if ww < 8 || wh < 6 { return; }
+        if ww < 8 || wh < 6 {
+            return;
+        }
 
         self.window_chrome(wx, wy, ww, wh, title);
 
@@ -1175,21 +1819,115 @@ impl<'a> InGamePainter for PixelPainter<'a> {
         let visible_rows = ((wh - self.ch - self.ch / 2) / self.ch) as usize;
 
         let scroll = view.scroll_y as usize;
-        for (i, line) in view.lines.iter().skip(scroll).take(visible_rows).enumerate() {
+        for (i, line) in view
+            .lines
+            .iter()
+            .skip(scroll)
+            .take(visible_rows)
+            .enumerate()
+        {
             let iy = iy_start + i as u32 * self.ch;
-            fill_rect(self.buf, self.width, ix, iy, ww - 2 * self.cw, self.ch, POPUP_BG);
-            draw_str(self.buf, self.width, ix, iy, &trunc(line, icols), TEXT_FG, POPUP_BG, self.scale);
+            fill_rect(
+                self.buf,
+                self.width,
+                ix,
+                iy,
+                ww - 2 * self.cw,
+                self.ch,
+                POPUP_BG,
+            );
+            draw_str(
+                self.buf,
+                self.width,
+                ix,
+                iy,
+                &trunc(line, icols),
+                TEXT_FG,
+                POPUP_BG,
+                self.scale,
+            );
         }
 
         let win = ingame.desktop.window_mut(window_id);
         win.content_height = view.lines.len() as u16;
     }
 
+    fn paint_advisor_window(&mut self, advisor: &AdvisorViewModel, ingame: &InGameScreen) {
+        let win = ingame.desktop.window(WindowId::Advisor);
+        let wx = win.x as u32 * self.cw;
+        let wy = win.y as u32 * self.ch;
+        let ww = (win.width as u32 * self.cw).min(self.width.saturating_sub(wx));
+        let wh = (win.height as u32 * self.ch).min(self.height.saturating_sub(wy));
+        if ww < 8 || wh < 6 {
+            return;
+        }
+        self.window_chrome(wx, wy, ww, wh, win.title);
+
+        let inner_x = wx + self.cw;
+        let inner_y = wy + self.ch;
+        let inner_w = ww.saturating_sub(self.cw * 2);
+        let inner_h = wh.saturating_sub(self.ch * 2);
+
+        // Tab row
+        let domains = crate::textgen::types::AdvisorDomain::ALL;
+        let mut tx = inner_x;
+        for &domain in &domains {
+            let label = domain.label();
+            let fg = if domain == advisor.domain {
+                0x1c1c2a
+            } else {
+                0xeee8e1
+            };
+            let bg = if domain == advisor.domain {
+                0xffdd77
+            } else {
+                0x382a4e
+            };
+            let text = format!(" {} ", label);
+            let tw = text.len() as u32 * self.cw;
+            if tx + tw > inner_x + inner_w {
+                break;
+            }
+            fill_rect(self.buf, self.width, tx, inner_y, tw, self.ch, bg);
+            draw_str(self.buf, self.width, tx, inner_y, &text, fg, bg, self.scale);
+            tx += tw + self.cw;
+        }
+
+        // Body
+        let body_y = inner_y + self.ch * 2;
+        let body_h = inner_h.saturating_sub(self.ch * 2);
+        let text = if advisor.pending {
+            "Thinking..."
+        } else if let Some(ref t) = advisor.text {
+            t.as_str()
+        } else {
+            "Press Enter to request advice, or arrow keys to switch domain."
+        };
+
+        let cols = (inner_w / self.cw).max(1) as usize;
+        for (i, line) in text.lines().enumerate() {
+            let ly = body_y + i as u32 * self.ch;
+            if ly + self.ch > body_y + body_h {
+                break;
+            }
+            let truncated: String = line.chars().take(cols).collect();
+            draw_str(
+                self.buf, self.width, inner_x, ly, &truncated, 0xeee8e1, 0x232237, self.scale,
+            );
+        }
+    }
+
     fn paint_news_ticker(&mut self, ticker: &NewsTickerViewModel) {
         let ticker_y = self.height.saturating_sub(self.ticker_h);
         let ticker_bg = 0x19142b;
-        fill_rect(self.buf, self.width, 0, ticker_y, self.width, self.ch, ticker_bg);
-        let ticker_fg = if ticker.is_alerting { 0xff6450 } else { 0xaadcdb };
+        fill_rect(
+            self.buf, self.width, 0, ticker_y, self.width, self.ch, ticker_bg,
+        );
+        let ticker_fg = if ticker.is_alerting {
+            0xff6450
+        } else {
+            0xaadcdb
+        };
         let cols = (self.width / self.cw) as usize;
         let max_chars = cols.min(ticker.full_text.len().saturating_sub(ticker.scroll_offset));
         let visible_news: String = ticker
@@ -1198,7 +1936,16 @@ impl<'a> InGamePainter for PixelPainter<'a> {
             .skip(ticker.scroll_offset)
             .take(max_chars)
             .collect();
-        draw_str(self.buf, self.width, self.cw, ticker_y, &visible_news, ticker_fg, ticker_bg, self.scale);
+        draw_str(
+            self.buf,
+            self.width,
+            self.cw,
+            ticker_y,
+            &visible_news,
+            ticker_fg,
+            ticker_bg,
+            self.scale,
+        );
     }
 
     fn end_frame(&mut self) {
@@ -1242,33 +1989,41 @@ fn lerp_u32(a: u32, b: u32, t: u8) -> u32 {
 }
 
 fn stats_sparkline_i64(data: &std::collections::VecDeque<i64>, width: usize) -> String {
-    if data.is_empty() || width == 0 { return String::new(); }
+    if data.is_empty() || width == 0 {
+        return String::new();
+    }
     let sparks = &['_', '.', '-', '~', '+', '*', '#', '@'];
     let min = data.iter().copied().min().unwrap_or(0);
     let max = data.iter().copied().max().unwrap_or(0);
     let range = (max - min).max(1) as f64;
     let step = data.len().max(1) as f64 / width as f64;
-    (0..width).map(|i| {
-        let idx = ((i as f64 * step) as usize).min(data.len().saturating_sub(1));
-        let val = data.get(idx).copied().unwrap_or(0);
-        let norm = ((val - min) as f64 / range * 7.0) as usize;
-        sparks[norm.min(7)]
-    }).collect()
+    (0..width)
+        .map(|i| {
+            let idx = ((i as f64 * step) as usize).min(data.len().saturating_sub(1));
+            let val = data.get(idx).copied().unwrap_or(0);
+            let norm = ((val - min) as f64 / range * 7.0) as usize;
+            sparks[norm.min(7)]
+        })
+        .collect()
 }
 
 fn stats_sparkline_u64(data: &std::collections::VecDeque<u64>, width: usize) -> String {
-    if data.is_empty() || width == 0 { return String::new(); }
+    if data.is_empty() || width == 0 {
+        return String::new();
+    }
     let sparks = &['_', '.', '-', '~', '+', '*', '#', '@'];
     let min = data.iter().copied().min().unwrap_or(0);
     let max = data.iter().copied().max().unwrap_or(0);
     let range = (max - min).max(1) as f64;
     let step = data.len().max(1) as f64 / width as f64;
-    (0..width).map(|i| {
-        let idx = ((i as f64 * step) as usize).min(data.len().saturating_sub(1));
-        let val = data.get(idx).copied().unwrap_or(0);
-        let norm = ((val - min) as f64 / range * 7.0) as usize;
-        sparks[norm.min(7)]
-    }).collect()
+    (0..width)
+        .map(|i| {
+            let idx = ((i as f64 * step) as usize).min(data.len().saturating_sub(1));
+            let val = data.get(idx).copied().unwrap_or(0);
+            let norm = ((val - min) as f64 / range * 7.0) as usize;
+            sparks[norm.min(7)]
+        })
+        .collect()
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────

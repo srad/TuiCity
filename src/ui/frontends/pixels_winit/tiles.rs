@@ -25,7 +25,10 @@ pub fn draw_tile(
     } else {
         tile_pixels(tile)
     };
-    let is_road = matches!(tile, Tile::Road | Tile::Highway | Tile::Onramp | Tile::RoadPowerLine);
+    let is_road = matches!(
+        tile,
+        Tile::Road | Tile::Highway | Tile::Onramp | Tile::RoadPowerLine
+    );
     let is_power = matches!(tile, Tile::PowerLine | Tile::RoadPowerLine);
 
     for row in 0..8u32 {
@@ -36,7 +39,11 @@ pub fn draw_tile(
             if overlay.on_fire {
                 // Alternate two offset checkerboard patterns on each phase
                 let shifted = (row + col + fire_ph) % 4;
-                let c = if shifted < 2 { 0xFF5010u32 } else { 0xCC2000u32 };
+                let c = if shifted < 2 {
+                    0xFF5010u32
+                } else {
+                    0xCC2000u32
+                };
                 color = lerp(color, c, 180);
             }
 
@@ -55,7 +62,11 @@ pub fn draw_tile(
                 let is_dot =
                     (row == 2 && col == dot) || (row == 5 && col == 7u32.saturating_sub(dot));
                 if is_dot {
-                    let tc = if overlay.traffic >= 160 { 0xFFEEAAu32 } else { 0xFFD070u32 };
+                    let tc = if overlay.traffic >= 160 {
+                        0xFFEEAAu32
+                    } else {
+                        0xFFD070u32
+                    };
                     color = tc;
                 }
             }
@@ -132,22 +143,46 @@ fn road_pixel(row: u32, col: u32, n: bool, e: bool, s: bool, w: bool) -> u32 {
     let on_e = col == 7;
 
     // Corners: open if either adjoining edge is connected
-    if on_n && on_w { return if n || w { RD6 } else { RD4 }; }
-    if on_n && on_e { return if n || e { RD6 } else { RD4 }; }
-    if on_s && on_w { return if s || w { RD6 } else { RD4 }; }
-    if on_s && on_e { return if s || e { RD6 } else { RD4 }; }
+    if on_n && on_w {
+        return if n || w { RD6 } else { RD4 };
+    }
+    if on_n && on_e {
+        return if n || e { RD6 } else { RD4 };
+    }
+    if on_s && on_w {
+        return if s || w { RD6 } else { RD4 };
+    }
+    if on_s && on_e {
+        return if s || e { RD6 } else { RD4 };
+    }
 
     // Edges: kerb on closed side, asphalt on open side
-    if on_n { return if n { RD6 } else { RD4 }; }
-    if on_s { return if s { RD6 } else { RD4 }; }
-    if on_w { return if w { RD6 } else { RD1 }; }
-    if on_e { return if e { RD6 } else { RD1 }; }
+    if on_n {
+        return if n { RD6 } else { RD4 };
+    }
+    if on_s {
+        return if s { RD6 } else { RD4 };
+    }
+    if on_w {
+        return if w { RD6 } else { RD1 };
+    }
+    if on_e {
+        return if e { RD6 } else { RD1 };
+    }
 
     // Curb detail strips (row/col 1 or 6) adjacent to a closed edge
-    if row == 1 && !n { return RD5; }
-    if row == 6 && !s { return RD5; }
-    if col == 1 && !w { return RD2; }
-    if col == 6 && !e { return RD2; }
+    if row == 1 && !n {
+        return RD5;
+    }
+    if row == 6 && !s {
+        return RD5;
+    }
+    if col == 1 && !w {
+        return RD2;
+    }
+    if col == 6 && !e {
+        return RD2;
+    }
 
     // EW lane markings — dashed yellow centre line
     let has_ew = e || w;
@@ -155,11 +190,15 @@ fn road_pixel(row: u32, col: u32, n: bool, e: bool, s: bool, w: bool) -> u32 {
 
     // Yellow centre dashes (dashed pattern: cols 2-3 on, col 4 off, cols 5-6 on)
     if has_ew && (row == 3 || row == 4) {
-        if col == 3 || col == 4 { return RD3; }
+        if col == 3 || col == 4 {
+            return RD3;
+        }
     }
     // NS centre dashes
     if has_ns && (col == 3 || col == 4) {
-        if row == 3 || row == 4 { return RD3; }
+        if row == 3 || row == 4 {
+            return RD3;
+        }
     }
 
     // White lane edge markings for roads with EW traffic
@@ -172,10 +211,16 @@ fn road_pixel(row: u32, col: u32, n: bool, e: bool, s: bool, w: bool) -> u32 {
     }
 
     // Intersection fill: if both NS and EW, fill with asphalt
-    if has_ns && has_ew { return RD0; }
+    if has_ns && has_ew {
+        return RD0;
+    }
 
     // Default asphalt with subtle variation
-    if (row + col) % 2 == 0 { RD0 } else { RD6 }
+    if (row + col) % 2 == 0 {
+        RD0
+    } else {
+        RD6
+    }
 }
 
 fn tile_pixels(tile: Tile) -> &'static [u32; 64] {
@@ -505,14 +550,10 @@ macro_rules! building {
      $c0:expr,$c1:expr,$c2:expr,$c3:expr,
      $d0:expr,$d1:expr,$d2:expr,$d3:expr) => {
         [
-            $bg, $bg, $bg, $bg, $bg, $bg, $bg, $bg,
-            $bg, $hl, $hl, $hl, $hl, $hl, $hl, $bg,
-            $bg, $hl, $a0, $a1, $a2, $a3, $sh, $bg,
-            $bg, $hl, $b0, $b1, $b2, $b3, $sh, $bg,
-            $bg, $hl, $c0, $c1, $c2, $c3, $sh, $bg,
-            $bg, $hl, $d0, $d1, $d2, $d3, $sh, $bg,
-            $bg, $sh, $sh, $sh, $sh, $sh, $sh, $bg,
-            $bg, $bg, $bg, $bg, $bg, $bg, $bg, $bg,
+            $bg, $bg, $bg, $bg, $bg, $bg, $bg, $bg, $bg, $hl, $hl, $hl, $hl, $hl, $hl, $bg, $bg,
+            $hl, $a0, $a1, $a2, $a3, $sh, $bg, $bg, $hl, $b0, $b1, $b2, $b3, $sh, $bg, $bg, $hl,
+            $c0, $c1, $c2, $c3, $sh, $bg, $bg, $hl, $d0, $d1, $d2, $d3, $sh, $bg, $bg, $sh, $sh,
+            $sh, $sh, $sh, $sh, $bg, $bg, $bg, $bg, $bg, $bg, $bg, $bg, $bg,
         ]
     };
 }
@@ -529,11 +570,8 @@ const RL_LT: u32 = 0xFF7030; // sun-lit tile
 const RL_DK: u32 = 0xA82C10; // ridge / shadow tile
 
 const RES_LOW: [u32; 64] = building!(
-    R_BG, RL_HL, RL_SH,
-    RL_LT, RL_LT, RL_RF, RL_RF,
-    RL_LT, RL_DK, RL_DK, RL_RF,
-    RL_RF, RL_DK, RL_DK, RL_RF,
-    RL_RF, RL_RF, RL_RF, RL_RF
+    R_BG, RL_HL, RL_SH, RL_LT, RL_LT, RL_RF, RL_RF, RL_LT, RL_DK, RL_DK, RL_RF, RL_RF, RL_DK,
+    RL_DK, RL_RF, RL_RF, RL_RF, RL_RF, RL_RF
 );
 
 // ResMed – blue-grey flat roof with AC units
@@ -545,11 +583,8 @@ const RM_DK: u32 = 0x304870; // shadow
 const RM_AC: u32 = 0x202838; // AC unit (dark square)
 
 const RES_MED: [u32; 64] = building!(
-    R_BG, RM_HL, RM_SH,
-    RM_LT, RM_LT, RM_RF, RM_RF,
-    RM_LT, RM_AC, RM_RF, RM_DK,
-    RM_RF, RM_RF, RM_DK, RM_DK,
-    RM_RF, RM_DK, RM_DK, RM_DK
+    R_BG, RM_HL, RM_SH, RM_LT, RM_LT, RM_RF, RM_RF, RM_LT, RM_AC, RM_RF, RM_DK, RM_RF, RM_RF,
+    RM_DK, RM_DK, RM_RF, RM_DK, RM_DK, RM_DK
 );
 
 // ResHigh – glass tower, vivid sky-blue reflections
@@ -561,11 +596,8 @@ const RH_LT: u32 = 0xA0DCFF; // glass highlight
 const RH_DK: u32 = 0x1868A0; // glass shadow
 
 const RES_HIGH: [u32; 64] = building!(
-    R_BG, RH_HL, RH_SH,
-    RH_LT, RH_GL, RH_LT, RH_FR,
-    RH_GL, RH_DK, RH_GL, RH_FR,
-    RH_LT, RH_GL, RH_LT, RH_FR,
-    RH_GL, RH_DK, RH_GL, RH_FR
+    R_BG, RH_HL, RH_SH, RH_LT, RH_GL, RH_LT, RH_FR, RH_GL, RH_DK, RH_GL, RH_FR, RH_LT, RH_GL,
+    RH_LT, RH_FR, RH_GL, RH_DK, RH_GL, RH_FR
 );
 
 // ─── Commercial ───────────────────────────────────────────────────────────────
@@ -581,11 +613,8 @@ const CL_A2: u32 = 0x1870D0; // blue awning
 const CL_SN: u32 = 0xF8E030; // neon sign yellow
 
 const COMM_LOW: [u32; 64] = building!(
-    C_BG, CL_HL, CL_SH,
-    CL_SN, CL_SN, CL_SN, CL_SN,
-    CL_A1, CL_WL, CL_WL, CL_A2,
-    CL_WL, CL_A2, CL_A1, CL_WL,
-    CL_A1, CL_WL, CL_WL, CL_A2
+    C_BG, CL_HL, CL_SH, CL_SN, CL_SN, CL_SN, CL_SN, CL_A1, CL_WL, CL_WL, CL_A2, CL_WL, CL_A2,
+    CL_A1, CL_WL, CL_A1, CL_WL, CL_WL, CL_A2
 );
 
 // CommHigh – glass office tower, vivid cyan-blue
@@ -597,11 +626,8 @@ const CH_G2: u32 = 0x80D8FF; // glass bright reflection
 const CH_G3: u32 = 0x0870A8; // glass deep shadow
 
 const COMM_HIGH: [u32; 64] = building!(
-    C_BG, CH_HL, CH_SH,
-    CH_G2, CH_G1, CH_G2, CH_FR,
-    CH_G1, CH_G3, CH_G1, CH_FR,
-    CH_G2, CH_G1, CH_G2, CH_FR,
-    CH_FR, CH_FR, CH_FR, CH_FR
+    C_BG, CH_HL, CH_SH, CH_G2, CH_G1, CH_G2, CH_FR, CH_G1, CH_G3, CH_G1, CH_FR, CH_G2, CH_G1,
+    CH_G2, CH_FR, CH_FR, CH_FR, CH_FR, CH_FR
 );
 
 // ─── Industrial ───────────────────────────────────────────────────────────────
@@ -617,11 +643,8 @@ const IL_SK: u32 = 0x70C0F0; // skylight (blue sky seen through)
 const IL_DK: u32 = 0x504820; // shadow
 
 const IND_LIGHT: [u32; 64] = building!(
-    I_BG, IL_HL, IL_SH,
-    IL_WL, IL_SK, IL_SK, IL_RF,
-    IL_WL, IL_SK, IL_SK, IL_RF,
-    IL_RF, IL_RF, IL_DK, IL_DK,
-    IL_RF, IL_DK, IL_DK, IL_DK
+    I_BG, IL_HL, IL_SH, IL_WL, IL_SK, IL_SK, IL_RF, IL_WL, IL_SK, IL_SK, IL_RF, IL_RF, IL_RF,
+    IL_DK, IL_DK, IL_RF, IL_DK, IL_DK, IL_DK
 );
 
 // IndHeavy – dark machinery, heat glow, smokestacks above
@@ -675,11 +698,8 @@ const PG_PI: u32 = 0xD0C8A0; // pipe metallic
 const PG_WL: u32 = 0x283848;
 
 const GAS_PLANT: [u32; 64] = building!(
-    PP_BG, PG_HL, PG_SH,
-    PG_TL, PG_TK, PG_TL, PG_WL,
-    PG_TK, PG_TL, PG_TK, PG_WL,
-    PG_PI, PG_PI, PG_PI, PG_PI,
-    PG_WL, PG_WL, PG_WL, PG_WL
+    PP_BG, PG_HL, PG_SH, PG_TL, PG_TK, PG_TL, PG_WL, PG_TK, PG_TL, PG_TK, PG_WL, PG_PI, PG_PI,
+    PG_PI, PG_PI, PG_WL, PG_WL, PG_WL, PG_WL
 );
 
 // ─── Park ─────────────────────────────────────────────────────────────────────
@@ -717,11 +737,8 @@ const PO_BD: u32 = 0xF8D800; // gold badge
 const PO_WH: u32 = 0xF0F0FF; // white trim
 
 const POLICE: [u32; 64] = building!(
-    SV_BG, PO_HL, PO_SH,
-    PO_RF, PO_RF, PO_RF, PO_RF,
-    PO_BD, PO_WH, PO_WH, PO_WL,
-    PO_WH, PO_WH, PO_WL, PO_WL,
-    PO_WL, PO_WL, PO_WL, PO_WL
+    SV_BG, PO_HL, PO_SH, PO_RF, PO_RF, PO_RF, PO_RF, PO_BD, PO_WH, PO_WH, PO_WL, PO_WH, PO_WH,
+    PO_WL, PO_WL, PO_WL, PO_WL, PO_WL, PO_WL
 );
 
 // Fire dept – vivid red with orange flash
@@ -733,11 +750,8 @@ const FI_OR: u32 = 0xFF8020; // orange emergency light
 const FI_WH: u32 = 0xFFF0F0; // white trim
 
 const FIRE_DEPT: [u32; 64] = building!(
-    SV_BG, FI_HL, FI_SH,
-    FI_OR, FI_OR, FI_RF, FI_RF,
-    FI_WH, FI_WH, FI_WL, FI_WL,
-    FI_RF, FI_WL, FI_WL, FI_WL,
-    FI_WL, FI_WL, FI_WL, FI_WL
+    SV_BG, FI_HL, FI_SH, FI_OR, FI_OR, FI_RF, FI_RF, FI_WH, FI_WH, FI_WL, FI_WL, FI_RF, FI_WL,
+    FI_WL, FI_WL, FI_WL, FI_WL, FI_WL, FI_WL
 );
 
 // Hospital – clean white with red cross
@@ -749,11 +763,8 @@ const HO_CR: u32 = 0xE01010; // red cross
 const HO_BL: u32 = 0x80C0E8; // blue window
 
 const HOSPITAL: [u32; 64] = building!(
-    SV_BG, HO_HL, HO_SH,
-    HO_WH, HO_CR, HO_CR, HO_GR,
-    HO_CR, HO_CR, HO_CR, HO_GR,
-    HO_WH, HO_CR, HO_CR, HO_GR,
-    HO_BL, HO_WH, HO_WH, HO_GR
+    SV_BG, HO_HL, HO_SH, HO_WH, HO_CR, HO_CR, HO_GR, HO_CR, HO_CR, HO_CR, HO_GR, HO_WH, HO_CR,
+    HO_CR, HO_GR, HO_BL, HO_WH, HO_WH, HO_GR
 );
 
 // Bus depot – warm ochre with vivid yellow bus
@@ -765,11 +776,8 @@ const BD_BL: u32 = 0x90C8F0; // bus window
 const BD_DK: u32 = 0x302010; // dark
 
 const BUS_DEPOT: [u32; 64] = building!(
-    SV_BG, BD_HL, BD_SH,
-    BD_WL, BD_WL, BD_WL, BD_WL,
-    BD_YL, BD_BL, BD_BL, BD_YL,
-    BD_YL, BD_BL, BD_BL, BD_YL,
-    BD_DK, BD_YL, BD_YL, BD_DK
+    SV_BG, BD_HL, BD_SH, BD_WL, BD_WL, BD_WL, BD_WL, BD_YL, BD_BL, BD_BL, BD_YL, BD_YL, BD_BL,
+    BD_BL, BD_YL, BD_DK, BD_YL, BD_YL, BD_DK
 );
 
 // Rail depot – silver-grey station with platform
@@ -781,11 +789,8 @@ const RD2_PL: u32 = 0xC8C0A8; // platform tan
 const RD2_TR: u32 = 0xD8D8E8; // track steel
 
 const RAIL_DEPOT: [u32; 64] = building!(
-    SV_BG, RD2_HL, RD2_SH,
-    RD2_TR, RD2_TR, RD2_TR, RD2_TR,
-    RD2_WL, RD2_PL, RD2_PL, RD2_WL,
-    RD2_WL, RD2_RF, RD2_RF, RD2_WL,
-    RD2_TR, RD2_TR, RD2_TR, RD2_TR
+    SV_BG, RD2_HL, RD2_SH, RD2_TR, RD2_TR, RD2_TR, RD2_TR, RD2_WL, RD2_PL, RD2_PL, RD2_WL, RD2_WL,
+    RD2_RF, RD2_RF, RD2_WL, RD2_TR, RD2_TR, RD2_TR, RD2_TR
 );
 
 // Subway station – dark with glowing yellow sign
@@ -797,11 +802,8 @@ const SS_BL: u32 = 0x5040A0; // accent blue
 const SS_DK: u32 = 0x100818; // very dark
 
 const SUBWAY_STATION: [u32; 64] = building!(
-    SV_BG, SS_HL, SS_SH,
-    SS_SN, SS_SN, SS_WL, SS_WL,
-    SS_BL, SS_DK, SS_DK, SS_WL,
-    SS_BL, SS_DK, SS_DK, SS_WL,
-    SS_WL, SS_WL, SS_WL, SS_WL
+    SV_BG, SS_HL, SS_SH, SS_SN, SS_SN, SS_WL, SS_WL, SS_BL, SS_DK, SS_DK, SS_WL, SS_BL, SS_DK,
+    SS_DK, SS_WL, SS_WL, SS_WL, SS_WL, SS_WL
 );
 
 // ─── Water infrastructure ─────────────────────────────────────────────────────
@@ -817,11 +819,8 @@ const WP_SH2: u32 = 0x80D8F8; // shiny highlight
 const WP_DK: u32 = 0x102840; // dark
 
 const WATER_PUMP: [u32; 64] = building!(
-    WI_BG, WP_HL, WP_SH,
-    WP_ML, WP_SH2, WP_ML, WP_DK,
-    WP_SH2, WP_MH, WP_SH2, WP_DK,
-    WP_ML, WP_SH2, WP_ML, WP_DK,
-    WP_DK, WP_DK, WP_DK, WP_DK
+    WI_BG, WP_HL, WP_SH, WP_ML, WP_SH2, WP_ML, WP_DK, WP_SH2, WP_MH, WP_SH2, WP_DK, WP_ML, WP_SH2,
+    WP_ML, WP_DK, WP_DK, WP_DK, WP_DK, WP_DK
 );
 
 // Water tower – round tank on legs, vivid blue
@@ -852,11 +851,8 @@ const WTR_FL: u32 = 0x68C0E8; // pool foam
 const WTR_RF: u32 = 0x507090; // roof
 
 const WATER_TREATMENT: [u32; 64] = building!(
-    WI_BG, WTR_HL, WTR_SH,
-    WTR_PL, WTR_FL, WTR_FL, WTR_WL,
-    WTR_FL, WTR_PL, WTR_FL, WTR_WL,
-    WTR_FL, WTR_FL, WTR_PL, WTR_WL,
-    WTR_RF, WTR_RF, WTR_RF, WTR_RF
+    WI_BG, WTR_HL, WTR_SH, WTR_PL, WTR_FL, WTR_FL, WTR_WL, WTR_FL, WTR_PL, WTR_FL, WTR_WL, WTR_FL,
+    WTR_FL, WTR_PL, WTR_WL, WTR_RF, WTR_RF, WTR_RF, WTR_RF
 );
 
 // Desalination – ocean blue with pipe vents
@@ -868,11 +864,8 @@ const DS_PI: u32 = 0x8098C0; // pipe
 const DS_SH2: u32 = 0x60A8E8; // sheen
 
 const DESALINATION: [u32; 64] = building!(
-    WI_BG, DS_HL, DS_SH,
-    DS_OC, DS_SH2, DS_OC, DS_WL,
-    DS_SH2, DS_PI, DS_PI, DS_WL,
-    DS_OC, DS_PI, DS_OC, DS_WL,
-    DS_WL, DS_WL, DS_WL, DS_WL
+    WI_BG, DS_HL, DS_SH, DS_OC, DS_SH2, DS_OC, DS_WL, DS_SH2, DS_PI, DS_PI, DS_WL, DS_OC, DS_PI,
+    DS_OC, DS_WL, DS_WL, DS_WL, DS_WL, DS_WL
 );
 
 // ─── Nuclear Plant ────────────────────────────────────────────────────────────
@@ -885,11 +878,8 @@ const NU_YW: u32 = 0xF0F050; // warning yellow
 const NU_DM: u32 = 0x708060; // dome grey
 
 const NUCLEAR_PLANT: [u32; 64] = building!(
-    SV_BG, NU_HL, NU_SH,
-    NU_WL, NU_CO, NU_CO, NU_WL,
-    NU_WL, NU_YW, NU_YW, NU_WL,
-    NU_DM, NU_DM, NU_DM, NU_DM,
-    NU_WL, NU_WL, NU_WL, NU_WL
+    SV_BG, NU_HL, NU_SH, NU_WL, NU_CO, NU_CO, NU_WL, NU_WL, NU_YW, NU_YW, NU_WL, NU_DM, NU_DM,
+    NU_DM, NU_DM, NU_WL, NU_WL, NU_WL, NU_WL
 );
 
 // ─── Wind Farm ────────────────────────────────────────────────────────────────
@@ -901,11 +891,8 @@ const WF_MW: u32 = 0xD8D8D8; // mast white
 const WF_BL: u32 = 0xF0F0F0; // blade white
 
 const WIND_FARM: [u32; 64] = building!(
-    WF_SK, WF_HL, WF_SH,
-    WF_SK, WF_BL, WF_BL, WF_SK,
-    WF_SK, WF_MW, WF_SK, WF_SK,
-    WF_SK, WF_MW, WF_SK, WF_SK,
-    WF_SK, WF_MW, WF_SK, WF_SK
+    WF_SK, WF_HL, WF_SH, WF_SK, WF_BL, WF_BL, WF_SK, WF_SK, WF_MW, WF_SK, WF_SK, WF_SK, WF_MW,
+    WF_SK, WF_SK, WF_SK, WF_MW, WF_SK, WF_SK
 );
 
 // ─── Solar Plant ──────────────────────────────────────────────────────────────
@@ -917,11 +904,8 @@ const SP_BL: u32 = 0x3848A8; // panel blue
 const SP_RF: u32 = 0x6878C8; // panel reflection
 
 const SOLAR_PLANT: [u32; 64] = building!(
-    SV_BG, SP_HL, SP_SH,
-    SP_BL, SP_RF, SP_BL, SP_BK,
-    SP_RF, SP_BL, SP_RF, SP_BK,
-    SP_BL, SP_RF, SP_BL, SP_BK,
-    SP_BK, SP_BK, SP_BK, SP_BK
+    SV_BG, SP_HL, SP_SH, SP_BL, SP_RF, SP_BL, SP_BK, SP_RF, SP_BL, SP_RF, SP_BK, SP_BL, SP_RF,
+    SP_BL, SP_BK, SP_BK, SP_BK, SP_BK, SP_BK
 );
 
 // ─── School ───────────────────────────────────────────────────────────────────
@@ -934,11 +918,8 @@ const SC_RD: u32 = 0xC85020; // red roof
 const SC_DK: u32 = 0x402808; // dark
 
 const SCHOOL: [u32; 64] = building!(
-    SV_BG, SC_HL, SC_SH,
-    SC_RD, SC_RD, SC_RD, SC_RD,
-    SC_WL, SC_WN, SC_WN, SC_WL,
-    SC_WL, SC_WN, SC_WN, SC_WL,
-    SC_DK, SC_WL, SC_WL, SC_DK
+    SV_BG, SC_HL, SC_SH, SC_RD, SC_RD, SC_RD, SC_RD, SC_WL, SC_WN, SC_WN, SC_WL, SC_WL, SC_WN,
+    SC_WN, SC_WL, SC_DK, SC_WL, SC_WL, SC_DK
 );
 
 // ─── Stadium ──────────────────────────────────────────────────────────────────
@@ -951,11 +932,8 @@ const ST_SD: u32 = 0xB09070; // seat tan
 const ST_TK: u32 = 0x806040; // track brown
 
 const STADIUM: [u32; 64] = building!(
-    SV_BG, ST_HL, ST_SH,
-    ST_WL, ST_WL, ST_WL, ST_WL,
-    ST_SD, ST_GR, ST_GR, ST_SD,
-    ST_SD, ST_GR, ST_GR, ST_SD,
-    ST_TK, ST_TK, ST_TK, ST_TK
+    SV_BG, ST_HL, ST_SH, ST_WL, ST_WL, ST_WL, ST_WL, ST_SD, ST_GR, ST_GR, ST_SD, ST_SD, ST_GR,
+    ST_GR, ST_SD, ST_TK, ST_TK, ST_TK, ST_TK
 );
 
 // ─── Library ──────────────────────────────────────────────────────────────────
@@ -968,11 +946,8 @@ const LB_RF: u32 = 0x806030; // roof brown
 const LB_DK: u32 = 0x302010;
 
 const LIBRARY: [u32; 64] = building!(
-    SV_BG, LB_HL, LB_SH,
-    LB_RF, LB_RF, LB_RF, LB_RF,
-    LB_WL, LB_WN, LB_WN, LB_WL,
-    LB_WL, LB_WN, LB_WN, LB_WL,
-    LB_DK, LB_WL, LB_WL, LB_DK
+    SV_BG, LB_HL, LB_SH, LB_RF, LB_RF, LB_RF, LB_RF, LB_WL, LB_WN, LB_WN, LB_WL, LB_WL, LB_WN,
+    LB_WN, LB_WL, LB_DK, LB_WL, LB_WL, LB_DK
 );
 
 // ─── Rubble ───────────────────────────────────────────────────────────────────

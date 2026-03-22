@@ -526,8 +526,8 @@ mod tests {
     use crate::core::{
         map::{Map, Tile, TileOverlay},
         sim::{
-            DisasterConfig, EconomyState, HistoryState, MaintenanceBreakdown, PlantState,
-            PopulationState, DemandState, UtilityState, TripStats, RngState, SimState, TaxRates,
+            DemandState, DisasterConfig, EconomyState, HistoryState, MaintenanceBreakdown,
+            PlantState, PopulationState, RngState, SimState, TaxRates, TripStats, UtilityState,
         },
     };
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -611,12 +611,24 @@ mod tests {
             month: 8,
             economy: EconomyState {
                 treasury: 12_345,
-                tax_rates: TaxRates { residential: 7, commercial: 11, industrial: 13 },
+                tax_rates: TaxRates {
+                    residential: 7,
+                    commercial: 11,
+                    industrial: 13,
+                },
                 last_income: 4321,
                 last_breakdown: MaintenanceBreakdown {
-                    roads: 10, power_lines: 11, power_plants: 12, police: 13,
-                    fire: 14, parks: 15, residential_tax: 16, commercial_tax: 17,
-                    industrial_tax: 18, total: 110, annual_tax: 999,
+                    roads: 10,
+                    power_lines: 11,
+                    power_plants: 12,
+                    police: 13,
+                    fire: 14,
+                    parks: 15,
+                    residential_tax: 16,
+                    commercial_tax: 17,
+                    industrial_tax: 18,
+                    total: 110,
+                    annual_tax: 999,
                 },
                 unlock_mode: crate::core::sim::UnlockMode::Historical,
             },
@@ -626,7 +638,11 @@ mod tests {
                 commercial_jobs: 1111,
                 industrial_jobs: 999,
             },
-            demand: DemandState { res: 0.25, comm: -0.5, ind: 0.75 },
+            demand: DemandState {
+                res: 0.25,
+                comm: -0.5,
+                ind: 0.75,
+            },
             history: HistoryState {
                 demand_res: vec![0.1, 0.2, 0.3].into(),
                 demand_comm: vec![-0.1, -0.2].into(),
@@ -656,13 +672,23 @@ mod tests {
                 disaster: 0xBEEF_DEAD_BEEF_CAFE,
                 growth: 0xFACEFEED_FACEFEED,
             },
-            disasters: DisasterConfig { fire_enabled: true, flood_enabled: true, tornado_enabled: false },
+            disasters: DisasterConfig {
+                fire_enabled: true,
+                flood_enabled: true,
+                tornado_enabled: false,
+            },
             plants: std::collections::HashMap::new(),
             depots: std::collections::HashMap::new(),
         };
         sim.plants.insert(
             (3, 0),
-            PlantState { age_months: 12, max_life_months: 600, capacity_mw: 500, efficiency: 1.0, footprint: 4 },
+            PlantState {
+                age_months: 12,
+                max_life_months: 600,
+                capacity_mw: 500,
+                efficiency: 1.0,
+                footprint: 4,
+            },
         );
         sim
     }

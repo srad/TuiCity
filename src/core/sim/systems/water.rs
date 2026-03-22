@@ -154,7 +154,7 @@ impl SimSystem for WaterSystem {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::map::{ZoneSpec};
+    use crate::core::map::ZoneSpec;
     use crate::core::sim::system::SimSystem;
     use crate::core::sim::SimState;
 

@@ -11,6 +11,7 @@ use super::{AppContext, InGameScreen, Screen, ScreenTransition};
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum NewCityField {
     CityName,
+    GenerateNameBtn,
     SeedInput,
     WaterSlider,
     TreesSlider,
@@ -20,8 +21,9 @@ pub enum NewCityField {
 }
 
 impl NewCityField {
-    const ALL: [NewCityField; 7] = [
+    const ALL: [NewCityField; 8] = [
         NewCityField::CityName,
+        NewCityField::GenerateNameBtn,
         NewCityField::SeedInput,
         NewCityField::WaterSlider,
         NewCityField::TreesSlider,
@@ -74,7 +76,9 @@ pub struct NewCityState {
     pub seed_input: String,
     pub water_pct: usize,
     pub trees_pct: usize,
-    pub field_areas: [ClickArea; 7],
+    pub field_areas: [ClickArea; 8],
+    /// Whether an LLM city name generation request is in flight.
+    pub llm_name_pending: bool,
     /// Currently selected terrain brush for free painting on the map preview.
     pub terrain_brush: Option<TerrainBrush>,
     /// Click areas for the [None] [Water] [Land] [Trees] brush buttons (4 items).
@@ -120,7 +124,8 @@ impl NewCityState {
             seed_input: format!("{seed:016X}"),
             water_pct: params.water_pct as usize,
             trees_pct: params.trees_pct as usize,
-            field_areas: [ClickArea::default(); 7],
+            field_areas: [ClickArea::default(); 8],
+            llm_name_pending: false,
             terrain_brush: None,
             brush_areas: [ClickArea::default(); 4],
             inner_map_area: ClickArea::default(),
@@ -212,6 +217,30 @@ impl Screen for NewCityScreen {
         self
     }
 
+    fn on_tick(&mut self, context: AppContext) -> Option<ScreenTransition> {
+        if self.state.llm_name_pending {
+            if let Some(resp) = context.textgen.poll() {
+                if resp.task_tag == crate::textgen::types::LlmTaskTag::CityName {
+                    // Take only the first line, strip trailing punctuation and
+                    // anything after a comma (models often append ", State").
+                    let raw = resp.text.trim().lines().next().unwrap_or("").trim();
+                    let before_comma = raw.split(',').next().unwrap_or(raw).trim();
+                    let name: String = before_comma
+                        .trim_end_matches(|c: char| c == '.' || c == ',' || c == ';' || c == ':' || c == '"' || c == '\'')
+                        .trim()
+                        .chars()
+                        .take(30)
+                        .collect();
+                    if !name.is_empty() {
+                        self.state.city_name = name;
+                    }
+                    self.state.llm_name_pending = false;
+                }
+            }
+        }
+        None
+    }
+
     fn on_action(&mut self, action: Action, context: AppContext) -> Option<ScreenTransition> {
         // ── Map cursor mode: arrow keys move cursor, Enter paints, Esc exits ──
         if self.state.map_cursor_active {
@@ -274,7 +303,9 @@ impl Screen for NewCityScreen {
                     map_click_to_tile(col, row, self.state.inner_map_area, &self.state.preview_map)
                 {
                     if let Some(brush) = self.state.terrain_brush {
-                        self.state.preview_map.set_terrain(tx, ty, brush.to_terrain());
+                        self.state
+                            .preview_map
+                            .set_terrain(tx, ty, brush.to_terrain());
                     } else {
                         // Clicking the map without a brush activates map cursor mode at that tile
                         self.state.cursor_x = tx;
@@ -288,6 +319,13 @@ impl Screen for NewCityScreen {
                         let field = NewCityField::ALL[idx];
                         self.state.focused_field = field;
                         return match field {
+                            NewCityField::GenerateNameBtn => {
+                                context
+                                    .textgen
+                                    .request(crate::textgen::types::LlmTask::GenerateCityName);
+                                self.state.llm_name_pending = true;
+                                None
+                            }
                             NewCityField::RegenerateBtn => {
                                 self.state.regenerate();
                                 None
@@ -323,7 +361,9 @@ impl Screen for NewCityScreen {
                     map_click_to_tile(col, row, self.state.inner_map_area, &self.state.preview_map)
                 {
                     if let Some(brush) = self.state.terrain_brush {
-                        self.state.preview_map.set_terrain(tx, ty, brush.to_terrain());
+                        self.state
+                            .preview_map
+                            .set_terrain(tx, ty, brush.to_terrain());
                     }
                 }
                 None
@@ -369,6 +409,13 @@ impl Screen for NewCityScreen {
                 None
             }
             Action::MenuSelect => match self.state.focused_field {
+                NewCityField::GenerateNameBtn => {
+                    context
+                        .textgen
+                        .request(crate::textgen::types::LlmTask::GenerateCityName);
+                    self.state.llm_name_pending = true;
+                    None
+                }
                 NewCityField::SeedInput => {
                     self.state.apply_seed_input();
                     None
@@ -396,6 +443,7 @@ impl Screen for NewCityScreen {
             terrain_brush: self.state.terrain_brush,
             cursor: (self.state.cursor_x, self.state.cursor_y),
             map_cursor_active: self.state.map_cursor_active,
+            llm_name_pending: self.state.llm_name_pending,
         })
     }
 }
@@ -451,12 +499,7 @@ impl NewCityScreen {
 /// Translates a terminal (col, row) click within the map preview to a map tile (x, y).
 /// Returns `None` if the click is outside the rendered map area.
 /// Mirrors the aspect-fitting logic from `MapPreview::render`.
-fn map_click_to_tile(
-    col: u16,
-    row: u16,
-    inner: ClickArea,
-    map: &Map,
-) -> Option<(usize, usize)> {
+fn map_click_to_tile(col: u16, row: u16, inner: ClickArea, map: &Map) -> Option<(usize, usize)> {
     if inner.width == 0 || inner.height == 0 {
         return None;
     }
@@ -520,22 +563,31 @@ mod tests {
     use super::*;
     use std::sync::{Arc, RwLock};
 
+    fn test_fixtures() -> (
+        Arc<RwLock<crate::core::engine::SimulationEngine>>,
+        crate::textgen::TextGenService,
+    ) {
+        let engine = Arc::new(RwLock::new(crate::core::engine::SimulationEngine::new(
+            crate::core::map::Map::new(10, 10),
+            crate::core::sim::SimState::default(),
+        )));
+        let textgen =
+            crate::textgen::TextGenService::start(std::path::PathBuf::from("/nonexistent"));
+        (engine, textgen)
+    }
+
     #[test]
     fn test_new_city_screen_requires_name() {
         let mut screen = NewCityScreen {
             state: NewCityState::new(),
         };
-        let engine = Arc::new(RwLock::new(crate::core::engine::SimulationEngine::new(
-            crate::core::map::Map::new(10, 10),
-            crate::core::sim::SimState::default(),
-        )));
+        let (engine, textgen) = test_fixtures();
         let cmd_tx = None;
-
 
         let context = AppContext {
             engine: &engine,
             cmd_tx: &cmd_tx,
-
+            textgen: &textgen,
         };
 
         screen.state.focused_field = NewCityField::StartBtn;
@@ -548,17 +600,13 @@ mod tests {
         let mut screen = NewCityScreen {
             state: NewCityState::new(),
         };
-        let engine = Arc::new(RwLock::new(crate::core::engine::SimulationEngine::new(
-            crate::core::map::Map::new(10, 10),
-            crate::core::sim::SimState::default(),
-        )));
+        let (engine, textgen) = test_fixtures();
         let cmd_tx = None;
-
 
         let context = AppContext {
             engine: &engine,
             cmd_tx: &cmd_tx,
-
+            textgen: &textgen,
         };
 
         screen.state.city_name = "Test City".to_string();
@@ -574,7 +622,7 @@ mod tests {
         let context_action = AppContext {
             engine: &engine,
             cmd_tx: &cmd_tx,
-
+            textgen: &textgen,
         };
         let transition = screen.on_action(Action::MenuSelect, context_action);
         assert!(transition.is_none());
@@ -585,7 +633,7 @@ mod tests {
             AppContext {
                 engine: &engine,
                 cmd_tx: &cmd_tx,
-    
+                textgen: &textgen,
             },
         );
         assert!(transition_start.is_some());
@@ -596,16 +644,13 @@ mod tests {
         let mut screen = NewCityScreen {
             state: NewCityState::new(),
         };
-        let engine = Arc::new(RwLock::new(crate::core::engine::SimulationEngine::new(
-            crate::core::map::Map::new(10, 10),
-            crate::core::sim::SimState::default(),
-        )));
+        let (engine, textgen) = test_fixtures();
         let cmd_tx = None;
 
         let context = AppContext {
             engine: &engine,
             cmd_tx: &cmd_tx,
-
+            textgen: &textgen,
         };
 
         screen.state.focused_field = NewCityField::WaterSlider;
@@ -616,7 +661,7 @@ mod tests {
         let context = AppContext {
             engine: &engine,
             cmd_tx: &cmd_tx,
-
+            textgen: &textgen,
         };
         screen.state.focused_field = NewCityField::TreesSlider;
         let initial_trees = screen.state.trees_pct;
@@ -629,16 +674,13 @@ mod tests {
         let mut screen = NewCityScreen {
             state: NewCityState::new(),
         };
-        let engine = Arc::new(RwLock::new(crate::core::engine::SimulationEngine::new(
-            crate::core::map::Map::new(10, 10),
-            crate::core::sim::SimState::default(),
-        )));
+        let (engine, textgen) = test_fixtures();
         let cmd_tx = None;
 
         let context = AppContext {
             engine: &engine,
             cmd_tx: &cmd_tx,
-
+            textgen: &textgen,
         };
 
         screen.state.focused_field = NewCityField::WaterSlider;
@@ -649,9 +691,43 @@ mod tests {
         let context = AppContext {
             engine: &engine,
             cmd_tx: &cmd_tx,
-
+            textgen: &textgen,
         };
         screen.on_action(Action::CharInput('-'), context);
         assert_eq!(screen.state.water_pct, initial_water);
+    }
+
+    #[test]
+    fn generate_name_btn_is_in_field_list() {
+        assert_eq!(NewCityField::ALL.len(), 8);
+        assert_eq!(NewCityField::ALL[1], NewCityField::GenerateNameBtn);
+    }
+
+    #[test]
+    fn generate_name_btn_navigation() {
+        let btn = NewCityField::CityName.next();
+        assert_eq!(btn, NewCityField::GenerateNameBtn);
+        let next = btn.next();
+        assert_eq!(next, NewCityField::SeedInput);
+    }
+
+    #[test]
+    fn generate_name_always_sets_pending() {
+        let mut screen = NewCityScreen {
+            state: NewCityState::new(),
+        };
+        let (engine, textgen) = test_fixtures();
+        let cmd_tx = None;
+
+        screen.state.focused_field = NewCityField::GenerateNameBtn;
+        let context = AppContext {
+            engine: &engine,
+            cmd_tx: &cmd_tx,
+            textgen: &textgen,
+        };
+        let transition = screen.on_action(Action::MenuSelect, context);
+        assert!(transition.is_none());
+        // With static backend, pending should be true (request is always sent).
+        assert!(screen.state.llm_name_pending);
     }
 }

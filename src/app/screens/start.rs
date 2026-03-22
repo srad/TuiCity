@@ -99,11 +99,12 @@ mod tests {
             crate::core::sim::SimState::default(),
         )));
         let cmd_tx = None;
+        let tg = crate::textgen::TextGenService::start(std::path::PathBuf::from("/nonexistent"));
 
         let context = AppContext {
             engine: &engine,
             cmd_tx: &cmd_tx,
-
+            textgen: &tg,
         };
 
         let transition = screen.on_action(Action::MouseClick { col: 12, row: 5 }, context);

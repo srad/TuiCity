@@ -1,0 +1,16 @@
+City advisor report for the mayor.
+
+Example — Finance Advisor:
+1. Raise commercial tax to increase revenue.
+2. Build more industrial zones to create jobs.
+
+Example — Safety Advisor:
+1. Build a police station in the east district.
+2. Add a fire station near the industrial area.
+
+{{advisor_role}} report:
+
+{{city_status}}
+
+Advice:
+1.

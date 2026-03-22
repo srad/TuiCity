@@ -1,0 +1,12 @@
+The {{city_name}} Daily Tribune — Headlines
+
+Population: {{population}}, Treasury: ${{treasury}}
+
+MAYOR PROMISES NEW GROWTH: Residents hopeful as city development continues.
+TRAFFIC WOES PLAGUE DOWNTOWN: Commuters face delays on major roads.
+PARK OPENS TO CHEERING CROWDS: New green space boosts neighborhood appeal.
+
+The {{city_name}} Daily Tribune — Today's Headlines
+
+{{city_status}}
+

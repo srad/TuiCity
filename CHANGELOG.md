@@ -4,6 +4,46 @@ All notable changes to TuiCity 2000 are documented here.
 
 ## [Unreleased]
 
+### Screen Architecture — Shared Common Module
+
+- **`src/ui/screens/common.rs`** — new shared module extracting ~500 lines of duplicated rendering code from 5 screen renderers (start, load_city, settings, llm_setup, theme_settings)
+- **Shared primitives:** `paint_synthwave` (configurable background with sun/clouds/lit windows options), `render_footer`, `centered_panel` + `render_bordered_panel` (panel layout), `render_menu_items` (vertical selectable menu with automatic back button), color utilities (`lerp_color`, `blend_color`, `darken`), text utilities (`set_centered_string`, `truncate`)
+- **Centralized back button:** `MenuConfig { back_button: true }` auto-appends a "Back" item to any menu; `render_back_button()` standalone helper for screens with custom item layouts (theme swatches, save list table)
+- **Per-screen reduction:** settings.rs 364→107 lines, llm_setup.rs 440→145, theme_settings.rs 391→170, start.rs 554→290, load_city.rs 695→410
+- All submenu screens (settings, llm_setup, theme_settings, load_city) now have a consistent back button at the bottom
+
+### LLM Integration (feature = "llm")
+
+Local LLM inference via the `candle` crate, running entirely on-device in a background thread. All LLM features are behind the `llm` cargo feature flag; the game compiles and runs identically without it.
+
+#### City Name Generation
+- **Generate Name** button on the New City screen requests an LLM-generated city name
+- Polling-based: the UI shows "Generating..." while the background thread runs inference
+- Without the `llm` feature the button is a no-op
+
+#### Newspaper Stories
+- On each in-game month change, the LLM is asked to write a newspaper article using current city context (population, treasury, year, demand, recent events)
+- Generated stories are mixed into the news ticker alongside hardcoded stories
+- Deduplicates requests per game month to avoid redundant inference
+
+#### Advisor Panel
+- New **Advisors** window (`A` shortcut, or Windows → Advisors) with 5 domain tabs: Economy, City Planning, Education, Safety, Transport
+- Left/Right arrows cycle tabs; Enter requests advice for the selected domain
+- Shows "Thinking..." while inference runs, then displays the LLM response
+- Modal window (closes other modals when opened), closable, centered on open
+
+#### Alert Messages
+- Critical events (deficit warnings, brownouts, fires) now also submit an LLM request for a richer alert message
+- The hardcoded alert fires immediately; the LLM-enhanced version appears asynchronously in the news ticker
+
+#### Architecture
+- New `src/llm/` module: `types.rs` (task/response enums, `AdvisorDomain`, `CityContext`), `context.rs` (state extraction), `prompt.rs` (prompt templates), `backend.rs` (candle model loading and generation), `mod.rs` (`LlmService` with background thread + mpsc channels)
+- `LlmService` wired into `AppContext` — screens access it via `context.llm`
+- Single dispatch loop in `InGameScreen::on_tick` routes `LlmResponse` by `LlmTaskTag`
+- `WindowId::Advisor` added (10th managed window); `InGamePainter` trait expanded to 15 methods with `paint_advisor_window`
+- Settings screen shows LLM availability status
+- 6 new tests covering name generation, newspaper dedup/digest, and advisor state
+
 ### Terraforming Tools
 
 #### In-Game Terrain Editing

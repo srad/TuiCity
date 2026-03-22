@@ -3,7 +3,7 @@ use crate::{
     ui::theme,
 };
 
-use super::{AppContext, Screen, ScreenTransition, ThemeSettingsScreen};
+use super::{AppContext, LlmSetupScreen, Screen, ScreenTransition, ThemeSettingsScreen};
 
 pub struct SettingsState {
     pub selected: usize,
@@ -30,8 +30,8 @@ impl SettingsScreen {
         }
     }
 
-    fn option_count(&self) -> usize {
-        5
+    fn item_count(&self) -> usize {
+        6 // 5 options + back
     }
 
     fn activate_selected(&mut self) -> Option<ScreenTransition> {
@@ -55,7 +55,8 @@ impl SettingsScreen {
                 let _ = config::persist_frontend_preference(next);
                 None
             }
-            4 => Some(ScreenTransition::Pop),
+            4 => Some(ScreenTransition::Push(Box::new(LlmSetupScreen::new()))),
+            5 => Some(ScreenTransition::Pop), // Back (auto-appended by renderer)
             _ => None,
         }
     }
@@ -67,7 +68,7 @@ impl Screen for SettingsScreen {
     }
 
     fn on_action(&mut self, action: Action, _context: AppContext) -> Option<ScreenTransition> {
-        let count = self.option_count();
+        let count = self.item_count();
         match action {
             Action::MenuBack => Some(ScreenTransition::Pop),
             Action::MoveCursor(_, dy) => {
@@ -105,28 +106,88 @@ impl Screen for SettingsScreen {
         }
     }
 
-    fn build_view(&self, _context: AppContext<'_>) -> crate::ui::view::ScreenView {
+    fn build_view(&self, context: AppContext<'_>) -> crate::ui::view::ScreenView {
         let music_label = if config::is_music_enabled() {
             "Disable Music"
         } else {
             "Enable Music"
         };
         let frontend_kind = config::get_frontend_kind();
-        let frontend_label = format!(
-            "Renderer: {} (restart required)",
-            frontend_kind.label()
-        );
+        let frontend_label = format!("Renderer: {} (restart required)", frontend_kind.label());
+
+        let llm_status = if context.textgen.has_model() {
+            crate::ui::view::LlmStatus::Active
+        } else if cfg!(feature = "llm") {
+            crate::ui::view::LlmStatus::Unavailable
+        } else {
+            crate::ui::view::LlmStatus::Disabled
+        };
+
         crate::ui::view::ScreenView::Settings(crate::ui::view::SettingsViewModel {
             options: vec![
                 "Theme Settings".to_string(),
                 "Cycle Theme".to_string(),
                 music_label.to_string(),
                 frontend_label,
-                "Back".to_string(),
+                "LLM Setup".to_string(),
             ],
             selected: self.state.selected,
             current_theme_label: theme::current_theme().label().to_string(),
             current_frontend_label: frontend_kind.label().to_string(),
+            llm_status,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ui::view::ScreenView;
+    use std::sync::{Arc, RwLock};
+
+    fn test_context() -> (
+        Arc<RwLock<crate::core::engine::SimulationEngine>>,
+        crate::textgen::TextGenService,
+    ) {
+        let engine = Arc::new(RwLock::new(crate::core::engine::SimulationEngine::new(
+            crate::core::map::Map::new(4, 4),
+            crate::core::sim::SimState::default(),
+        )));
+        let textgen =
+            crate::textgen::TextGenService::start(std::path::PathBuf::from("/nonexistent"));
+        (engine, textgen)
+    }
+
+    #[test]
+    fn settings_view_has_five_options_plus_auto_back() {
+        let screen = SettingsScreen::new();
+        let (engine, textgen) = test_context();
+        let context = AppContext {
+            engine: &engine,
+            cmd_tx: &None,
+            textgen: &textgen,
+        };
+        let view = screen.build_view(context);
+        match view {
+            ScreenView::Settings(vm) => {
+                assert_eq!(vm.options.len(), 5);
+                // Back button is auto-appended by the renderer
+            }
+            _ => panic!("expected Settings view"),
+        }
+    }
+
+    #[test]
+    fn llm_setup_pushes_new_screen() {
+        let mut screen = SettingsScreen::new();
+        screen.state.selected = 4;
+        let (engine, textgen) = test_context();
+        let context = AppContext {
+            engine: &engine,
+            cmd_tx: &None,
+            textgen: &textgen,
+        };
+        let result = screen.on_action(Action::MenuSelect, context);
+        assert!(matches!(result, Some(ScreenTransition::Push(_))));
     }
 }

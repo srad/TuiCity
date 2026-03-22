@@ -187,7 +187,10 @@ impl<'a> ToolPlacer<'a> {
     // ── Private helpers ───────────────────────────────────────────────────────
 
     fn ensure_tool_unlocked(&self, tool: Tool) -> Result<(), String> {
-        let ctx = ToolContext { year: self.sim.year, unlock_mode: self.sim.economy.unlock_mode };
+        let ctx = ToolContext {
+            year: self.sim.year,
+            unlock_mode: self.sim.economy.unlock_mode,
+        };
         if tool.is_available(&ctx) {
             Ok(())
         } else {
@@ -252,7 +255,12 @@ impl<'a> ToolPlacer<'a> {
         let zone = self.map.effective_zone_spec(x, y);
 
         if let Some((px, py)) = self.find_plant_at(x, y) {
-            let fp = self.sim.plants.get(&(px, py)).map(|s| s.footprint as usize).unwrap_or(4);
+            let fp = self
+                .sim
+                .plants
+                .get(&(px, py))
+                .map(|s| s.footprint as usize)
+                .unwrap_or(4);
             for dy in 0..fp {
                 for dx in 0..fp {
                     let tx = px + dx;
@@ -373,9 +381,7 @@ impl<'a> ToolPlacer<'a> {
                 );
             }
             Tool::PowerPlantNuclear => {
-                use super::sim::constants::{
-                    NUCLEAR_PLANT_CAPACITY_MW, NUCLEAR_PLANT_LIFE_MONTHS,
-                };
+                use super::sim::constants::{NUCLEAR_PLANT_CAPACITY_MW, NUCLEAR_PLANT_LIFE_MONTHS};
                 self.sim.plants.insert(
                     (ax, ay),
                     super::sim::PlantState {

@@ -9,10 +9,7 @@ use super::font::{cell_h, cell_w};
 
 /// Translate a winit 0.29 `KeyEvent` into an `Action`.
 /// Returns `Action::None` for releases and unmapped keys.
-pub fn translate_key_event(
-    event: &winit::event::KeyEvent,
-    mods: ModifiersState,
-) -> Action {
+pub fn translate_key_event(event: &winit::event::KeyEvent, mods: ModifiersState) -> Action {
     if event.state != ElementState::Pressed {
         return Action::None;
     }
@@ -80,14 +77,46 @@ pub fn pixels_to_cell(px: f64, py: f64, scale: u32) -> (u16, u16) {
 pub fn translate_scroll(delta: &MouseScrollDelta) -> Action {
     match delta {
         MouseScrollDelta::LineDelta(x, y) => {
-            let dx = if *x > 0.5 { 3 } else if *x < -0.5 { -3 } else { 0 };
-            let dy = if *y > 0.5 { -3 } else if *y < -0.5 { 3 } else { 0 };
-            if dx != 0 || dy != 0 { Action::PanCamera(dx, dy) } else { Action::None }
+            let dx = if *x > 0.5 {
+                3
+            } else if *x < -0.5 {
+                -3
+            } else {
+                0
+            };
+            let dy = if *y > 0.5 {
+                -3
+            } else if *y < -0.5 {
+                3
+            } else {
+                0
+            };
+            if dx != 0 || dy != 0 {
+                Action::PanCamera(dx, dy)
+            } else {
+                Action::None
+            }
         }
         MouseScrollDelta::PixelDelta(pos) => {
-            let dy = if pos.y > 10.0 { -3 } else if pos.y < -10.0 { 3 } else { 0 };
-            let dx = if pos.x > 10.0 { 3 } else if pos.x < -10.0 { -3 } else { 0 };
-            if dx != 0 || dy != 0 { Action::PanCamera(dx, dy) } else { Action::None }
+            let dy = if pos.y > 10.0 {
+                -3
+            } else if pos.y < -10.0 {
+                3
+            } else {
+                0
+            };
+            let dx = if pos.x > 10.0 {
+                3
+            } else if pos.x < -10.0 {
+                -3
+            } else {
+                0
+            };
+            if dx != 0 || dy != 0 {
+                Action::PanCamera(dx, dy)
+            } else {
+                Action::None
+            }
         }
     }
 }

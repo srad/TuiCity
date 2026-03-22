@@ -102,7 +102,10 @@ mod tests {
                 all_valid = false;
             }
         });
-        assert!(all_valid, "all visited tiles must be in-bounds with falloff in [0,1]");
+        assert!(
+            all_valid,
+            "all visited tiles must be in-bounds with falloff in [0,1]"
+        );
         assert!(count > 0, "should visit at least the centre tile");
     }
 
@@ -116,6 +119,9 @@ mod tests {
                 mismatch = true;
             }
         });
-        assert!(!mismatch, "idx must equal ny * map.width + nx for all visited tiles");
+        assert!(
+            !mismatch,
+            "idx must equal ny * map.width + nx for all visited tiles"
+        );
     }
 }

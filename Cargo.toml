@@ -18,3 +18,14 @@ rodio = { version = "0.17.3", default-features = false, features = ["symphonia-m
 winit       = "0.29"
 softbuffer  = "0.4"
 font8x8     = "0.3"
+log         = "0.4"
+simplelog   = "0.12"
+
+
+# LLM integration (optional) — llama.cpp backend
+llama-cpp-2 = { version = "0.1", optional = true }
+hf-hub      = { version = "0.5", optional = true }
+
+[features]
+default = ["llm"]
+llm     = ["llama-cpp-2", "hf-hub"]

@@ -37,6 +37,7 @@ pub enum MenuAction {
     OverlayCrime,
     OverlayFireRisk,
     OpenSettings,
+    OpenAdvisor,
     OpenHelp,
     OpenAbout,
 }
@@ -121,7 +122,7 @@ const DISASTER_ROWS: [MenuRow; 3] = [
         action: MenuAction::DisasterTornado,
     },
 ];
-const WINDOWS_ROWS: [MenuRow; 14] = [
+const WINDOWS_ROWS: [MenuRow; 15] = [
     MenuRow {
         label: "Toolbox",
         right: "",
@@ -141,6 +142,11 @@ const WINDOWS_ROWS: [MenuRow; 14] = [
         label: "Statistics",
         right: "",
         action: MenuAction::OpenStatistics,
+    },
+    MenuRow {
+        label: "Advisors",
+        right: "A",
+        action: MenuAction::OpenAdvisor,
     },
     MenuRow {
         label: "Map Legend",
@@ -318,6 +324,7 @@ impl InGameScreen {
             MenuAction::ToggleInspect => self.toggle_inspect_window(),
             MenuAction::OpenBudget => self.open_budget(context),
             MenuAction::OpenStatistics => self.open_stats_window(),
+            MenuAction::OpenAdvisor => self.toggle_advisor_window(),
             MenuAction::ToggleLegend => self.toggle_legend_window(),
             MenuAction::ToggleLayer => self.toggle_view_layer(),
             MenuAction::OverlayNone => self.overlay_mode = OverlayMode::None,
@@ -384,56 +391,120 @@ impl InGameScreen {
         let base = *menu_rows(menu).get(item)?;
         let right = match base.action {
             MenuAction::DisasterFire => {
-                if sim.disasters.fire_enabled { "ON" } else { "OFF" }
+                if sim.disasters.fire_enabled {
+                    "ON"
+                } else {
+                    "OFF"
+                }
             }
             MenuAction::DisasterFlood => {
-                if sim.disasters.flood_enabled { "ON" } else { "OFF" }
+                if sim.disasters.flood_enabled {
+                    "ON"
+                } else {
+                    "OFF"
+                }
             }
             MenuAction::DisasterTornado => {
-                if sim.disasters.tornado_enabled { "ON" } else { "OFF" }
+                if sim.disasters.tornado_enabled {
+                    "ON"
+                } else {
+                    "OFF"
+                }
             }
             MenuAction::OverlayNone => {
-                if self.overlay_mode == OverlayMode::None { "ON" } else { "" }
+                if self.overlay_mode == OverlayMode::None {
+                    "ON"
+                } else {
+                    ""
+                }
             }
             MenuAction::OverlayPower => {
-                if self.overlay_mode == OverlayMode::Power { "ON" } else { "" }
+                if self.overlay_mode == OverlayMode::Power {
+                    "ON"
+                } else {
+                    ""
+                }
             }
             MenuAction::OverlayWater => {
-                if self.overlay_mode == OverlayMode::Water { "ON" } else { "" }
+                if self.overlay_mode == OverlayMode::Water {
+                    "ON"
+                } else {
+                    ""
+                }
             }
             MenuAction::OverlayTraffic => {
-                if self.overlay_mode == OverlayMode::Traffic { "ON" } else { "" }
+                if self.overlay_mode == OverlayMode::Traffic {
+                    "ON"
+                } else {
+                    ""
+                }
             }
             MenuAction::OverlayPollution => {
-                if self.overlay_mode == OverlayMode::Pollution { "ON" } else { "" }
+                if self.overlay_mode == OverlayMode::Pollution {
+                    "ON"
+                } else {
+                    ""
+                }
             }
             MenuAction::OverlayLandValue => {
-                if self.overlay_mode == OverlayMode::LandValue { "ON" } else { "" }
+                if self.overlay_mode == OverlayMode::LandValue {
+                    "ON"
+                } else {
+                    ""
+                }
             }
             MenuAction::OverlayCrime => {
-                if self.overlay_mode == OverlayMode::Crime { "ON" } else { "" }
+                if self.overlay_mode == OverlayMode::Crime {
+                    "ON"
+                } else {
+                    ""
+                }
             }
             MenuAction::OverlayFireRisk => {
-                if self.overlay_mode == OverlayMode::FireRisk { "ON" } else { "" }
+                if self.overlay_mode == OverlayMode::FireRisk {
+                    "ON"
+                } else {
+                    ""
+                }
             }
             MenuAction::ToggleToolbar => {
-                if self.desktop.is_open(WindowId::Panel) { "ON" } else { "OFF" }
+                if self.desktop.is_open(WindowId::Panel) {
+                    "ON"
+                } else {
+                    "OFF"
+                }
             }
             MenuAction::ToggleInspect => {
-                if self.desktop.is_open(WindowId::Inspect) { "ON" } else { "OFF" }
+                if self.desktop.is_open(WindowId::Inspect) {
+                    "ON"
+                } else {
+                    "OFF"
+                }
             }
             MenuAction::OpenStatistics => {
-                if self.desktop.is_open(WindowId::Statistics) { "ON" } else { "OFF" }
+                if self.desktop.is_open(WindowId::Statistics) {
+                    "ON"
+                } else {
+                    "OFF"
+                }
             }
             MenuAction::ToggleLegend => {
-                if self.desktop.is_open(WindowId::Legend) { "ON" } else { "OFF" }
+                if self.desktop.is_open(WindowId::Legend) {
+                    "ON"
+                } else {
+                    "OFF"
+                }
             }
             MenuAction::ToggleLayer => InGameScreen::view_layer_label(self.view_layer),
             _ => base.right,
         };
         let label = match base.action {
             MenuAction::SpeedPause => {
-                if self.paused { "Resume" } else { "Pause" }
+                if self.paused {
+                    "Resume"
+                } else {
+                    "Pause"
+                }
             }
             _ => base.label,
         };
@@ -471,8 +542,9 @@ mod tests {
             InGameScreen::menu_action_for(3, 1),
             MenuAction::ToggleInspect
         );
+        assert_eq!(InGameScreen::menu_action_for(3, 4), MenuAction::OpenAdvisor);
         assert_eq!(
-            InGameScreen::menu_action_for(3, 13),
+            InGameScreen::menu_action_for(3, 14),
             MenuAction::OverlayFireRisk
         );
         assert_eq!(MENU_TITLES[4], "Help");
@@ -497,11 +569,12 @@ mod tests {
             ),
         ));
         let cmd_tx = None;
+        let tg = crate::textgen::TextGenService::start(std::path::PathBuf::from("/nonexistent"));
 
         let context = AppContext {
             engine: &engine,
             cmd_tx: &cmd_tx,
-
+            textgen: &tg,
         };
 
         let (consumed, transition) = screen.handle_menu_click(13, 0, &context);
@@ -529,11 +602,12 @@ mod tests {
             ),
         ));
         let cmd_tx = None;
+        let tg = crate::textgen::TextGenService::start(std::path::PathBuf::from("/nonexistent"));
 
         let context = AppContext {
             engine: &engine,
             cmd_tx: &cmd_tx,
-
+            textgen: &tg,
         };
 
         let (consumed, transition) = screen.handle_menu_click(71, 0, &context);
@@ -553,11 +627,12 @@ mod tests {
             ),
         ));
         let cmd_tx = None;
+        let tg = crate::textgen::TextGenService::start(std::path::PathBuf::from("/nonexistent"));
 
         let context = AppContext {
             engine: &engine,
             cmd_tx: &cmd_tx,
-
+            textgen: &tg,
         };
 
         let transition = screen.handle_menu_action(MenuAction::NewCity, &context);
@@ -572,10 +647,10 @@ mod tests {
         let sim = SimState::default();
 
         let (layer_label, layer_value, _) = screen
-            .menu_row(3, 5, &sim)
+            .menu_row(3, 6, &sim)
             .expect("windows layer row should exist");
         let (water_label, _, _) = screen
-            .menu_row(3, 8, &sim)
+            .menu_row(3, 9, &sim)
             .expect("windows water overlay row should exist");
 
         assert_eq!(layer_label, "View Layer");

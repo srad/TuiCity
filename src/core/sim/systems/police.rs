@@ -1,11 +1,11 @@
 use crate::core::map::{Map, Tile};
-use crate::core::sim::util::for_each_in_radius;
 use crate::core::sim::constants::{
     CRIME_BASE_DEFAULT, CRIME_BASE_HIGH_DENSITY, CRIME_BASE_MED_DENSITY, CRIME_BASE_RES_LOW,
     LIBRARY_CRIME_RADIUS, LIBRARY_CRIME_REDUCTION, POLICE_CRIME_REDUCTION, POLICE_RADIUS,
     SCHOOL_CRIME_RADIUS, SCHOOL_CRIME_REDUCTION,
 };
 use crate::core::sim::system::SimSystem;
+use crate::core::sim::util::for_each_in_radius;
 use crate::core::sim::SimState;
 
 // ── PoliceSystem ──────────────────────────────────────────────────────────────
@@ -49,9 +49,15 @@ impl SimSystem for PoliceSystem {
             .collect();
         for (sx, sy) in schools {
             let mut reductions: Vec<(usize, u8)> = Vec::new();
-            for_each_in_radius(map, sx, sy, SCHOOL_CRIME_RADIUS, |_nx, _ny, idx, falloff| {
-                reductions.push((idx, (SCHOOL_CRIME_REDUCTION * falloff) as u8));
-            });
+            for_each_in_radius(
+                map,
+                sx,
+                sy,
+                SCHOOL_CRIME_RADIUS,
+                |_nx, _ny, idx, falloff| {
+                    reductions.push((idx, (SCHOOL_CRIME_REDUCTION * falloff) as u8));
+                },
+            );
             for (idx, reduction) in reductions {
                 map.overlays[idx].crime = map.overlays[idx].crime.saturating_sub(reduction);
             }
@@ -64,9 +70,15 @@ impl SimSystem for PoliceSystem {
             .collect();
         for (lx, ly) in libraries {
             let mut reductions: Vec<(usize, u8)> = Vec::new();
-            for_each_in_radius(map, lx, ly, LIBRARY_CRIME_RADIUS, |_nx, _ny, idx, falloff| {
-                reductions.push((idx, (LIBRARY_CRIME_REDUCTION * falloff) as u8));
-            });
+            for_each_in_radius(
+                map,
+                lx,
+                ly,
+                LIBRARY_CRIME_RADIUS,
+                |_nx, _ny, idx, falloff| {
+                    reductions.push((idx, (LIBRARY_CRIME_REDUCTION * falloff) as u8));
+                },
+            );
             for (idx, reduction) in reductions {
                 map.overlays[idx].crime = map.overlays[idx].crime.saturating_sub(reduction);
             }

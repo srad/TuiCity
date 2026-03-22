@@ -1,0 +1,6 @@
+Game rules summary:
+- Zones need power, water, and roads to grow.
+- Ideal ratio: 50% residential, 12% commercial, 38% industrial.
+- High taxes reduce demand. Parks boost land value. Police reduce crime.
+- Power plants have limited lifespans. Roads cost $1/month each.
+- Fires spread if no fire stations nearby. Floods and tornadoes can occur.

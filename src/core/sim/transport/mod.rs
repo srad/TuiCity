@@ -224,7 +224,8 @@ fn simulate_lot(
                     sim.trips.successes = sim.trips.successes.saturating_add(weight as u32);
                     match mode {
                         TripMode::Road => {
-                            sim.trips.road_share = sim.trips.road_share.saturating_add(weight as u32);
+                            sim.trips.road_share =
+                                sim.trips.road_share.saturating_add(weight as u32);
                             apply_path_traffic(raw_traffic, &path, ROAD_TRAFFIC_FACTOR, weight);
                         }
                         TripMode::Bus => {
@@ -247,18 +248,22 @@ fn simulate_lot(
                             };
 
                             if depot_full {
-                                sim.trips.road_share = sim.trips.road_share.saturating_add(weight as u32);
+                                sim.trips.road_share =
+                                    sim.trips.road_share.saturating_add(weight as u32);
                                 apply_path_traffic(raw_traffic, &path, ROAD_TRAFFIC_FACTOR, weight);
                             } else {
-                                sim.trips.bus_share = sim.trips.bus_share.saturating_add(weight as u32);
+                                sim.trips.bus_share =
+                                    sim.trips.bus_share.saturating_add(weight as u32);
                                 apply_path_traffic(raw_traffic, &path, BUS_TRAFFIC_FACTOR, weight);
                             }
                         }
                         TripMode::Rail => {
-                            sim.trips.rail_share = sim.trips.rail_share.saturating_add(weight as u32);
+                            sim.trips.rail_share =
+                                sim.trips.rail_share.saturating_add(weight as u32);
                         }
                         TripMode::Subway => {
-                            sim.trips.subway_share = sim.trips.subway_share.saturating_add(weight as u32);
+                            sim.trips.subway_share =
+                                sim.trips.subway_share.saturating_add(weight as u32);
                         }
                     }
                 }
@@ -663,8 +668,7 @@ mod tests {
         bus_map.set_occupant(7, 0, Some(Tile::BusDepot));
         road_sim.rng.transport =
             seed_for_mode(&road_map, 0, 0, ZoneKind::Residential, TripMode::Road);
-        bus_sim.rng.transport =
-            seed_for_mode(&bus_map, 0, 0, ZoneKind::Residential, TripMode::Bus);
+        bus_sim.rng.transport = seed_for_mode(&bus_map, 0, 0, ZoneKind::Residential, TripMode::Bus);
 
         run_transport(&mut road_map, &mut road_sim);
         run_transport(&mut bus_map, &mut bus_sim);

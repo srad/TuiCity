@@ -1,11 +1,11 @@
 use crate::core::map::{Map, Tile};
-use crate::core::sim::util::for_each_in_radius;
 use crate::core::sim::constants::{
     FIRE_DAMAGE_CHANCE, FIRE_IGNITE_CHANCE_MAX, FIRE_SPREAD_CHANCE_MAX,
     FIRE_SPREAD_SUPPRESS_RADIUS, FIRE_SUPPRESS_CHANCE_BASE, FLOOD_TRIGGER_CHANCE,
     TORNADO_DRIFT_CHANCE, TORNADO_TRIGGER_CHANCE,
 };
 use crate::core::sim::system::SimSystem;
+use crate::core::sim::util::for_each_in_radius;
 use crate::core::sim::SimState;
 use rand::{rngs::StdRng, Rng, SeedableRng};
 
@@ -102,11 +102,17 @@ fn suppress_with_stations(map: &mut Map, rng: &mut StdRng) {
         .filter(|&(x, y)| map.get(x, y) == Tile::Fire)
         .collect();
     for (sx, sy) in fire_stations {
-        for_each_in_radius(map, sx, sy, FIRE_SPREAD_SUPPRESS_RADIUS, |_nx, _ny, idx, falloff| {
-            if map.overlays[idx].on_fire {
-                suppress_targets.push((idx, FIRE_SUPPRESS_CHANCE_BASE * falloff));
-            }
-        });
+        for_each_in_radius(
+            map,
+            sx,
+            sy,
+            FIRE_SPREAD_SUPPRESS_RADIUS,
+            |_nx, _ny, idx, falloff| {
+                if map.overlays[idx].on_fire {
+                    suppress_targets.push((idx, FIRE_SUPPRESS_CHANCE_BASE * falloff));
+                }
+            },
+        );
     }
     for (idx, suppress_chance) in suppress_targets {
         if rng.gen::<f32>() < suppress_chance {

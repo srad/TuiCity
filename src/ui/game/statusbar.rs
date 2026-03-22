@@ -122,8 +122,16 @@ pub fn render_statusbar(
     if !write_sep(buf, &mut col, area.y, right_limit) {
         return controls;
     }
-    let income_sign = if sim.economy.last_income >= 0 { "+" } else { "" };
-    let income_str = format!(" {}${}/yr ", income_sign, fmt_number(sim.economy.last_income));
+    let income_sign = if sim.economy.last_income >= 0 {
+        "+"
+    } else {
+        ""
+    };
+    let income_str = format!(
+        " {}${}/yr ",
+        income_sign,
+        fmt_number(sim.economy.last_income)
+    );
     let income_color = if sim.economy.last_income >= 0 {
         ui.success
     } else {

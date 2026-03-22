@@ -200,8 +200,9 @@ impl Screen for LoadCityScreen {
         None
     }
 
-    fn on_tick(&mut self, _context: AppContext) {
+    fn on_tick(&mut self, _context: AppContext) -> Option<ScreenTransition> {
         self.poll_loading();
+        None
     }
 
     fn on_action(&mut self, action: Action, context: AppContext) -> Option<ScreenTransition> {
@@ -261,32 +262,39 @@ impl Screen for LoadCityScreen {
             };
         }
 
-        let count = self.state.saves_snapshot.len();
+        let saves_count = self.state.saves_snapshot.len();
+        let item_count = saves_count + 1; // saves + back button
         match action {
             Action::MenuBack => Some(ScreenTransition::Pop),
-            Action::MoveCursor(_, dy) if count > 0 => {
-                if count > 0 {
+            Action::MoveCursor(_, dy) => {
+                if item_count > 0 {
                     self.state.selected = if dy > 0 {
-                        (self.state.selected + 1) % count
+                        (self.state.selected + 1) % item_count
                     } else {
                         self.state
                             .selected
                             .checked_sub(1)
-                            .unwrap_or(count.saturating_sub(1))
+                            .unwrap_or(item_count.saturating_sub(1))
                     };
                 }
                 None
             }
-            Action::MouseClick { col, row } if count > 0 => {
+            Action::MouseClick { col, row } => {
                 for (idx, area) in self.state.row_areas.iter().enumerate() {
                     if area.contains(col, row) {
                         self.state.selected = idx;
+                        if idx >= saves_count {
+                            return Some(ScreenTransition::Pop);
+                        }
                         return None;
                     }
                 }
                 None
             }
-            Action::MenuSelect if count > 0 => {
+            Action::MenuSelect => {
+                if self.state.selected >= saves_count {
+                    return Some(ScreenTransition::Pop);
+                }
                 if let Some(entry) = self.state.saves_snapshot.get(self.state.selected) {
                     match save::load_city(&entry.path) {
                         Ok((map, sim)) => {
@@ -304,7 +312,7 @@ impl Screen for LoadCityScreen {
                     None
                 }
             }
-            Action::CharInput('d') | Action::CharInput('D') if count > 0 => {
+            Action::CharInput('d') | Action::CharInput('D') if saves_count > 0 && self.state.selected < saves_count => {
                 self.open_delete_prompt();
                 None
             }
@@ -330,6 +338,10 @@ mod tests {
     use crossterm::event::{Event, MouseEvent, MouseEventKind};
     use std::sync::{Arc, RwLock};
     use std::time::SystemTime;
+
+    fn test_textgen() -> crate::textgen::TextGenService {
+        crate::textgen::TextGenService::start(std::path::PathBuf::from("/nonexistent"))
+    }
 
     fn sample_entry() -> save::SaveEntry {
         save::SaveEntry {
@@ -372,11 +384,12 @@ mod tests {
         )));
 
         let cmd_tx = None;
+        let tg = test_textgen();
 
         screen.on_tick(AppContext {
             engine: &engine,
             cmd_tx: &cmd_tx,
-
+            textgen: &tg,
         });
 
         assert!(!screen.state.is_loading);
@@ -412,6 +425,7 @@ mod tests {
         )));
 
         let cmd_tx = None;
+        let tg = test_textgen();
         let event = Event::Mouse(MouseEvent {
             kind: MouseEventKind::Moved,
             column: 0,
@@ -424,7 +438,7 @@ mod tests {
             AppContext {
                 engine: &engine,
                 cmd_tx: &cmd_tx,
-    
+                textgen: &tg,
             },
         );
 
@@ -460,6 +474,7 @@ mod tests {
         )));
 
         let cmd_tx = None;
+        let tg = test_textgen();
         let event = Event::Mouse(MouseEvent {
             kind: MouseEventKind::Moved,
             column: 0,
@@ -472,7 +487,7 @@ mod tests {
             AppContext {
                 engine: &engine,
                 cmd_tx: &cmd_tx,
-    
+                textgen: &tg,
             },
         );
 
@@ -532,13 +547,14 @@ mod tests {
         )));
 
         let cmd_tx = None;
+        let tg = test_textgen();
 
         let transition = screen.on_action(
             Action::CharInput('d'),
             AppContext {
                 engine: &engine,
                 cmd_tx: &cmd_tx,
-    
+                textgen: &tg,
             },
         );
 
@@ -591,13 +607,14 @@ mod tests {
         )));
 
         let cmd_tx = None;
+        let tg = test_textgen();
 
         let transition = screen.on_action(
             Action::MenuSelect,
             AppContext {
                 engine: &engine,
                 cmd_tx: &cmd_tx,
-    
+                textgen: &tg,
             },
         );
 
@@ -645,13 +662,14 @@ mod tests {
         )));
 
         let cmd_tx = None;
+        let tg = test_textgen();
 
         let transition = screen.on_action(
             Action::MenuBack,
             AppContext {
                 engine: &engine,
                 cmd_tx: &cmd_tx,
-    
+                textgen: &tg,
             },
         );
 
@@ -699,13 +717,14 @@ mod tests {
         )));
 
         let cmd_tx = None;
+        let tg = test_textgen();
 
         let transition = screen.on_action(
             Action::CharInput('n'),
             AppContext {
                 engine: &engine,
                 cmd_tx: &cmd_tx,
-    
+                textgen: &tg,
             },
         );
 
@@ -753,13 +772,14 @@ mod tests {
         )));
 
         let cmd_tx = None;
+        let tg = test_textgen();
 
         let transition = screen.on_action(
             Action::MenuSelect,
             AppContext {
                 engine: &engine,
                 cmd_tx: &cmd_tx,
-    
+                textgen: &tg,
             },
         );
 

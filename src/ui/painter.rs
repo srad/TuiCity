@@ -34,14 +34,12 @@ use crate::{
         tool::Tool,
     },
     ui::{
-        runtime::{
-            DesktopLayout, ToolbarHitArea, WindowId,
-        },
+        runtime::{DesktopLayout, ToolbarHitArea, WindowId},
         theme::OverlayMode,
         view::{
-            BudgetViewModel, ConfirmDialogViewModel, InGameDesktopView, NewsTickerViewModel,
-            StatisticsWindowViewModel, TextWindowViewModel, ToolChooserViewModel,
-            ToolbarPaletteViewModel,
+            AdvisorViewModel, BudgetViewModel, ConfirmDialogViewModel, InGameDesktopView,
+            NewsTickerViewModel, StatisticsWindowViewModel, TextWindowViewModel,
+            ToolChooserViewModel, ToolbarPaletteViewModel,
         },
     },
 };
@@ -189,6 +187,9 @@ pub trait InGamePainter {
         ingame: &mut InGameScreen,
     );
 
+    /// Render the City Advisors window.
+    fn paint_advisor_window(&mut self, advisor: &AdvisorViewModel, ingame: &InGameScreen);
+
     /// Render the news ticker at the bottom of the screen.
     fn paint_news_ticker(&mut self, ticker: &NewsTickerViewModel);
 
@@ -216,33 +217,32 @@ pub fn orchestrate_ingame(
     painter.begin_frame(&layout);
 
     // ── Map preview computation ──────────────────────────────────────────
-    let (footprint_tiles, footprint_valid) =
-        if Tool::uses_footprint_preview(view.current_tool)
-            && view.rect_preview.is_empty()
-            && view.line_preview.is_empty()
-        {
-            let (fw, fh) = view.current_tool.footprint();
-            let (cx, cy) = (view.camera.cursor_x, view.camera.cursor_y);
-            let ax = cx
-                .saturating_sub(fw / 2)
-                .min(view.map.width.saturating_sub(fw));
-            let ay = cy
-                .saturating_sub(fh / 2)
-                .min(view.map.height.saturating_sub(fh));
-            let tiles: Vec<(usize, usize)> = (0..fh)
-                .flat_map(|dy| (0..fw).map(move |dx| (ax + dx, ay + dy)))
-                .collect();
-            let valid = tiles.iter().all(|&(x, y)| {
-                x < view.map.width
-                    && y < view.map.height
-                    && view
-                        .current_tool
-                        .can_place(view.map.view_tile(view.view_layer, x, y))
-            });
-            (tiles, valid)
-        } else {
-            (Vec::new(), false)
-        };
+    let (footprint_tiles, footprint_valid) = if Tool::uses_footprint_preview(view.current_tool)
+        && view.rect_preview.is_empty()
+        && view.line_preview.is_empty()
+    {
+        let (fw, fh) = view.current_tool.footprint();
+        let (cx, cy) = (view.camera.cursor_x, view.camera.cursor_y);
+        let ax = cx
+            .saturating_sub(fw / 2)
+            .min(view.map.width.saturating_sub(fw));
+        let ay = cy
+            .saturating_sub(fh / 2)
+            .min(view.map.height.saturating_sub(fh));
+        let tiles: Vec<(usize, usize)> = (0..fh)
+            .flat_map(|dy| (0..fw).map(move |dx| (ax + dx, ay + dy)))
+            .collect();
+        let valid = tiles.iter().all(|&(x, y)| {
+            x < view.map.width
+                && y < view.map.height
+                && view
+                    .current_tool
+                    .can_place(view.map.view_tile(view.view_layer, x, y))
+        });
+        (tiles, valid)
+    } else {
+        (Vec::new(), false)
+    };
     let preview = if !view.rect_preview.is_empty() {
         MapPreview::Rect(&view.rect_preview)
     } else if !view.line_preview.is_empty() {
@@ -264,8 +264,11 @@ pub fn orchestrate_ingame(
         preview,
     );
 
-    let menu_areas =
-        painter.paint_menu_bar(view.menu_active, view.menu_selected, view.menu_item_selected);
+    let menu_areas = painter.paint_menu_bar(
+        view.menu_active,
+        view.menu_selected,
+        view.menu_item_selected,
+    );
     ingame.ui_areas.menu_bar = menu_areas.menu_bar;
     ingame.ui_areas.menu_items = menu_areas.menu_items;
 
@@ -343,6 +346,11 @@ pub fn orchestrate_ingame(
     }
     if let Some(legend) = &view.legend {
         painter.paint_text_window(WindowId::Legend, legend, ingame);
+    }
+
+    // Advisor window
+    if let Some(advisor) = &view.advisor {
+        painter.paint_advisor_window(advisor, ingame);
     }
 
     // News ticker
@@ -426,7 +434,10 @@ pub mod tests {
             PanelAreas::default()
         }
 
-        fn paint_tool_chooser(&mut self, _chooser: &ToolChooserViewModel) -> Vec<(ClickArea, Tool)> {
+        fn paint_tool_chooser(
+            &mut self,
+            _chooser: &ToolChooserViewModel,
+        ) -> Vec<(ClickArea, Tool)> {
             self.calls.push("paint_tool_chooser");
             Vec::new()
         }
@@ -465,6 +476,10 @@ pub mod tests {
             _ingame: &mut InGameScreen,
         ) {
             self.calls.push("paint_text_window");
+        }
+
+        fn paint_advisor_window(&mut self, _advisor: &AdvisorViewModel, _ingame: &InGameScreen) {
+            self.calls.push("paint_advisor_window");
         }
 
         fn paint_news_ticker(&mut self, _ticker: &NewsTickerViewModel) {
@@ -506,6 +521,7 @@ pub mod tests {
                 help: _,
                 about: _,
                 legend: _,
+                advisor: _,
             } = v;
         };
     }

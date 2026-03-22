@@ -42,7 +42,13 @@ impl SimSystem for LandValueSystem {
             LV_HOSPITAL_RADIUS,
             LV_HOSPITAL_BONUS,
         );
-        apply_proximity_bonus(map, &mut lv, Tile::School, LV_SCHOOL_RADIUS, LV_SCHOOL_BONUS);
+        apply_proximity_bonus(
+            map,
+            &mut lv,
+            Tile::School,
+            LV_SCHOOL_RADIUS,
+            LV_SCHOOL_BONUS,
+        );
         apply_proximity_bonus(
             map,
             &mut lv,
@@ -145,7 +151,7 @@ mod tests {
         let mut map = Map::new(1, 1);
         map.overlays[0].pollution = 255;
         run_land_value(&mut map); // should not panic
-        // Value is >= 0 by construction (saturating_sub)
+                                  // Value is >= 0 by construction (saturating_sub)
         let _ = map.overlays[0].land_value;
     }
 

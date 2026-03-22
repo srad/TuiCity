@@ -30,8 +30,8 @@ use input::{pixels_to_cell, translate_key_event, translate_scroll};
 
 /// Entry point for the pixel GUI frontend.
 pub fn run() -> io::Result<()> {
-    let event_loop = EventLoop::new()
-        .map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
+    let event_loop =
+        EventLoop::new().map_err(|e| io::Error::new(io::ErrorKind::Other, e.to_string()))?;
 
     let window = Arc::new(
         WindowBuilder::new()
@@ -111,9 +111,7 @@ pub fn run() -> io::Result<()> {
                                 return;
                             }
 
-                            if let (Some(nw), Some(nh)) =
-                                (NonZeroU32::new(w), NonZeroU32::new(h))
-                            {
+                            if let (Some(nw), Some(nh)) = (NonZeroU32::new(w), NonZeroU32::new(h)) {
                                 surface.resize(nw, nh).ok();
                             }
 
@@ -167,15 +165,13 @@ pub fn run() -> io::Result<()> {
                                 }
                                 (MouseButton::Left, ElementState::Released) => {
                                     mouse_down = false;
-                                    app.on_action(crate::app::input::Action::MouseUp {
+                                    app.on_action(crate::app::input::Action::MouseUp { col, row });
+                                }
+                                (MouseButton::Middle, ElementState::Pressed) => {
+                                    app.on_action(crate::app::input::Action::MouseMiddleDown {
                                         col,
                                         row,
                                     });
-                                }
-                                (MouseButton::Middle, ElementState::Pressed) => {
-                                    app.on_action(
-                                        crate::app::input::Action::MouseMiddleDown { col, row },
-                                    );
                                 }
                                 (MouseButton::Middle, ElementState::Released) => {
                                     app.on_action(crate::app::input::Action::MouseMiddleUp);
@@ -203,6 +199,7 @@ fn build_view(app: &mut AppState) -> ScreenView {
     let context = crate::app::screens::AppContext {
         engine: &app.engine,
         cmd_tx: &app.cmd_tx,
+        textgen: &app.textgen,
     };
     app.screens
         .last_mut()

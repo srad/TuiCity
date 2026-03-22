@@ -4,6 +4,7 @@ mod ingame_budget;
 mod ingame_interaction;
 mod ingame_menu;
 mod ingame_news;
+mod llm_setup;
 mod load_city;
 mod new_city;
 mod settings;
@@ -23,6 +24,7 @@ use crate::{
 pub use ingame::InGameScreen;
 pub use ingame_budget::BudgetFocus;
 pub use ingame_menu::{menu_rows, MENU_TITLES};
+pub use llm_setup::{LlmSetupScreen, LlmSetupState};
 pub use load_city::{LoadCityScreen, LoadCityState};
 pub use new_city::{NewCityField, NewCityScreen, NewCityState, TerrainBrush};
 pub use settings::{SettingsScreen, SettingsState};
@@ -34,11 +36,14 @@ pub enum ScreenTransition {
     Pop,
     Replace(Box<dyn Screen>),
     Quit,
+    /// Signal AppState to re-initialize the text generation service (e.g. after model download).
+    ReinitTextGen,
 }
 
 pub struct AppContext<'a> {
     pub engine: &'a Arc<RwLock<SimulationEngine>>,
     pub cmd_tx: &'a Option<Sender<EngineCommand>>,
+    pub textgen: &'a crate::textgen::TextGenService,
 }
 
 pub trait Screen {
@@ -54,7 +59,9 @@ pub trait Screen {
 
     fn on_action(&mut self, action: Action, context: AppContext) -> Option<ScreenTransition>;
 
-    fn on_tick(&mut self, _context: AppContext) {}
+    fn on_tick(&mut self, _context: AppContext) -> Option<ScreenTransition> {
+        None
+    }
 
     fn build_view(&self, context: AppContext<'_>) -> ScreenView;
 }

@@ -7,13 +7,15 @@ use crate::{
     },
     core::{engine::EngineCommand, tool::ToolContext},
     game_info::GAME_NAME,
+    textgen::types::AdvisorDomain,
     ui::{
         runtime::ToolChooserKind,
         theme::{self, OverlayMode},
         view::{
-            BudgetViewModel, ConfirmDialogButtonRole, ConfirmDialogButtonViewModel,
-            ConfirmDialogViewModel, InGameDesktopView, StatisticsWindowViewModel,
-            TextWindowViewModel, ToolChooserViewModel, ToolbarPaletteViewModel,
+            AdvisorViewModel, BudgetViewModel, ConfirmDialogButtonRole,
+            ConfirmDialogButtonViewModel, ConfirmDialogViewModel, InGameDesktopView,
+            StatisticsWindowViewModel, TextWindowViewModel, ToolChooserViewModel,
+            ToolbarPaletteViewModel,
         },
     },
 };
@@ -214,6 +216,9 @@ pub struct InGameScreen {
     pub(super) window_scrollbar_drag: Option<WindowScrollbarDrag>,
     pub budget_ui: BudgetState,
     pub news_ticker: CityNewsState,
+    pub advisor_domain: AdvisorDomain,
+    pub advisor_text: Option<String>,
+    pub advisor_pending: bool,
 }
 
 impl InGameScreen {
@@ -254,6 +259,9 @@ impl InGameScreen {
             window_scrollbar_drag: None,
             budget_ui: BudgetState::new(),
             news_ticker: CityNewsState::default(),
+            advisor_domain: AdvisorDomain::Economy,
+            advisor_text: None,
+            advisor_pending: false,
         }
     }
 
@@ -266,6 +274,7 @@ impl InGameScreen {
             || self.desktop.contains(WindowId::Help, col, row)
             || self.desktop.contains(WindowId::About, col, row)
             || self.desktop.contains(WindowId::Legend, col, row)
+            || self.desktop.contains(WindowId::Advisor, col, row)
     }
 
     pub(super) fn window_content_height(&self, id: WindowId) -> u16 {
@@ -384,8 +393,6 @@ impl InGameScreen {
         self.desktop.is_open(WindowId::Legend)
     }
 
-
-
     pub fn open_inspect_window(&mut self) {
         if self.inspect_pos.is_none() {
             self.inspect_pos = Some((self.camera.cursor_x, self.camera.cursor_y));
@@ -457,6 +464,30 @@ impl InGameScreen {
         }
     }
 
+    pub fn is_advisor_open(&self) -> bool {
+        self.desktop.is_open(WindowId::Advisor)
+    }
+
+    pub fn open_advisor_window(&mut self) {
+        self.desktop.close(WindowId::Statistics);
+        self.desktop.close(WindowId::Help);
+        self.desktop.close(WindowId::About);
+        self.desktop.close(WindowId::Legend);
+        self.desktop.open(WindowId::Advisor, true);
+    }
+
+    pub fn close_advisor_window(&mut self) {
+        self.desktop.close(WindowId::Advisor);
+    }
+
+    pub fn toggle_advisor_window(&mut self) {
+        if self.is_advisor_open() {
+            self.close_advisor_window();
+        } else {
+            self.open_advisor_window();
+        }
+    }
+
     pub fn toggle_inspect_window(&mut self) {
         if self.is_inspect_open() {
             self.close_inspect_window();
@@ -475,7 +506,10 @@ impl InGameScreen {
             commercial: self.budget_ui.commercial_tax as u8,
             industrial: self.budget_ui.industrial_tax as u8,
         };
-        let tool_ctx = ToolContext { year: sim.year, unlock_mode: sim.economy.unlock_mode };
+        let tool_ctx = ToolContext {
+            year: sim.year,
+            unlock_mode: sim.economy.unlock_mode,
+        };
         InGameDesktopView {
             map: map.clone(),
             sim: sim.clone(),
@@ -507,6 +541,7 @@ impl InGameScreen {
             help: self.help_view_model(),
             about: self.about_view_model(),
             legend: self.legend_view_model(),
+            advisor: self.advisor_view_model(),
         }
     }
 
@@ -546,6 +581,14 @@ impl InGameScreen {
         self.is_legend_open().then(|| TextWindowViewModel {
             lines: build_legend_lines(),
             scroll_y: self.desktop.window(WindowId::Legend).scroll_y,
+        })
+    }
+
+    fn advisor_view_model(&self) -> Option<AdvisorViewModel> {
+        self.is_advisor_open().then(|| AdvisorViewModel {
+            domain: self.advisor_domain,
+            text: self.advisor_text.clone(),
+            pending: self.advisor_pending,
         })
     }
 
@@ -748,11 +791,36 @@ impl Screen for InGameScreen {
         self
     }
 
-    fn on_tick(&mut self, context: AppContext) {
+    fn on_tick(&mut self, context: AppContext) -> Option<ScreenTransition> {
         {
             let engine = context.engine.read().unwrap();
             self.news_ticker
                 .tick(&engine.sim, &engine.map, &self.event_messages);
+        }
+
+        // Poll text generation responses (even while paused so results arrive promptly).
+        while let Some(resp) = context.textgen.poll() {
+            use crate::textgen::types::LlmTaskTag;
+            match resp.task_tag {
+                LlmTaskTag::Newspaper => {
+                    self.news_ticker.receive_llm_story(resp.text);
+                }
+                LlmTaskTag::Alert => {
+                    let text = resp.text.trim().to_string();
+                    if !text.is_empty() {
+                        self.push_message(text);
+                    }
+                }
+                LlmTaskTag::Advisor(domain) => {
+                    if domain == self.advisor_domain {
+                        self.advisor_text = Some(resp.text);
+                        self.advisor_pending = false;
+                    }
+                }
+                LlmTaskTag::CityName => {
+                    // Handled in NewCityScreen, ignore here.
+                }
+            }
         }
 
         // Sync window content heights
@@ -762,7 +830,7 @@ impl Screen for InGameScreen {
             build_legend_lines().len() as u16;
 
         if self.paused {
-            return;
+            return None;
         }
         if let Some((_, ticks)) = self.event_messages.front_mut() {
             *ticks = ticks.saturating_sub(1);
@@ -782,6 +850,18 @@ impl Screen for InGameScreen {
         if treasury < 0 && !self.deficit_warned {
             self.deficit_warned = true;
             self.push_message("Warning: budget deficit!".to_string());
+            {
+                let ctx = {
+                    let engine = context.engine.read().unwrap();
+                    crate::textgen::types::CityContext::from_state(&engine.sim, &engine.map)
+                };
+                context
+                    .textgen
+                    .request(crate::textgen::types::LlmTask::GenerateAlert {
+                        context: ctx,
+                        alert_kind: crate::textgen::types::AlertKind::Deficit { treasury },
+                    });
+            }
         } else if treasury >= 0 {
             self.deficit_warned = false;
         }
@@ -803,7 +883,14 @@ impl Screen for InGameScreen {
             if let Some(tx) = context.cmd_tx {
                 let _ = tx.send(EngineCommand::AdvanceMonth);
             }
+            // Request newspaper on month change.
+            {
+                let engine = context.engine.read().unwrap();
+                self.news_ticker
+                    .request_newspaper(&engine.sim, &engine.map, context.textgen);
+            }
         }
+        None
     }
 
     fn on_action(&mut self, action: Action, context: AppContext) -> Option<ScreenTransition> {
@@ -866,6 +953,74 @@ impl Screen for InGameScreen {
                     } else {
                         None
                     }
+                }
+                _ => None,
+            };
+        }
+
+        if self.is_advisor_open() {
+            return match action {
+                Action::MenuBack => {
+                    self.close_advisor_window();
+                    None
+                }
+                Action::MoveCursor(dx, _) if dx != 0 => {
+                    let domains = AdvisorDomain::ALL;
+                    let cur = domains
+                        .iter()
+                        .position(|&d| d == self.advisor_domain)
+                        .unwrap_or(0);
+                    let next = if dx > 0 {
+                        (cur + 1) % domains.len()
+                    } else {
+                        cur.checked_sub(1).unwrap_or(domains.len() - 1)
+                    };
+                    self.advisor_domain = domains[next];
+                    self.advisor_text = None;
+                    self.advisor_pending = false;
+                    // Auto-request advice for the new domain.
+                    {
+                        let engine = context.engine.read().unwrap();
+                        let ctx = crate::textgen::types::CityContext::from_state(
+                            &engine.sim,
+                            &engine.map,
+                        );
+                        context
+                            .textgen
+                            .request(crate::textgen::types::LlmTask::AdvisorAdvice {
+                                context: ctx,
+                                domain: self.advisor_domain,
+                            });
+                        self.advisor_pending = true;
+                    }
+                    None
+                }
+                Action::MenuSelect => {
+                    // Request (or re-request) advice for the current domain.
+                    {
+                        let engine = context.engine.read().unwrap();
+                        let ctx = crate::textgen::types::CityContext::from_state(
+                            &engine.sim,
+                            &engine.map,
+                        );
+                        context
+                            .textgen
+                            .request(crate::textgen::types::LlmTask::AdvisorAdvice {
+                                context: ctx,
+                                domain: self.advisor_domain,
+                            });
+                        self.advisor_text = None;
+                        self.advisor_pending = true;
+                    }
+                    None
+                }
+                Action::MouseClick { col, row } => {
+                    self.handle_mouse_click_action(col, row, &context);
+                    None
+                }
+                Action::Quit => {
+                    self.open_confirm_prompt(ConfirmPromptAction::Quit);
+                    None
                 }
                 _ => None,
             };
@@ -1087,6 +1242,10 @@ impl Screen for InGameScreen {
                     self.toggle_view_layer();
                     return None;
                 }
+                if c == 'a' || c == 'A' {
+                    self.toggle_advisor_window();
+                    return None;
+                }
                 let new_tool = match c {
                     'q' => {
                         self.open_confirm_prompt(ConfirmPromptAction::Quit);
@@ -1198,6 +1357,10 @@ mod tests {
         InGameScreen::new()
     }
 
+    fn test_textgen() -> crate::textgen::TextGenService {
+        crate::textgen::TextGenService::start(std::path::PathBuf::from("/nonexistent"))
+    }
+
     #[test]
     fn push_message_adds_to_queue() {
         let mut screen = fresh_screen();
@@ -1253,22 +1416,22 @@ mod tests {
             Map::new(4, 4),
             SimState::default(),
         )));
+        let tg = test_textgen();
 
         let context = AppContext {
             engine: &engine,
             cmd_tx: &None,
-
+            textgen: &tg,
         };
 
         screen.on_tick(context);
         let start = screen.news_ticker.view_model().scroll_offset;
 
         for _ in 0..4 {
-    
             screen.on_tick(AppContext {
                 engine: &engine,
                 cmd_tx: &None,
-    
+                textgen: &tg,
             });
         }
 
@@ -1329,12 +1492,12 @@ mod tests {
             crate::core::sim::SimState::default(),
         )));
         let cmd_tx = None;
-
+        let tg = test_textgen();
 
         let open_context = AppContext {
             engine: &engine,
             cmd_tx: &cmd_tx,
-
+            textgen: &tg,
         };
         let transition = screen.on_action(Action::MenuActivate, open_context);
         assert!(transition.is_none());
@@ -1344,7 +1507,7 @@ mod tests {
         let close_context = AppContext {
             engine: &engine,
             cmd_tx: &cmd_tx,
-
+            textgen: &tg,
         };
         let transition = screen.on_action(Action::MenuActivate, close_context);
         assert!(transition.is_none());
@@ -1360,11 +1523,12 @@ mod tests {
             crate::core::sim::SimState::default(),
         )));
         let cmd_tx = None;
+        let tg = test_textgen();
 
         let context = AppContext {
             engine: &engine,
             cmd_tx: &cmd_tx,
-
+            textgen: &tg,
         };
 
         let transition = screen.on_action(Action::CharInput('u'), context);
@@ -1391,11 +1555,12 @@ mod tests {
             crate::core::sim::SimState::default(),
         )));
         let cmd_tx = None;
+        let tg = test_textgen();
 
         let context = AppContext {
             engine: &engine,
             cmd_tx: &cmd_tx,
-
+            textgen: &tg,
         };
 
         screen.start_middle_pan(10, 10);
@@ -1432,11 +1597,12 @@ mod tests {
             crate::core::sim::SimState::default(),
         )));
         let cmd_tx = None;
+        let tg = test_textgen();
 
         let context = AppContext {
             engine: &engine,
             cmd_tx: &cmd_tx,
-
+            textgen: &tg,
         };
 
         let consumed = screen.handle_scrollbar_click(19, 10, &context);
@@ -1458,11 +1624,12 @@ mod tests {
             crate::core::sim::SimState::default(),
         )));
         let cmd_tx = None;
+        let tg = test_textgen();
 
         let context = AppContext {
             engine: &engine,
             cmd_tx: &cmd_tx,
-
+            textgen: &tg,
         };
 
         let consumed = screen.handle_mouse_click_action(31, 1, &context);
@@ -1483,11 +1650,12 @@ mod tests {
             crate::core::sim::SimState::default(),
         )));
         let cmd_tx = None;
+        let tg = test_textgen();
 
         let context = AppContext {
             engine: &engine,
             cmd_tx: &cmd_tx,
-
+            textgen: &tg,
         };
 
         let consumed = screen.handle_mouse_click_action(40, 20, &context);
@@ -1519,11 +1687,12 @@ mod tests {
             crate::core::sim::SimState::default(),
         )));
         let cmd_tx = None;
+        let tg = test_textgen();
 
         let context = AppContext {
             engine: &engine,
             cmd_tx: &cmd_tx,
-
+            textgen: &tg,
         };
 
         let consumed = screen.handle_mouse_click_action(19, 14, &context);
@@ -1550,11 +1719,12 @@ mod tests {
             crate::core::sim::SimState::default(),
         )));
         let cmd_tx = None;
+        let tg = test_textgen();
 
         let context = AppContext {
             engine: &engine,
             cmd_tx: &cmd_tx,
-
+            textgen: &tg,
         };
 
         let consumed = screen.handle_mouse_click_action(6, 4, &context);
@@ -1594,11 +1764,12 @@ mod tests {
             crate::core::sim::SimState::default(),
         )));
         let cmd_tx = None;
+        let tg = test_textgen();
 
         let context = AppContext {
             engine: &engine,
             cmd_tx: &cmd_tx,
-
+            textgen: &tg,
         };
 
         screen.on_action(Action::MouseMove { col: 8, row: 3 }, context);
@@ -1615,11 +1786,12 @@ mod tests {
             crate::core::sim::SimState::default(),
         )));
         let cmd_tx = None;
+        let tg = test_textgen();
 
         let context = AppContext {
             engine: &engine,
             cmd_tx: &cmd_tx,
-
+            textgen: &tg,
         };
 
         let transition = screen.on_action(Action::Quit, context);
@@ -1639,11 +1811,12 @@ mod tests {
             crate::core::sim::SimState::default(),
         )));
         let cmd_tx = None;
+        let tg = test_textgen();
 
         let context = AppContext {
             engine: &engine,
             cmd_tx: &cmd_tx,
-
+            textgen: &tg,
         };
 
         let transition = screen.on_action(Action::MenuBack, context);
@@ -1663,11 +1836,12 @@ mod tests {
             crate::core::sim::SimState::default(),
         )));
         let cmd_tx = None;
+        let tg = test_textgen();
 
         let context = AppContext {
             engine: &engine,
             cmd_tx: &cmd_tx,
-
+            textgen: &tg,
         };
         screen.open_confirm_prompt(ConfirmPromptAction::ReturnToStart);
         screen.confirm_prompt_selected = 1;
@@ -1686,11 +1860,12 @@ mod tests {
             crate::core::sim::SimState::default(),
         )));
         let cmd_tx = None;
+        let tg = test_textgen();
 
         let context = AppContext {
             engine: &engine,
             cmd_tx: &cmd_tx,
-
+            textgen: &tg,
         };
 
         let transition =
@@ -1711,11 +1886,12 @@ mod tests {
             crate::core::sim::SimState::default(),
         )));
         let cmd_tx = None;
+        let tg = test_textgen();
 
         let context = AppContext {
             engine: &engine,
             cmd_tx: &cmd_tx,
-
+            textgen: &tg,
         };
         screen.open_confirm_prompt(ConfirmPromptAction::LoadCity);
         screen.confirm_prompt_selected = 1;
@@ -1734,11 +1910,12 @@ mod tests {
             crate::core::sim::SimState::default(),
         )));
         let cmd_tx = None;
+        let tg = test_textgen();
 
         let context = AppContext {
             engine: &engine,
             cmd_tx: &cmd_tx,
-
+            textgen: &tg,
         };
         screen.open_confirm_prompt(ConfirmPromptAction::LoadCity);
 
@@ -1760,11 +1937,12 @@ mod tests {
             sim,
         )));
         let cmd_tx = None;
+        let tg = test_textgen();
 
         let context = AppContext {
             engine: &engine,
             cmd_tx: &cmd_tx,
-
+            textgen: &tg,
         };
 
         let transition = screen.on_action(Action::CharInput('b'), context);
@@ -1787,12 +1965,12 @@ mod tests {
             crate::core::sim::SimState::default(),
         )));
         let cmd_tx = None;
-
+        let tg = test_textgen();
 
         let open_context = AppContext {
             engine: &engine,
             cmd_tx: &cmd_tx,
-
+            textgen: &tg,
         };
         screen.on_action(Action::CharInput('b'), open_context);
         screen.ui_areas.desktop = screen.desktop.layout(UiRect::new(0, 0, 100, 40));
@@ -1802,7 +1980,7 @@ mod tests {
         let click_context = AppContext {
             engine: &engine,
             cmd_tx: &cmd_tx,
-
+            textgen: &tg,
         };
         screen.on_action(
             Action::MouseClick {
@@ -1814,7 +1992,7 @@ mod tests {
         let drag_context = AppContext {
             engine: &engine,
             cmd_tx: &cmd_tx,
-
+            textgen: &tg,
         };
         screen.on_action(
             Action::MouseDrag {
@@ -1837,12 +2015,12 @@ mod tests {
             crate::core::sim::SimState::default(),
         )));
         let cmd_tx = Some(tx);
-
+        let tg = test_textgen();
 
         let open_context = AppContext {
             engine: &engine,
             cmd_tx: &cmd_tx,
-
+            textgen: &tg,
         };
         screen.on_action(Action::CharInput('b'), open_context);
         screen.budget_ui.focused = BudgetFocus::Commercial;
@@ -1851,7 +2029,7 @@ mod tests {
         let event_context = AppContext {
             engine: &engine,
             cmd_tx: &cmd_tx,
-
+            textgen: &tg,
         };
         screen.on_action(Action::CharInput('4'), event_context);
         let cmd = rx
@@ -1862,7 +2040,7 @@ mod tests {
         let event_context = AppContext {
             engine: &engine,
             cmd_tx: &cmd_tx,
-
+            textgen: &tg,
         };
         screen.on_action(Action::CharInput('2'), event_context);
         let cmd = rx
@@ -1884,12 +2062,12 @@ mod tests {
             crate::core::sim::SimState::default(),
         )));
         let cmd_tx = Some(tx);
-
+        let tg = test_textgen();
 
         let open_context = AppContext {
             engine: &engine,
             cmd_tx: &cmd_tx,
-
+            textgen: &tg,
         };
         screen.on_action(Action::CharInput('b'), open_context);
         screen.budget_ui.focused = BudgetFocus::Residential;
@@ -1899,7 +2077,7 @@ mod tests {
             let event_context = AppContext {
                 engine: &engine,
                 cmd_tx: &cmd_tx,
-    
+                textgen: &tg,
             };
             screen.on_action(Action::CharInput(key), event_context);
             let cmd = rx
@@ -1910,7 +2088,10 @@ mod tests {
 
         assert_eq!(screen.budget_ui.residential_tax_input, "100");
         assert_eq!(screen.budget_ui.residential_tax, 100);
-        assert_eq!(engine.read().unwrap().sim.economy.tax_rates.residential, 100);
+        assert_eq!(
+            engine.read().unwrap().sim.economy.tax_rates.residential,
+            100
+        );
     }
 
     #[test]
@@ -1922,12 +2103,12 @@ mod tests {
             crate::core::sim::SimState::default(),
         )));
         let cmd_tx = Some(tx);
-
+        let tg = test_textgen();
 
         let open_context = AppContext {
             engine: &engine,
             cmd_tx: &cmd_tx,
-
+            textgen: &tg,
         };
         screen.on_action(Action::CharInput('b'), open_context);
         screen.budget_ui.focused = BudgetFocus::Commercial;
@@ -1936,7 +2117,7 @@ mod tests {
         let event_context = AppContext {
             engine: &engine,
             cmd_tx: &cmd_tx,
-
+            textgen: &tg,
         };
         let transition = screen.on_action(Action::MoveCursor(-1, 0), event_context);
         assert!(transition.is_none());

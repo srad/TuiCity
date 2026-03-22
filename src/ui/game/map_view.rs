@@ -393,13 +393,7 @@ pub(crate) fn committed_tile_sprite(
 
 /// Infer (dx, dy) offset of a tile within its multi-tile building footprint
 /// by scanning west and north for same-tile neighbors.
-fn building_offset(
-    map: &Map,
-    layer: ViewLayer,
-    tile: Tile,
-    x: usize,
-    y: usize,
-) -> (usize, usize) {
+fn building_offset(map: &Map, layer: ViewLayer, tile: Tile, x: usize, y: usize) -> (usize, usize) {
     let (fw, fh) = theme::tile_footprint_size(tile);
     if fw <= 1 && fh <= 1 {
         return (0, 0);
@@ -1038,10 +1032,14 @@ impl<'a> Widget for MapView<'a> {
                                 let art = target.and_then(theme::building_art);
                                 if let (Some(art), Some(target_tile)) = (art, target) {
                                     let (fw, fh) = theme::tile_footprint_size(target_tile);
-                                    let ax = self.camera.cursor_x
+                                    let ax = self
+                                        .camera
+                                        .cursor_x
                                         .saturating_sub(fw / 2)
                                         .min(self.map.width.saturating_sub(fw));
-                                    let ay = self.camera.cursor_y
+                                    let ay = self
+                                        .camera
+                                        .cursor_y
                                         .saturating_sub(fh / 2)
                                         .min(self.map.height.saturating_sub(fh));
                                     let dx = map_x.saturating_sub(ax);
@@ -1050,7 +1048,9 @@ impl<'a> Widget for MapView<'a> {
                                     let (left, right) = if idx < art.len() {
                                         art[idx]
                                     } else {
-                                        let ch = theme::tile_glyph(target_tile, TileOverlay::default()).ch;
+                                        let ch =
+                                            theme::tile_glyph(target_tile, TileOverlay::default())
+                                                .ch;
                                         (ch, ch)
                                     };
                                     theme::TileSprite::pair(left, right, preview_fg, preview_bg)
@@ -1811,7 +1811,10 @@ mod tests {
         // Background must be the zone colour, not the power line's own dark field
         assert_eq!(sprite.left.bg, zone_bg, "left cell bg should be zone bg");
         assert_eq!(sprite.right.bg, zone_bg, "right cell bg should be zone bg");
-        assert_ne!(sprite.right.bg, pl_bg, "must differ from power line dark bg");
+        assert_ne!(
+            sprite.right.bg, pl_bg,
+            "must differ from power line dark bg"
+        );
         // Foreground must still be the power line colour
         assert_eq!(sprite.right.fg, pl_fg, "power line fg must be preserved");
 
@@ -1822,6 +1825,9 @@ mod tests {
         bare.set(2, 0, Tile::PowerLine);
         let bare_sprite =
             committed_tile_sprite(&bare, ViewLayer::Surface, Tile::PowerLine, overlay, 1, 0);
-        assert_eq!(bare_sprite.right.bg, pl_bg, "bare power line keeps its own bg");
+        assert_eq!(
+            bare_sprite.right.bg, pl_bg,
+            "bare power line keeps its own bg"
+        );
     }
 }

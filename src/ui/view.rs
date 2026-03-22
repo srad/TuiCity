@@ -10,6 +10,7 @@ use crate::{
         sim::{MaintenanceBreakdown, SimState, TaxRates},
         tool::{Tool, ToolContext},
     },
+    textgen::types::AdvisorDomain,
     ui::{
         runtime::ToolChooserKind,
         theme::{OverlayMode, ThemePreset},
@@ -38,12 +39,37 @@ pub struct ThemeSettingsViewModel {
     pub active: ThemePreset,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum LlmStatus {
+    /// LLM feature not compiled in
+    Disabled,
+    /// Feature compiled but model not found / failed to load
+    Unavailable,
+    /// Model loaded and worker thread running
+    Active,
+    /// Model download in progress
+    Downloading(String),
+    /// Download failed
+    DownloadFailed(String),
+}
+
 #[derive(Clone, Debug)]
 pub struct SettingsViewModel {
     pub options: Vec<String>,
     pub selected: usize,
     pub current_theme_label: String,
     pub current_frontend_label: String,
+    pub llm_status: LlmStatus,
+}
+
+#[derive(Clone, Debug)]
+pub struct LlmSetupViewModel {
+    pub llm_enabled: bool,
+    pub model_installed: bool,
+    pub download_progress: Option<String>,
+    pub download_failed: Option<String>,
+    pub selected: usize,
+    pub confirm_dialog: Option<ConfirmDialogViewModel>,
 }
 
 #[derive(Clone, Debug)]
@@ -58,6 +84,8 @@ pub struct NewCityViewModel {
     /// Cursor tile position and whether map cursor mode is active.
     pub cursor: (usize, usize),
     pub map_cursor_active: bool,
+    /// Whether an LLM city name generation request is in flight.
+    pub llm_name_pending: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -182,6 +210,13 @@ pub struct NewsTickerViewModel {
     pub is_alerting: bool,
 }
 
+#[derive(Clone, Debug)]
+pub struct AdvisorViewModel {
+    pub domain: AdvisorDomain,
+    pub text: Option<String>,
+    pub pending: bool,
+}
+
 #[derive(Clone)]
 pub struct InGameDesktopView {
     pub map: Map,
@@ -207,6 +242,7 @@ pub struct InGameDesktopView {
     pub help: Option<TextWindowViewModel>,
     pub about: Option<TextWindowViewModel>,
     pub legend: Option<TextWindowViewModel>,
+    pub advisor: Option<AdvisorViewModel>,
 }
 
 #[derive(Clone)]
@@ -215,6 +251,7 @@ pub enum ScreenView {
     LoadCity(LoadCityViewModel),
     NewCity(NewCityViewModel),
     Settings(SettingsViewModel),
+    LlmSetup(LlmSetupViewModel),
     InGame(InGameDesktopView),
     ThemeSettings(ThemeSettingsViewModel),
 }

@@ -1,11 +1,11 @@
 use crate::core::map::{Map, Tile};
-use crate::core::sim::util::for_each_in_radius;
 use crate::core::sim::constants::{
-    FIRE_RISK_DEFAULT, FIRE_RISK_IND_HEAVY, FIRE_RISK_IND_LIGHT_OR_COAL,
+    FIRE_RISK_DEFAULT, FIRE_RISK_IND_HEAVY, FIRE_RISK_IND_LIGHT_OR_COAL, FIRE_RISK_REDUCTION,
     FIRE_RISK_RES_HIGH_OR_COMM_HIGH_OR_GAS, FIRE_RISK_RES_LOW, FIRE_RISK_RES_MED_OR_COMM_LOW,
-    FIRE_RISK_REDUCTION, FIRE_STATION_RADIUS,
+    FIRE_STATION_RADIUS,
 };
 use crate::core::sim::system::SimSystem;
+use crate::core::sim::util::for_each_in_radius;
 use crate::core::sim::SimState;
 
 // ── FireSystem ────────────────────────────────────────────────────────────────
@@ -38,9 +38,15 @@ impl SimSystem for FireSystem {
             .collect();
         for (sx, sy) in stations {
             let mut reductions: Vec<(usize, u8)> = Vec::new();
-            for_each_in_radius(map, sx, sy, FIRE_STATION_RADIUS, |_nx, _ny, idx, falloff| {
-                reductions.push((idx, (FIRE_RISK_REDUCTION * falloff) as u8));
-            });
+            for_each_in_radius(
+                map,
+                sx,
+                sy,
+                FIRE_STATION_RADIUS,
+                |_nx, _ny, idx, falloff| {
+                    reductions.push((idx, (FIRE_RISK_REDUCTION * falloff) as u8));
+                },
+            );
             for (idx, reduction) in reductions {
                 map.overlays[idx].fire_risk = map.overlays[idx].fire_risk.saturating_sub(reduction);
             }

@@ -29,3 +29,4 @@ tools/fluidsynth*
 CLAUDE.md
 GEMINI.md
 AGENTS.md
+*.log

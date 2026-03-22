@@ -112,11 +112,9 @@ impl ToolChooserKind {
                 Tool::Stadium,
                 Tool::Library,
             ],
-            ToolChooserKind::Terrain => &[
-                Tool::TerrainWater,
-                Tool::TerrainLand,
-                Tool::TerrainTrees,
-            ],
+            ToolChooserKind::Terrain => {
+                &[Tool::TerrainWater, Tool::TerrainLand, Tool::TerrainTrees]
+            }
         }
     }
 
@@ -280,10 +278,11 @@ pub enum WindowId {
     Help,
     About,
     Legend,
+    Advisor,
 }
 
 impl WindowId {
-    pub const ALL: [WindowId; 9] = [
+    pub const ALL: [WindowId; 10] = [
         WindowId::Map,
         WindowId::Panel,
         WindowId::Budget,
@@ -293,6 +292,7 @@ impl WindowId {
         WindowId::Help,
         WindowId::About,
         WindowId::Legend,
+        WindowId::Advisor,
     ];
 
     pub fn index(self) -> usize {
@@ -306,6 +306,7 @@ impl WindowId {
             WindowId::Help => 6,
             WindowId::About => 7,
             WindowId::Legend => 8,
+            WindowId::Advisor => 9,
         }
     }
 }
@@ -458,7 +459,7 @@ impl DesktopLayout {
 
 #[derive(Clone, Debug)]
 pub struct DesktopState {
-    windows: [WindowState; 9],
+    windows: [WindowState; 10],
     pub drag: Option<WindowDragState>,
     pub z_order: Vec<WindowId>,
 }
@@ -518,9 +519,16 @@ impl DesktopState {
         legend.modal = false;
         legend.center_on_open = true;
 
+        let mut advisor = WindowState::new(0, 0, 70, 20);
+        advisor.title = " City Advisors ";
+        advisor.visible = false;
+        advisor.closable = true;
+        advisor.modal = true;
+        advisor.center_on_open = true;
+
         Self {
             windows: [
-                map, panel, budget, statistics, inspect, power, help, about, legend,
+                map, panel, budget, statistics, inspect, power, help, about, legend, advisor,
             ],
             drag: None,
             z_order: vec![
@@ -533,6 +541,7 @@ impl DesktopState {
                 WindowId::Help,
                 WindowId::About,
                 WindowId::Legend,
+                WindowId::Advisor,
             ],
         }
     }

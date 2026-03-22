@@ -1,0 +1,5 @@
+BREAKING NEWS — {{city_name}} (pop. {{population}}, year {{year}})
+
+Alert: {{situation}}.
+
+URGENT:

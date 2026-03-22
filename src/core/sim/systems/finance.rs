@@ -174,10 +174,14 @@ impl SimSystem for FinanceSystem {
             + park_monthly;
         sim.economy.treasury -= maintenance;
 
-        let residential_tax =
-            annual_tax_from_base(sim.pop.residential_population, sim.economy.tax_rates.residential);
-        let commercial_tax = annual_tax_from_base(sim.pop.commercial_jobs, sim.economy.tax_rates.commercial);
-        let industrial_tax = annual_tax_from_base(sim.pop.industrial_jobs, sim.economy.tax_rates.industrial);
+        let residential_tax = annual_tax_from_base(
+            sim.pop.residential_population,
+            sim.economy.tax_rates.residential,
+        );
+        let commercial_tax =
+            annual_tax_from_base(sim.pop.commercial_jobs, sim.economy.tax_rates.commercial);
+        let industrial_tax =
+            annual_tax_from_base(sim.pop.industrial_jobs, sim.economy.tax_rates.industrial);
         let annual_tax = residential_tax + commercial_tax + industrial_tax;
         sim.economy.treasury += annual_tax / 12;
 
@@ -210,20 +214,20 @@ impl SimSystem for FinanceSystem {
             (TAX_BASELINE_RATE - sim.economy.tax_rates.residential as f32) * 0.05;
         let comm_tax_modifier =
             (TAX_BASELINE_RATE - sim.economy.tax_rates.commercial as f32) * 0.05;
-        let ind_tax_modifier =
-            (TAX_BASELINE_RATE - sim.economy.tax_rates.industrial as f32) * 0.05;
+        let ind_tax_modifier = (TAX_BASELINE_RATE - sim.economy.tax_rates.industrial as f32) * 0.05;
         let growth_boost = if sim.pop.population < GROWTH_BOOST_THRESHOLD {
             GROWTH_BOOST_AMOUNT
         } else {
             0.0
         };
 
-        sim.demand.res =
-            (IDEAL_RES_RATIO - current_res_ratio + res_tax_modifier + growth_boost).clamp(-1.0, 1.0);
+        sim.demand.res = (IDEAL_RES_RATIO - current_res_ratio + res_tax_modifier + growth_boost)
+            .clamp(-1.0, 1.0);
         sim.demand.comm =
-            (IDEAL_COMM_RATIO - current_comm_ratio + comm_tax_modifier + growth_boost).clamp(-1.0, 1.0);
-        sim.demand.ind =
-            (IDEAL_IND_RATIO - current_ind_ratio + ind_tax_modifier + growth_boost).clamp(-1.0, 1.0);
+            (IDEAL_COMM_RATIO - current_comm_ratio + comm_tax_modifier + growth_boost)
+                .clamp(-1.0, 1.0);
+        sim.demand.ind = (IDEAL_IND_RATIO - current_ind_ratio + ind_tax_modifier + growth_boost)
+            .clamp(-1.0, 1.0);
     }
 }
 

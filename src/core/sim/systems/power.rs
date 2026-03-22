@@ -49,7 +49,7 @@ impl SimSystem for PowerSystem {
             state.age_months += 1;
             let remaining = state.max_life_months.saturating_sub(state.age_months);
             state.efficiency = if remaining < EOL_DECAY_MONTHS {
-                remaining as f32 / EOL_DECAY_MONTHS as f32  // uses constants::EOL_DECAY_MONTHS
+                remaining as f32 / EOL_DECAY_MONTHS as f32 // uses constants::EOL_DECAY_MONTHS
             } else {
                 1.0
             };
@@ -202,7 +202,7 @@ mod tests {
                 max_life_months: 600,
                 capacity_mw: 500,
                 efficiency: 1.0,
-            footprint: 4,
+                footprint: 4,
             },
         );
         for dy in 0..4 {
@@ -245,7 +245,7 @@ mod tests {
                 max_life_months: 600,
                 capacity_mw: 500,
                 efficiency: 1.0,
-            footprint: 4,
+                footprint: 4,
             },
         );
         for dy in 0..4 {
@@ -278,7 +278,7 @@ mod tests {
                 max_life_months: 600,
                 capacity_mw: 500,
                 efficiency: 1.0,
-            footprint: 4,
+                footprint: 4,
             },
         );
         for dy in 0..4 {
@@ -317,7 +317,7 @@ mod tests {
                 max_life_months: 600,
                 capacity_mw: 500,
                 efficiency: 1.0,
-            footprint: 4,
+                footprint: 4,
             },
         );
         for dy in 0..4 {
@@ -359,7 +359,7 @@ mod tests {
                 max_life_months: 600,
                 capacity_mw: 500,
                 efficiency: 1.0,
-            footprint: 4,
+                footprint: 4,
             },
         );
         for dy in 0..4 {
@@ -402,7 +402,7 @@ mod tests {
                 max_life_months: 600,
                 capacity_mw: 100,
                 efficiency: 1.0,
-            footprint: 4,
+                footprint: 4,
             },
         );
         for dy in 0..4 {
@@ -429,7 +429,7 @@ mod tests {
                 max_life_months: 600,
                 capacity_mw: 100,
                 efficiency: 1.0,
-            footprint: 4,
+                footprint: 4,
             },
         );
         for dy in 0..4 {
@@ -464,7 +464,7 @@ mod tests {
                 max_life_months: 600,
                 capacity_mw: 100,
                 efficiency: 1.0,
-            footprint: 4,
+                footprint: 4,
             },
         );
         for dy in 0..4 {
@@ -492,7 +492,7 @@ mod tests {
                 max_life_months: 600,
                 capacity_mw: 120,
                 efficiency: 1.0,
-            footprint: 4,
+                footprint: 4,
             },
         );
         for dy in 1..5 {
@@ -537,7 +537,7 @@ mod tests {
                 max_life_months: 600,
                 capacity_mw: 100,
                 efficiency: 1.0,
-            footprint: 4,
+                footprint: 4,
             },
         );
         for dy in 0..4 {
@@ -575,7 +575,7 @@ mod tests {
                 max_life_months: 600,
                 capacity_mw: 100,
                 efficiency: 1.0,
-            footprint: 4,
+                footprint: 4,
             },
         );
         for dy in 0..4 {

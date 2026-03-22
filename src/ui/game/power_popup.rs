@@ -131,7 +131,10 @@ mod tests {
         let chooser = ToolChooserViewModel {
             selected_tool: Tool::ZoneResLight,
             tools: vec![Tool::ZoneResLight, Tool::ZoneCommLight, Tool::ZoneIndLight],
-            ctx: ToolContext { year: 1900, unlock_mode: UnlockMode::Historical },
+            ctx: ToolContext {
+                year: 1900,
+                unlock_mode: UnlockMode::Historical,
+            },
         };
         let mut buf = Buffer::empty(Rect::new(0, 0, 28, 8));
 
@@ -146,7 +149,10 @@ mod tests {
         let chooser = ToolChooserViewModel {
             selected_tool: Tool::PowerPlantNuclear,
             tools: vec![Tool::PowerPlantCoal, Tool::PowerPlantNuclear],
-            ctx: ToolContext { year: 1900, unlock_mode: UnlockMode::Historical },
+            ctx: ToolContext {
+                year: 1900,
+                unlock_mode: UnlockMode::Historical,
+            },
         };
         let mut buf = Buffer::empty(Rect::new(0, 0, 28, 8));
 
@@ -161,8 +167,15 @@ mod tests {
     fn sandbox_mode_unlocks_all_tools() {
         let chooser = ToolChooserViewModel {
             selected_tool: Tool::PowerPlantCoal,
-            tools: vec![Tool::PowerPlantCoal, Tool::PowerPlantNuclear, Tool::PowerPlantSolar],
-            ctx: ToolContext { year: 1900, unlock_mode: UnlockMode::Sandbox },
+            tools: vec![
+                Tool::PowerPlantCoal,
+                Tool::PowerPlantNuclear,
+                Tool::PowerPlantSolar,
+            ],
+            ctx: ToolContext {
+                year: 1900,
+                unlock_mode: UnlockMode::Sandbox,
+            },
         };
         let mut buf = Buffer::empty(Rect::new(0, 0, 28, 8));
 

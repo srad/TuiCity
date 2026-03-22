@@ -85,6 +85,7 @@ Selecting **New City** opens an interactive form with a live preview. You can us
 | Field | Description | Default |
 |-------|-------------|---------|
 | **City Name** | Used as the save file prefix | — |
+| **Generate Name** | Request an LLM-generated city name (requires `llm` feature) | — |
 | **Seed (hex)** | A 16-character hex code that perfectly encodes the Water %, Trees %, and the random map noise seed. Pasting a code here will automatically snap the sliders to the exact percentages used. | random |
 | **Water %** | Percentage of map tiles that are water | 20 |
 | **Trees %** | Percentage of map tiles that are forest | 30 |
@@ -130,9 +131,10 @@ Painting is free in the map generator — no cost is charged until you start the
 | `Esc` | Cancel drag → close modal/chooser → deselect active tool → go back |
 | `Tab` | Cycle map overlay modes (Normal → Power Grid → Water Service → Traffic → Pollution → Land Value → Crime → Fire Risk) |
 | `F1` | Open menu bar |
+| `a` / `A` | Open/close the Advisors window (LLM-powered city advice) |
 | `b` / `B` / `$` | Open budget window |
 
-The **File** menu contains save/load/quit and settings actions, the **Windows** menu can toggle the **Toolbox**, **Inspect**, **Statistics**, the **Map Legend**, the active **View Layer**, and overlay modes, and the right-aligned **Help** and **About** items open reference windows. The status bar also exposes a persistent clickable **Surface / Underground** switch so layer state is always visible.
+The **File** menu contains save/load/quit and settings actions, the **Windows** menu can toggle the **Toolbox**, **Inspect**, **Statistics**, **Advisors**, the **Map Legend**, the active **View Layer**, and overlay modes, and the right-aligned **Help** and **About** items open reference windows. The status bar also exposes a persistent clickable **Surface / Underground** switch so layer state is always visible.
 
 On the **Load City** screen, use **Arrow keys** to select a save, **Enter** to load it, and **d** to open the delete confirmation dialog for the selected city.
 
@@ -262,7 +264,7 @@ The simulation runs in a dedicated OS thread managed by `core/engine.rs`. The ma
 
 **3. Frontend-Neutral Screen Views + Dual-Frontend Rendering**
 
-Shared geometry and window helpers now live in `src/ui/runtime.rs` (`ClickArea`, `MapUiAreas`, `UiAreas`, centered/clamped window helpers). This layer now also centralizes **window layout geometry** (padding, scrollbar placement) and provides a **generic hit-testing system**, allowing the game to identify interactions with buttons, title bars, and scrollbar components in a window-agnostic way. Each screen builds a frontend-neutral `ScreenView` in `src/ui/view.rs`. In-game rendering is driven by the `InGamePainter` trait (`src/ui/painter.rs`) with 14 methods covering every UI element; a shared `orchestrate_ingame()` function controls paint order and click-area collection. Both the terminal frontend (`TerminalPainter` in `src/ui/frontends/terminal/`) and the pixel frontend (`PixelPainter` in `src/ui/frontends/pixels_winit/`) implement this trait. In-game UI elements (map, tools panel, budget, inspect, statistics, tool chooser, help, about, legend) are movable windows managed by `DesktopState`.
+Shared geometry and window helpers now live in `src/ui/runtime.rs` (`ClickArea`, `MapUiAreas`, `UiAreas`, centered/clamped window helpers). This layer now also centralizes **window layout geometry** (padding, scrollbar placement) and provides a **generic hit-testing system**, allowing the game to identify interactions with buttons, title bars, and scrollbar components in a window-agnostic way. Each screen builds a frontend-neutral `ScreenView` in `src/ui/view.rs`. In-game rendering is driven by the `InGamePainter` trait (`src/ui/painter.rs`) with 15 methods covering every UI element; a shared `orchestrate_ingame()` function controls paint order and click-area collection. Both the terminal frontend (`TerminalPainter` in `src/ui/frontends/terminal/`) and the pixel frontend (`PixelPainter` in `src/ui/frontends/pixels_winit/`) implement this trait. In-game UI elements (map, tools panel, budget, inspect, statistics, tool chooser, help, about, legend, advisors) are movable windows managed by `DesktopState`.
 
 `InGameScreen` is also split into focused feature modules rather than one large implementation file:
 - `ingame.rs` keeps the screen shell and top-level lifecycle
@@ -284,15 +286,27 @@ src/
 │   ├── save.rs                    Binary `.tc2` save/load helpers
 │   └── screens/
 │       ├── mod.rs                 Screen trait, AppContext, ScreenTransition, re-exports
+│       ├── confirm_dialog.rs      Shared confirm/cancel dialog model
 │       ├── start.rs               StartScreen + start-menu state/logic
 │       ├── new_city.rs            NewCityScreen + generator form state/logic
 │       ├── load_city.rs           LoadCityScreen + save-list state/logic
 │       ├── settings.rs            Settings screen state/logic
+│       ├── llm_setup.rs           LLM setup screen state/logic
 │       ├── theme_settings.rs      Theme picker screen state/logic
 │       ├── ingame.rs              InGameScreen shell + top-level event lifecycle
 │       ├── ingame_interaction.rs  Map interaction, drag flows, scrollbars, panning
 │       ├── ingame_menu.rs         Menu model, actions, menu routing
 │       ├── ingame_budget.rs       Budget window state, focus model, tax input logic
+│       └── ingame_news.rs        News ticker state, LLM story integration
+├── textgen/                       Local text generation (llama.cpp or static fallback)
+│   ├── mod.rs                     TextGenService: background thread + mpsc poll API
+│   ├── types.rs                   TextGenTask, TaskTag, TextGenResponse, AdvisorDomain, CityContext
+│   ├── context.rs                 CityContext::from_state — extracts sim/map state for prompts
+│   ├── prompt.rs                  Prompt templates for city names, news, advice, alerts
+│   ├── generator.rs               Unified generator interface dispatching to backends
+│   ├── backend_llamacpp.rs        (feature = "llm") llama.cpp model loading and text generation
+│   ├── backend_static.rs          Static/template-based text generation fallback
+│   └── download.rs                Model file download manager
 ├── core/
 │   ├── mod.rs                     Re-exports
 │   ├── engine.rs                  SimulationEngine; monthly system order; EngineCommand dispatch
@@ -324,7 +338,7 @@ src/
 └── ui/
     ├── mod.rs                     Renderer selection + `ScreenView` dispatch
     ├── view.rs                    Frontend-neutral screen and in-game view models
-    ├── painter.rs                 InGamePainter trait (14 methods), orchestrate_ingame(), FrameLayout, StatusBarAreas
+    ├── painter.rs                 InGamePainter trait (15 methods), orchestrate_ingame(), FrameLayout, StatusBarAreas
     ├── frontends/
     │   ├── mod.rs                 Frontend entry points
     │   ├── terminal/
@@ -349,10 +363,12 @@ src/
     │   └── disasters.rs           Disaster event notification rendering
     └── screens/
         ├── mod.rs                 Re-exports for screen renderers
+        ├── common.rs              Shared screen primitives (synthwave bg, panels, menus, footer)
         ├── start.rs               Start menu rendering
         ├── new_city.rs            New-city form rendering (name, seed, generator controls, preview map)
         ├── load_city.rs           Load-city file list rendering
         ├── settings.rs            Settings screen rendering
+        ├── llm_setup.rs           LLM setup screen rendering
         └── theme_settings.rs      Theme picker rendering
 ```
 
@@ -396,7 +412,7 @@ src/
 
 1. The frontend event loop (terminal or pixel) calls the active screen's `build_view()` to produce a frontend-neutral `ScreenView`.
 2. For non-ingame screens, the frontend dispatches to the matching renderer in `src/ui/screens/*`.
-3. For the in-game screen, the frontend creates its `InGamePainter` implementation and calls `orchestrate_ingame()` in `src/ui/painter.rs`. This shared orchestrator drives all 14 paint steps in a fixed order, collecting click areas for hit-testing.
+3. For the in-game screen, the frontend creates its `InGamePainter` implementation and calls `orchestrate_ingame()` in `src/ui/painter.rs`. This shared orchestrator drives all 15 paint steps in a fixed order, collecting click areas for hit-testing.
 4. `DesktopState` computes the in-game window layout (menu bar, status bar, map, panel, budget, inspect, tool chooser, help, about), including centering, clamping, title bars, and close-button geometry.
 5. `MapView` iterates visible tiles (camera offset + viewport size), picks colours and 2-cell sprites from `theme.rs`, and writes them into the buffer. To better match terminal font aspect ratios, **the map is rendered using double-width tile sprites** (each map tile maps to two horizontal terminal cells), with roads, rails, and power lines using dedicated left/right sprite pairs so they do not appear double-thick. **Multi-tile buildings** (3×3 and 4×4 footprints) render per-position art from central art tables — each tile within the building gets unique characters (box-drawing frames, labels, interior detail) so buildings appear as coherent structures rather than uniform blocks. Surface road traffic is also animated directly on those sprites using the current traffic overlay values, burning tiles use a small ASCII flicker cycle to make fires easier to spot, and utility overlays/layers add restrained pulses for active power lines, underground pipes, and subway stations. Water service remains a surface-oriented coverage overlay, while underground mode composites pipes/tunnels with ghosted roads and landmarks for orientation. When the map is larger than the viewport, dedicated DOS-style horizontal and vertical scrollbars are rendered beside it.
 6. The panel window renders the toolbox, minimap, and tile-info section. Layout is computed from the managed panel window rect so it stays stable while dragging, and the toolbar itself is layout-driven rather than row-index driven. The minimap uses the same 2:1 horizontal sampling as the main map so its aspect ratio, viewport outline, and click-to-center behavior stay aligned with the primary map view.
@@ -435,6 +451,11 @@ src/
 | `serde` | 1.0 | Serialisation traits |
 | `serde_json` | 1.0 | Compact sim metadata inside the binary `.tc2` save container |
 | `rand` | 0.8 | Map generation RNG, disaster probability rolls |
+| `candle-core` | 0.8 | *(feature = "llm")* Tensor operations for local LLM inference |
+| `candle-nn` | 0.8 | *(feature = "llm")* Neural-network layer primitives |
+| `candle-transformers` | 0.8 | *(feature = "llm")* Pre-built transformer model architectures |
+| `tokenizers` | 0.21 | *(feature = "llm")* HuggingFace tokeniser for text ↔ token conversion |
+| `hf-hub` | 0.3 | *(feature = "llm")* Download models from HuggingFace Hub |
 
 ### Todos
 

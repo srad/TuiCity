@@ -11,7 +11,8 @@ impl SimSystem for HistorySystem {
         "History"
     }
     fn tick(&mut self, _map: &mut Map, sim: &mut SimState) {
-        let power_balance = sim.utilities.power_produced_mw as i32 - sim.utilities.power_consumed_mw as i32;
+        let power_balance =
+            sim.utilities.power_produced_mw as i32 - sim.utilities.power_consumed_mw as i32;
         sim.history.push(
             sim.demand.res,
             sim.demand.comm,

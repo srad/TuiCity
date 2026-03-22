@@ -53,17 +53,28 @@ impl Screen for ThemeSettingsScreen {
     }
 
     fn on_action(&mut self, action: Action, _context: AppContext) -> Option<ScreenTransition> {
+        let item_count = ALL_THEME_PRESETS.len() + 1; // themes + back
         match action {
-            Action::MenuBack | Action::MenuSelect => Some(ScreenTransition::Pop),
+            Action::MenuBack => Some(ScreenTransition::Pop),
+            Action::MenuSelect => {
+                if self.state.selected >= ALL_THEME_PRESETS.len() {
+                    return Some(ScreenTransition::Pop);
+                }
+                self.apply_selected_theme();
+                None
+            }
             Action::MoveCursor(_, dy) => {
-                if !ALL_THEME_PRESETS.is_empty() {
-                    let count = ALL_THEME_PRESETS.len();
+                if item_count > 0 {
                     let next = if dy > 0 {
-                        (self.state.selected + 1) % count
+                        (self.state.selected + 1) % item_count
                     } else {
-                        self.state.selected.checked_sub(1).unwrap_or(count - 1)
+                        self.state.selected.checked_sub(1).unwrap_or(item_count - 1)
                     };
-                    self.select_theme(next);
+                    self.state.selected = next;
+                    // Live-preview theme when hovering a theme item
+                    if next < ALL_THEME_PRESETS.len() {
+                        self.apply_selected_theme();
+                    }
                 }
                 None
             }
@@ -74,6 +85,10 @@ impl Screen for ThemeSettingsScreen {
                     .iter()
                     .position(|area| area.contains(col, row))
                 {
+                    self.state.selected = idx;
+                    if idx >= ALL_THEME_PRESETS.len() {
+                        return Some(ScreenTransition::Pop);
+                    }
                     self.select_theme(idx);
                 }
                 None

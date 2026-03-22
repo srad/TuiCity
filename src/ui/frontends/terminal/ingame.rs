@@ -23,7 +23,7 @@ use crate::{
         runtime::{DesktopLayout, UiRect as RuntimeRect},
         theme::OverlayMode,
         view::{
-            BudgetViewModel, ConfirmDialogViewModel, NewsTickerViewModel,
+            AdvisorViewModel, BudgetViewModel, ConfirmDialogViewModel, NewsTickerViewModel,
             StatisticsWindowViewModel, TextWindowViewModel, ToolChooserViewModel,
             ToolbarPaletteViewModel,
         },
@@ -264,7 +264,9 @@ impl<'a, 'f> TerminalPainter<'a, 'f> {
     }
 
     fn dl(&self) -> &DesktopLayout {
-        self.desktop_layout.as_ref().expect("begin_frame must be called first")
+        self.desktop_layout
+            .as_ref()
+            .expect("begin_frame must be called first")
     }
 }
 
@@ -340,52 +342,76 @@ impl<'a, 'f> InGamePainter for TerminalPainter<'a, 'f> {
 
         let map_areas = MapUiAreas {
             viewport: to_click_area(RuntimeRect::new(
-                layout.viewport.x, layout.viewport.y,
-                layout.viewport.width, layout.viewport.height,
+                layout.viewport.x,
+                layout.viewport.y,
+                layout.viewport.width,
+                layout.viewport.height,
             )),
             vertical_bar: to_click_area(RuntimeRect::new(
-                layout.vertical_bar.x, layout.vertical_bar.y,
-                layout.vertical_bar.width, layout.vertical_bar.height,
+                layout.vertical_bar.x,
+                layout.vertical_bar.y,
+                layout.vertical_bar.width,
+                layout.vertical_bar.height,
             )),
             vertical_dec: to_click_area(RuntimeRect::new(
-                layout.vertical_dec.x, layout.vertical_dec.y,
-                layout.vertical_dec.width, layout.vertical_dec.height,
+                layout.vertical_dec.x,
+                layout.vertical_dec.y,
+                layout.vertical_dec.width,
+                layout.vertical_dec.height,
             )),
             vertical_track: to_click_area(RuntimeRect::new(
-                layout.vertical_track.x, layout.vertical_track.y,
-                layout.vertical_track.width, layout.vertical_track.height,
+                layout.vertical_track.x,
+                layout.vertical_track.y,
+                layout.vertical_track.width,
+                layout.vertical_track.height,
             )),
             vertical_thumb: to_click_area(RuntimeRect::new(
-                layout.vertical_thumb.x, layout.vertical_thumb.y,
-                layout.vertical_thumb.width, layout.vertical_thumb.height,
+                layout.vertical_thumb.x,
+                layout.vertical_thumb.y,
+                layout.vertical_thumb.width,
+                layout.vertical_thumb.height,
             )),
             vertical_inc: to_click_area(RuntimeRect::new(
-                layout.vertical_inc.x, layout.vertical_inc.y,
-                layout.vertical_inc.width, layout.vertical_inc.height,
+                layout.vertical_inc.x,
+                layout.vertical_inc.y,
+                layout.vertical_inc.width,
+                layout.vertical_inc.height,
             )),
             horizontal_bar: to_click_area(RuntimeRect::new(
-                layout.horizontal_bar.x, layout.horizontal_bar.y,
-                layout.horizontal_bar.width, layout.horizontal_bar.height,
+                layout.horizontal_bar.x,
+                layout.horizontal_bar.y,
+                layout.horizontal_bar.width,
+                layout.horizontal_bar.height,
             )),
             horizontal_dec: to_click_area(RuntimeRect::new(
-                layout.horizontal_dec.x, layout.horizontal_dec.y,
-                layout.horizontal_dec.width, layout.horizontal_dec.height,
+                layout.horizontal_dec.x,
+                layout.horizontal_dec.y,
+                layout.horizontal_dec.width,
+                layout.horizontal_dec.height,
             )),
             horizontal_track: to_click_area(RuntimeRect::new(
-                layout.horizontal_track.x, layout.horizontal_track.y,
-                layout.horizontal_track.width, layout.horizontal_track.height,
+                layout.horizontal_track.x,
+                layout.horizontal_track.y,
+                layout.horizontal_track.width,
+                layout.horizontal_track.height,
             )),
             horizontal_thumb: to_click_area(RuntimeRect::new(
-                layout.horizontal_thumb.x, layout.horizontal_thumb.y,
-                layout.horizontal_thumb.width, layout.horizontal_thumb.height,
+                layout.horizontal_thumb.x,
+                layout.horizontal_thumb.y,
+                layout.horizontal_thumb.width,
+                layout.horizontal_thumb.height,
             )),
             horizontal_inc: to_click_area(RuntimeRect::new(
-                layout.horizontal_inc.x, layout.horizontal_inc.y,
-                layout.horizontal_inc.width, layout.horizontal_inc.height,
+                layout.horizontal_inc.x,
+                layout.horizontal_inc.y,
+                layout.horizontal_inc.width,
+                layout.horizontal_inc.height,
             )),
             corner: to_click_area(RuntimeRect::new(
-                layout.corner.x, layout.corner.y,
-                layout.corner.width, layout.corner.height,
+                layout.corner.x,
+                layout.corner.y,
+                layout.corner.width,
+                layout.corner.height,
             )),
         };
 
@@ -414,15 +440,25 @@ impl<'a, 'f> InGamePainter for TerminalPainter<'a, 'f> {
         // Fill background
         let buf = self.frame.buffer_mut();
         for x in area.x..area.x + area.width {
-            buf.set_string(x, area.y, " ", Style::default().fg(ui.menu_fg).bg(ui.menu_bg));
+            buf.set_string(
+                x,
+                area.y,
+                " ",
+                Style::default().fg(ui.menu_fg).bg(ui.menu_bg),
+            );
         }
 
         let mut x = area.x;
         let title = format!(" {GAME_NAME} ");
         if x + title.len() as u16 <= area.x + area.width {
             self.frame.buffer_mut().set_string(
-                x, area.y, &title,
-                Style::default().fg(ui.menu_title).bg(ui.menu_bg).add_modifier(Modifier::BOLD),
+                x,
+                area.y,
+                &title,
+                Style::default()
+                    .fg(ui.menu_title)
+                    .bg(ui.menu_bg)
+                    .add_modifier(Modifier::BOLD),
             );
             x += title.len() as u16 + 1;
         }
@@ -431,12 +467,20 @@ impl<'a, 'f> InGamePainter for TerminalPainter<'a, 'f> {
         for (idx, menu_title) in crate::app::screens::MENU_TITLES.iter().take(4).enumerate() {
             let text = format!(" {} ", menu_title);
             let style = if menu_active && menu_selected == idx {
-                Style::default().fg(ui.menu_focus_fg).bg(ui.menu_focus_bg).add_modifier(Modifier::BOLD)
+                Style::default()
+                    .fg(ui.menu_focus_fg)
+                    .bg(ui.menu_focus_bg)
+                    .add_modifier(Modifier::BOLD)
             } else {
                 Style::default().fg(ui.menu_fg).bg(ui.menu_bg)
             };
             if x + text.len() as u16 <= area.x + area.width {
-                areas.menu_items[idx] = ClickArea { x, y: area.y, width: text.len() as u16, height: 1 };
+                areas.menu_items[idx] = ClickArea {
+                    x,
+                    y: area.y,
+                    width: text.len() as u16,
+                    height: 1,
+                };
                 self.frame.buffer_mut().set_string(x, area.y, &text, style);
             }
             x += text.len() as u16 + 1;
@@ -444,18 +488,35 @@ impl<'a, 'f> InGamePainter for TerminalPainter<'a, 'f> {
 
         // Right-aligned items (remaining)
         let mut right_x = area.x + area.width;
-        for (idx, menu_title) in crate::app::screens::MENU_TITLES.iter().enumerate().skip(4).rev() {
+        for (idx, menu_title) in crate::app::screens::MENU_TITLES
+            .iter()
+            .enumerate()
+            .skip(4)
+            .rev()
+        {
             let text = format!(" {} ", menu_title);
             let text_w = text.len() as u16;
-            if right_x < area.x + text_w { continue; }
+            if right_x < area.x + text_w {
+                continue;
+            }
             right_x = right_x.saturating_sub(text_w);
             let style = if menu_active && menu_selected == idx {
-                Style::default().fg(ui.menu_focus_fg).bg(ui.menu_focus_bg).add_modifier(Modifier::BOLD)
+                Style::default()
+                    .fg(ui.menu_focus_fg)
+                    .bg(ui.menu_focus_bg)
+                    .add_modifier(Modifier::BOLD)
             } else {
                 Style::default().fg(ui.menu_fg).bg(ui.menu_bg)
             };
-            areas.menu_items[idx] = ClickArea { x: right_x, y: area.y, width: text_w, height: 1 };
-            self.frame.buffer_mut().set_string(right_x, area.y, &text, style);
+            areas.menu_items[idx] = ClickArea {
+                x: right_x,
+                y: area.y,
+                width: text_w,
+                height: 1,
+            };
+            self.frame
+                .buffer_mut()
+                .set_string(right_x, area.y, &text, style);
             right_x = right_x.saturating_sub(1);
         }
 
@@ -479,7 +540,9 @@ impl<'a, 'f> InGamePainter for TerminalPainter<'a, 'f> {
         }
 
         let popup_w = 28.min(menu_area.width.max(8));
-        let popup_x = anchor.x.min(menu_area.x + menu_area.width.saturating_sub(popup_w.max(8)));
+        let popup_x = anchor
+            .x
+            .min(menu_area.x + menu_area.width.saturating_sub(popup_w.max(8)));
         let popup_h = rows.len() as u16 + 2;
         let popup = Rect::new(popup_x, menu_area.y + 1, popup_w.max(8), popup_h);
 
@@ -526,8 +589,13 @@ impl<'a, 'f> InGamePainter for TerminalPainter<'a, 'f> {
                 );
             }
             buf.set_string(
-                popup.x + 1, y,
-                format!("{:<width$}", truncate(&line, content_w as usize), width = content_w as usize),
+                popup.x + 1,
+                y,
+                format!(
+                    "{:<width$}",
+                    truncate(&line, content_w as usize),
+                    width = content_w as usize
+                ),
                 style,
             );
         }
@@ -594,14 +662,21 @@ impl<'a, 'f> InGamePainter for TerminalPainter<'a, 'f> {
 
         let panel_window = ingame.desktop.window(WindowId::Panel);
         let full_inner_h = panel_window.height.saturating_sub(2).max(4);
-        let full_inner = Rect::new(panel_inner.x, panel_inner.y, panel_inner.width, full_inner_h);
+        let full_inner = Rect::new(
+            panel_inner.x,
+            panel_inner.y,
+            panel_inner.width,
+            full_inner_h,
+        );
         let ph = full_inner.height;
         let desired_toolbar_h = game::toolbar::toolbar_height(toolbar);
         let minimum_toolbar_h = game::toolbar::minimum_toolbar_height(toolbar);
         let minimum_minimap_h = 8;
         let minimum_info_h = 5;
         let max_toolbar_h = ph.saturating_sub(minimum_minimap_h + minimum_info_h);
-        let toolbar_h = desired_toolbar_h.min(max_toolbar_h.max(minimum_toolbar_h)).min(ph);
+        let toolbar_h = desired_toolbar_h
+            .min(max_toolbar_h.max(minimum_toolbar_h))
+            .min(ph);
         let remaining_h = ph.saturating_sub(toolbar_h);
         let desired_minimap_h = (ph / 3).max(minimum_minimap_h);
         let max_minimap_h = remaining_h.saturating_sub(minimum_info_h);
@@ -619,7 +694,8 @@ impl<'a, 'f> InGamePainter for TerminalPainter<'a, 'f> {
             Constraint::Length(toolbar_h),
             Constraint::Length(minimap_h),
             Constraint::Length(info_h),
-        ]).split(full_inner);
+        ])
+        .split(full_inner);
 
         let toolbar_area = panel_vert[0].intersection(self.area);
         let minimap_area = panel_vert[1].intersection(self.area);
@@ -630,9 +706,13 @@ impl<'a, 'f> InGamePainter for TerminalPainter<'a, 'f> {
                 game::toolbar::render_toolbar(toolbar_area, self.frame.buffer_mut(), toolbar);
         }
         if minimap_area.width > 0 && minimap_area.height > 0 {
-            let render_area = game::minimap::minimap_render_area(minimap_area, map.width, map.height);
+            let render_area =
+                game::minimap::minimap_render_area(minimap_area, map.width, map.height);
             areas.minimap = to_click_area(RuntimeRect::new(
-                render_area.x, render_area.y, render_area.width, render_area.height,
+                render_area.x,
+                render_area.y,
+                render_area.width,
+                render_area.height,
             ));
             self.frame.render_widget(
                 game::minimap::MiniMap {
@@ -647,8 +727,16 @@ impl<'a, 'f> InGamePainter for TerminalPainter<'a, 'f> {
 
         let cx = ingame.camera.cursor_x.min(map.width.saturating_sub(1));
         let cy = ingame.camera.cursor_y.min(map.height.saturating_sub(1));
-        let tile = if map.width > 0 && map.height > 0 { map.surface_lot_tile(cx, cy) } else { Tile::Grass };
-        let tile_overlay = if map.width > 0 && map.height > 0 { map.get_overlay(cx, cy) } else { crate::core::map::TileOverlay::default() };
+        let tile = if map.width > 0 && map.height > 0 {
+            map.surface_lot_tile(cx, cy)
+        } else {
+            Tile::Grass
+        };
+        let tile_overlay = if map.width > 0 && map.height > 0 {
+            map.get_overlay(cx, cy)
+        } else {
+            crate::core::map::TileOverlay::default()
+        };
 
         if info_area.width > 0 && info_area.height > 0 {
             self.frame.render_widget(
@@ -726,7 +814,11 @@ impl<'a, 'f> InGamePainter for TerminalPainter<'a, 'f> {
         game::budget::render_budget_content(self.frame.buffer_mut(), budget_inner, budget);
     }
 
-    fn paint_statistics_window(&mut self, stats: &StatisticsWindowViewModel, ingame: &InGameScreen) {
+    fn paint_statistics_window(
+        &mut self,
+        stats: &StatisticsWindowViewModel,
+        ingame: &InGameScreen,
+    ) {
         let ui = crate::ui::theme::ui_palette();
         let dl = self.dl();
         let statistics_outer = to_rect(dl.window(WindowId::Statistics).outer);
@@ -783,7 +875,8 @@ impl<'a, 'f> InGamePainter for TerminalPainter<'a, 'f> {
                     map.surface_lot_tile(pos.0, pos.1),
                     Tile::PowerPlantCoal | Tile::PowerPlantGas
                 ) {
-                    sim.plants.iter()
+                    sim.plants
+                        .iter()
                         .find(|(&(px, py), _)| {
                             pos.0 >= px && pos.0 < px + 4 && pos.1 >= py && pos.1 < py + 4
                         })
@@ -829,6 +922,86 @@ impl<'a, 'f> InGamePainter for TerminalPainter<'a, 'f> {
         );
         render_close_button(self.frame, outer);
         render_text_window_content(self.frame, &layout, view, ui.popup_bg, ui.text_primary);
+    }
+
+    fn paint_advisor_window(
+        &mut self,
+        advisor: &AdvisorViewModel,
+        ingame: &crate::app::screens::InGameScreen,
+    ) {
+        let ui = crate::ui::theme::ui_palette();
+        let dl = self.dl();
+        let layout = dl.window(WindowId::Advisor);
+        let outer = to_rect(layout.outer);
+
+        if ingame.desktop.window(WindowId::Advisor).shadowed {
+            render_window_shadow(self.frame, outer);
+        }
+        self.frame.render_widget(Clear, outer);
+        self.frame.render_widget(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(ingame.desktop.window(WindowId::Advisor).title)
+                .title_style(Style::default().fg(ui.window_title))
+                .border_style(Style::default().fg(ui.window_border))
+                .style(Style::default().bg(ui.popup_bg)),
+            outer,
+        );
+        render_close_button(self.frame, outer);
+
+        let inner = to_rect(layout.padded_inner);
+        if inner.width < 4 || inner.height < 4 {
+            return;
+        }
+
+        let buf = self.frame.buffer_mut();
+
+        // Tab row: [Economy] [City Planning] [Education] [Safety] [Transport]
+        let domains = crate::textgen::types::AdvisorDomain::ALL;
+        let mut tab_x = inner.x;
+        for &domain in &domains {
+            let label = domain.label();
+            let is_sel = domain == advisor.domain;
+            let style = if is_sel {
+                Style::default()
+                    .fg(ui.button_focus_fg)
+                    .bg(ui.button_focus_bg)
+                    .add_modifier(ratatui::style::Modifier::BOLD)
+            } else {
+                Style::default().fg(ui.button_fg).bg(ui.button_bg)
+            };
+            let text = format!(" {} ", label);
+            let w = text.len().min((inner.width - tab_x + inner.x) as usize);
+            if w == 0 {
+                break;
+            }
+            buf.set_string(tab_x, inner.y, &text[..w], style);
+            tab_x += w as u16 + 1;
+        }
+
+        // Body: advice text or "Thinking..."
+        let body_y = inner.y + 2;
+        let body_h = inner.height.saturating_sub(2);
+        let text = if advisor.pending {
+            "Thinking..."
+        } else if let Some(ref t) = advisor.text {
+            t.as_str()
+        } else {
+            "Press Enter to request advice, or ←/→ to switch domain."
+        };
+
+        for (i, line) in text.lines().enumerate() {
+            if i as u16 >= body_h {
+                break;
+            }
+            let truncated: String = line.chars().take(inner.width as usize).collect();
+            buf.set_string(
+                inner.x,
+                body_y + i as u16,
+                &truncated,
+                Style::default().fg(ui.text_primary).bg(ui.popup_bg),
+            );
+        }
     }
 
     fn paint_news_ticker(&mut self, ticker: &NewsTickerViewModel) {
