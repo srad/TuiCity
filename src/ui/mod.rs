@@ -1,5 +1,6 @@
 pub mod frontends;
 pub mod game;
+pub mod painter;
 pub mod runtime;
 pub mod screens;
 pub mod theme;
@@ -37,11 +38,9 @@ impl TerminalRenderer {
 impl Renderer for TerminalRenderer {
     fn render(&mut self, app: &mut AppState) -> io::Result<()> {
         self.terminal.draw(|frame| {
-            let mut running = app.running;
             let context = AppContext {
                 engine: &app.engine,
                 cmd_tx: &app.cmd_tx,
-                running: &mut running,
             };
 
             if let Some(screen) = app.screens.last_mut() {
@@ -95,7 +94,35 @@ impl Renderer for TerminalRenderer {
                             .as_any_mut()
                             .downcast_mut::<InGameScreen>()
                             .expect("active in-game screen should downcast");
-                        frontends::terminal::render_ingame(frame, frame.area(), screen, &view);
+                        let area = frame.area();
+                        let total_cols = area.width;
+                        let total_rows = area.height;
+                        let desktop_layout = screen
+                            .desktop
+                            .layout(crate::ui::runtime::UiRect::new(area.x, area.y, total_cols, total_rows));
+                        // Compute view dimensions for terminal (col_scale=2 because chars are double-wide)
+                        let map_inner = desktop_layout.window(crate::app::WindowId::Map).inner;
+                        let panel_outer_x = desktop_layout.window(crate::app::WindowId::Panel).outer.x;
+                        let map_layout = game::map_view::layout_map_chrome(
+                            ratatui::layout::Rect::new(map_inner.x, map_inner.y, map_inner.width, map_inner.height),
+                            view.map.width,
+                            view.map.height,
+                            screen.camera.offset_x.max(0) as usize,
+                            screen.camera.offset_y.max(0) as usize,
+                        );
+                        let exposed_map_w = if panel_outer_x > map_layout.viewport.x {
+                            (panel_outer_x - map_layout.viewport.x) as usize
+                        } else {
+                            map_layout.viewport.width as usize
+                        }.min(map_layout.viewport.width as usize).max(1);
+                        let layout = crate::ui::painter::FrameLayout {
+                            desktop_layout,
+                            view_w: (exposed_map_w / 2).max(1),
+                            view_h: map_layout.view_tiles_h.max(1),
+                            col_scale: 2,
+                        };
+                        let mut painter = frontends::terminal::ingame::TerminalPainter::new(frame, area);
+                        crate::ui::painter::orchestrate_ingame(&mut painter, &view, screen, layout);
                     }
                     ScreenView::ThemeSettings(view) => {
                         let screen = screen
@@ -112,7 +139,6 @@ impl Renderer for TerminalRenderer {
                 }
             }
 
-            app.running = running;
         })?;
         Ok(())
     }

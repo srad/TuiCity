@@ -1,9 +1,8 @@
-#![allow(unused_imports)]
 use std::collections::VecDeque;
 
 use crate::{
     core::{
-        map::{Map, Tile},
+        map::Map,
         sim::SimState,
     },
     ui::view::NewsTickerViewModel,
@@ -519,7 +518,7 @@ fn build_marquee_text(stories: &[String]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::map::{Map, TileOverlay};
+    use crate::core::map::{Map, Tile, TileOverlay};
 
     fn sample_city() -> (SimState, Map) {
         let mut sim = SimState::default();

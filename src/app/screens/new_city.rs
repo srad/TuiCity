@@ -326,12 +326,12 @@ mod tests {
             crate::core::sim::SimState::default(),
         )));
         let cmd_tx = None;
-        let mut running = true;
+
 
         let context = AppContext {
             engine: &engine,
             cmd_tx: &cmd_tx,
-            running: &mut running,
+
         };
 
         screen.state.focused_field = NewCityField::StartBtn;
@@ -349,12 +349,12 @@ mod tests {
             crate::core::sim::SimState::default(),
         )));
         let cmd_tx = None;
-        let mut running = true;
+
 
         let context = AppContext {
             engine: &engine,
             cmd_tx: &cmd_tx,
-            running: &mut running,
+
         };
 
         screen.state.city_name = "Test City".to_string();
@@ -370,7 +370,7 @@ mod tests {
         let context_action = AppContext {
             engine: &engine,
             cmd_tx: &cmd_tx,
-            running: &mut running,
+
         };
         let transition = screen.on_action(Action::MenuSelect, context_action);
         assert!(transition.is_none());
@@ -381,7 +381,7 @@ mod tests {
             AppContext {
                 engine: &engine,
                 cmd_tx: &cmd_tx,
-                running: &mut running,
+    
             },
         );
         assert!(transition_start.is_some());
@@ -397,11 +397,11 @@ mod tests {
             crate::core::sim::SimState::default(),
         )));
         let cmd_tx = None;
-        let mut running = true;
+
         let context = AppContext {
             engine: &engine,
             cmd_tx: &cmd_tx,
-            running: &mut running,
+
         };
 
         screen.state.focused_field = NewCityField::WaterSlider;
@@ -412,7 +412,7 @@ mod tests {
         let context = AppContext {
             engine: &engine,
             cmd_tx: &cmd_tx,
-            running: &mut running,
+
         };
         screen.state.focused_field = NewCityField::TreesSlider;
         let initial_trees = screen.state.trees_pct;
@@ -430,11 +430,11 @@ mod tests {
             crate::core::sim::SimState::default(),
         )));
         let cmd_tx = None;
-        let mut running = true;
+
         let context = AppContext {
             engine: &engine,
             cmd_tx: &cmd_tx,
-            running: &mut running,
+
         };
 
         screen.state.focused_field = NewCityField::WaterSlider;
@@ -445,7 +445,7 @@ mod tests {
         let context = AppContext {
             engine: &engine,
             cmd_tx: &cmd_tx,
-            running: &mut running,
+
         };
         screen.on_action(Action::CharInput('-'), context);
         assert_eq!(screen.state.water_pct, initial_water);

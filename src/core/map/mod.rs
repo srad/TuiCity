@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 pub mod gen;
 pub mod tile;
 
@@ -153,6 +152,7 @@ impl Map {
         self.overlays[self.idx(x, y)]
     }
 
+    #[allow(dead_code)]
     pub fn set_overlay(&mut self, x: usize, y: usize, overlay: TileOverlay) {
         let idx = self.idx(x, y);
         self.overlays[idx] = overlay;
@@ -169,10 +169,12 @@ impl Map {
         }
     }
 
+    #[allow(dead_code)]
     pub fn terrain_at(&self, x: usize, y: usize) -> TerrainTile {
         self.terrain[self.idx(x, y)]
     }
 
+    #[allow(dead_code)]
     pub fn set_terrain(&mut self, x: usize, y: usize, terrain: TerrainTile) {
         let idx = self.idx(x, y);
         self.terrain[idx] = terrain;
@@ -246,6 +248,7 @@ impl Map {
         self.rebuild_cell(idx);
     }
 
+    #[allow(dead_code)]
     pub fn zone_kind(&self, x: usize, y: usize) -> Option<ZoneKind> {
         self.zones[self.idx(x, y)]
     }
@@ -254,6 +257,7 @@ impl Map {
         self.zone_densities[self.idx(x, y)]
     }
 
+    #[allow(dead_code)]
     pub fn zone_spec(&self, x: usize, y: usize) -> Option<ZoneSpec> {
         let idx = self.idx(x, y);
         Some(ZoneSpec {
@@ -270,6 +274,7 @@ impl Map {
         self.rebuild_cell(idx);
     }
 
+    #[allow(dead_code)]
     pub fn set_zone(&mut self, x: usize, y: usize, zone: Option<ZoneKind>) {
         let density = zone.map(|_| ZoneDensity::Light);
         self.set_zone_spec(
@@ -344,6 +349,7 @@ impl Map {
         result
     }
 
+    #[allow(dead_code)]
     pub fn update_power_grid(&mut self) {}
 
     fn clear_surface_layers_at(&mut self, idx: usize) {

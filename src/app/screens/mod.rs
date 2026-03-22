@@ -39,8 +39,6 @@ pub enum ScreenTransition {
 pub struct AppContext<'a> {
     pub engine: &'a Arc<RwLock<SimulationEngine>>,
     pub cmd_tx: &'a Option<Sender<EngineCommand>>,
-    #[allow(dead_code)]
-    pub running: &'a mut bool,
 }
 
 pub trait Screen {

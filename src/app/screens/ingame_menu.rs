@@ -1,6 +1,6 @@
 use crate::{
     app::{save, WindowId},
-    core::{engine::EngineCommand, sim::SimState},
+    core::engine::EngineCommand,
     ui::theme::OverlayMode,
 };
 
@@ -221,13 +221,15 @@ impl InGameScreen {
     ) -> (bool, Option<ScreenTransition>) {
         for (idx, area) in self.ui_areas.menu_items.iter().enumerate() {
             if area.contains(col, row) {
-                self.menu_selected = idx;
-                self.menu_item_selected = 0;
                 if let Some(action) = direct_menu_action(idx) {
                     self.close_menu();
                     return (true, self.handle_menu_action(action, context));
                 }
-                self.open_menu(idx);
+                if self.menu_active && self.menu_selected == idx {
+                    self.close_menu();
+                } else {
+                    self.open_menu(idx);
+                }
                 return (true, None);
             }
         }
@@ -336,135 +338,6 @@ impl InGameScreen {
         menu_rows(menu).len()
     }
 
-    pub fn menu_row(
-        &self,
-        menu: usize,
-        item: usize,
-        sim: &SimState,
-    ) -> Option<(String, String, MenuAction)> {
-        let base = *menu_rows(menu).get(item)?;
-        let right = match base.action {
-            MenuAction::DisasterFire => {
-                if sim.disasters.fire_enabled {
-                    "ON"
-                } else {
-                    "OFF"
-                }
-            }
-            MenuAction::DisasterFlood => {
-                if sim.disasters.flood_enabled {
-                    "ON"
-                } else {
-                    "OFF"
-                }
-            }
-            MenuAction::DisasterTornado => {
-                if sim.disasters.tornado_enabled {
-                    "ON"
-                } else {
-                    "OFF"
-                }
-            }
-            MenuAction::OverlayNone => {
-                if self.overlay_mode == OverlayMode::None {
-                    "ON"
-                } else {
-                    ""
-                }
-            }
-            MenuAction::OverlayPower => {
-                if self.overlay_mode == OverlayMode::Power {
-                    "ON"
-                } else {
-                    ""
-                }
-            }
-            MenuAction::OverlayWater => {
-                if self.overlay_mode == OverlayMode::Water {
-                    "ON"
-                } else {
-                    ""
-                }
-            }
-            MenuAction::OverlayTraffic => {
-                if self.overlay_mode == OverlayMode::Traffic {
-                    "ON"
-                } else {
-                    ""
-                }
-            }
-            MenuAction::OverlayPollution => {
-                if self.overlay_mode == OverlayMode::Pollution {
-                    "ON"
-                } else {
-                    ""
-                }
-            }
-            MenuAction::OverlayLandValue => {
-                if self.overlay_mode == OverlayMode::LandValue {
-                    "ON"
-                } else {
-                    ""
-                }
-            }
-            MenuAction::OverlayCrime => {
-                if self.overlay_mode == OverlayMode::Crime {
-                    "ON"
-                } else {
-                    ""
-                }
-            }
-            MenuAction::OverlayFireRisk => {
-                if self.overlay_mode == OverlayMode::FireRisk {
-                    "ON"
-                } else {
-                    ""
-                }
-            }
-            MenuAction::ToggleToolbar => {
-                if self.desktop.is_open(WindowId::Panel) {
-                    "ON"
-                } else {
-                    "OFF"
-                }
-            }
-            MenuAction::ToggleInspect => {
-                if self.desktop.is_open(WindowId::Inspect) {
-                    "ON"
-                } else {
-                    "OFF"
-                }
-            }
-            MenuAction::OpenStatistics => {
-                if self.desktop.is_open(WindowId::Statistics) {
-                    "ON"
-                } else {
-                    "OFF"
-                }
-            }
-            MenuAction::ToggleLegend => {
-                if self.desktop.is_open(WindowId::Legend) {
-                    "ON"
-                } else {
-                    "OFF"
-                }
-            }
-            MenuAction::ToggleLayer => InGameScreen::view_layer_label(self.view_layer),
-            _ => base.right,
-        };
-        let label = match base.action {
-            MenuAction::SpeedPause => {
-                if self.paused {
-                    "Resume"
-                } else {
-                    "Pause"
-                }
-            }
-            _ => base.label,
-        };
-        Some((label.to_string(), right.to_string(), base.action))
-    }
-
     pub fn current_menu_action(&self) -> MenuAction {
         if let Some(action) = direct_menu_action(self.menu_selected) {
             return action;
@@ -488,14 +361,6 @@ impl InGameScreen {
         self.menu_item_selected = 0;
     }
 
-    #[allow(dead_code)]
-    pub fn menu_action_for(menu: usize, item: usize) -> MenuAction {
-        menu_rows(menu)
-            .get(item)
-            .map(|row| row.action)
-            .unwrap_or(MenuAction::None)
-    }
-
     pub fn should_block_for_menu(&self, action: &crate::app::input::Action) -> bool {
         self.menu_active
             && matches!(
@@ -509,9 +374,85 @@ impl InGameScreen {
 }
 
 #[cfg(test)]
+impl InGameScreen {
+    pub fn menu_row(
+        &self,
+        menu: usize,
+        item: usize,
+        sim: &crate::core::sim::SimState,
+    ) -> Option<(String, String, MenuAction)> {
+        let base = *menu_rows(menu).get(item)?;
+        let right = match base.action {
+            MenuAction::DisasterFire => {
+                if sim.disasters.fire_enabled { "ON" } else { "OFF" }
+            }
+            MenuAction::DisasterFlood => {
+                if sim.disasters.flood_enabled { "ON" } else { "OFF" }
+            }
+            MenuAction::DisasterTornado => {
+                if sim.disasters.tornado_enabled { "ON" } else { "OFF" }
+            }
+            MenuAction::OverlayNone => {
+                if self.overlay_mode == OverlayMode::None { "ON" } else { "" }
+            }
+            MenuAction::OverlayPower => {
+                if self.overlay_mode == OverlayMode::Power { "ON" } else { "" }
+            }
+            MenuAction::OverlayWater => {
+                if self.overlay_mode == OverlayMode::Water { "ON" } else { "" }
+            }
+            MenuAction::OverlayTraffic => {
+                if self.overlay_mode == OverlayMode::Traffic { "ON" } else { "" }
+            }
+            MenuAction::OverlayPollution => {
+                if self.overlay_mode == OverlayMode::Pollution { "ON" } else { "" }
+            }
+            MenuAction::OverlayLandValue => {
+                if self.overlay_mode == OverlayMode::LandValue { "ON" } else { "" }
+            }
+            MenuAction::OverlayCrime => {
+                if self.overlay_mode == OverlayMode::Crime { "ON" } else { "" }
+            }
+            MenuAction::OverlayFireRisk => {
+                if self.overlay_mode == OverlayMode::FireRisk { "ON" } else { "" }
+            }
+            MenuAction::ToggleToolbar => {
+                if self.desktop.is_open(WindowId::Panel) { "ON" } else { "OFF" }
+            }
+            MenuAction::ToggleInspect => {
+                if self.desktop.is_open(WindowId::Inspect) { "ON" } else { "OFF" }
+            }
+            MenuAction::OpenStatistics => {
+                if self.desktop.is_open(WindowId::Statistics) { "ON" } else { "OFF" }
+            }
+            MenuAction::ToggleLegend => {
+                if self.desktop.is_open(WindowId::Legend) { "ON" } else { "OFF" }
+            }
+            MenuAction::ToggleLayer => InGameScreen::view_layer_label(self.view_layer),
+            _ => base.right,
+        };
+        let label = match base.action {
+            MenuAction::SpeedPause => {
+                if self.paused { "Resume" } else { "Pause" }
+            }
+            _ => base.label,
+        };
+        Some((label.to_string(), right.to_string(), base.action))
+    }
+
+    pub fn menu_action_for(menu: usize, item: usize) -> MenuAction {
+        menu_rows(menu)
+            .get(item)
+            .map(|row| row.action)
+            .unwrap_or(MenuAction::None)
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::app::ClickArea;
+    use crate::core::sim::SimState;
 
     #[test]
     fn menu_action_mapping_matches_structure() {
@@ -556,11 +497,11 @@ mod tests {
             ),
         ));
         let cmd_tx = None;
-        let mut running = true;
+
         let context = AppContext {
             engine: &engine,
             cmd_tx: &cmd_tx,
-            running: &mut running,
+
         };
 
         let (consumed, transition) = screen.handle_menu_click(13, 0, &context);
@@ -588,11 +529,11 @@ mod tests {
             ),
         ));
         let cmd_tx = None;
-        let mut running = true;
+
         let context = AppContext {
             engine: &engine,
             cmd_tx: &cmd_tx,
-            running: &mut running,
+
         };
 
         let (consumed, transition) = screen.handle_menu_click(71, 0, &context);
@@ -612,11 +553,11 @@ mod tests {
             ),
         ));
         let cmd_tx = None;
-        let mut running = true;
+
         let context = AppContext {
             engine: &engine,
             cmd_tx: &cmd_tx,
-            running: &mut running,
+
         };
 
         let transition = screen.handle_menu_action(MenuAction::NewCity, &context);

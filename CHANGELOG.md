@@ -4,6 +4,27 @@ All notable changes to TuiCity 2000 are documented here.
 
 ## [Unreleased]
 
+### Event Loop Architecture — Responsiveness
+
+- **Blocking engine thread** — replaced the `try_recv()` + `sleep(10ms)` polling loop with blocking `recv()`. The engine command thread now wakes instantly when a command arrives (zero latency, down from up to 10ms). After processing the first command, remaining queued commands are drained while still holding the write lock to avoid lock churn during bursts. Applied to both terminal and pixel frontends.
+- **Event drain loop** — the terminal event loop now drains all pending crossterm events before rendering the next frame, preventing a one-event-per-frame backlog during fast mouse movement or rapid keypresses.
+- **Always-tick guarantee** — `on_tick()` now fires every frame regardless of whether input events arrived. Previously it only ran when `event::poll` timed out, causing animations (fire flicker, power pulse, news ticker) and the simulation clock to freeze during active mouse interaction.
+
+### UI Architecture — InGamePainter Trait
+
+- **Dual-frontend rendering trait** — extracted `InGamePainter` trait in `src/ui/painter.rs` with 14 methods covering every in-game UI element (map, minimap, toolbar, menu bar, menu popup, status bar, budget, inspect, statistics, tool chooser, help, about, legend, news ticker). Both the terminal (`TerminalPainter`) and pixel (`PixelPainter`) frontends implement the same trait, sharing a single `orchestrate_ingame()` orchestrator that drives paint order and click-area bookkeeping.
+- **Menu popup z-order fix** — the status bar was rendering after the menu popup, overwriting its border. Reordered the orchestrator so `paint_status_bar` runs before `paint_menu_popup`, ensuring the popup always draws on top.
+- **Menu toggle on header click** — clicking an already-open menu header (e.g. "File" while the File menu is visible) now closes the menu instead of re-opening it.
+
+### Legacy Cleanup
+
+- **Unified duplicate `StatusBarAreas`** — removed the local copy in `game::statusbar.rs`; both frontends now use the single definition in `painter.rs`
+- **Removed `Tool::ALL`** — unused const deleted from `core/tool.rs`
+- **Removed `AppContext.running`** — the field was never read; all screens use `app.running` directly
+- **Blanket `#![allow(dead_code)]` removed** from `core/engine.rs`, `core/map/mod.rs`, and `core/map/tile.rs`; replaced with targeted `#[allow(dead_code)]` on 10 data-model methods that may be needed later
+- **Blanket `#[allow(unused_imports)]` removed** from `core/engine.rs`, `app/screens/ingame.rs`, `app/screens/ingame_news.rs`, and `ui/game/map_view.rs`; dead imports deleted, test-only imports moved to `#[cfg(test)]` modules
+- **Test-only methods gated with `#[cfg(test)]`** — `is_confirm_prompt_open`, `menu_row`, `menu_action_for`, and `tile_at_minimap_click` no longer compile into release builds
+
 ### UI & Rendering Fixes
 
 - **Power line on zone tile now visible** — a power line placed over an undeveloped zone previously rendered with its own dark background, making it invisible against the zone colour. The map renderer now detects the underlying zone via `surface_lot_tile` and draws the power line glyph with the zone's background colour instead. Added `power_line_over_zone_uses_zone_background` regression test.

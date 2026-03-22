@@ -230,9 +230,9 @@ pub trait Screen {
 
 The simulation runs in a dedicated OS thread managed by `core/engine.rs`. The main UI thread sends `EngineCommand` messages over a `std::sync::mpsc` channel. The sim thread processes commands (step, pause, save, load, place tile, replace state) and writes results back into a shared engine instance that the UI reads for rendering.
 
-**3. Frontend-Neutral Screen Views + UI Runtime**
+**3. Frontend-Neutral Screen Views + Dual-Frontend Rendering**
 
-Shared geometry and window helpers now live in `src/ui/runtime.rs` (`ClickArea`, `MapUiAreas`, `UiAreas`, centered/clamped window helpers). This layer now also centralizes **window layout geometry** (padding, scrollbar placement) and provides a **generic hit-testing system**, allowing the game to identify interactions with buttons, title bars, and scrollbar components in a window-agnostic way. Each screen builds a frontend-neutral `ScreenView` in `src/ui/view.rs`, and the terminal renderer turns that view into `ratatui` output. In-game UI elements (map, tools panel, budget, inspect, statistics, tool chooser, help, about, legend) are movable windows managed by `DesktopState`.
+Shared geometry and window helpers now live in `src/ui/runtime.rs` (`ClickArea`, `MapUiAreas`, `UiAreas`, centered/clamped window helpers). This layer now also centralizes **window layout geometry** (padding, scrollbar placement) and provides a **generic hit-testing system**, allowing the game to identify interactions with buttons, title bars, and scrollbar components in a window-agnostic way. Each screen builds a frontend-neutral `ScreenView` in `src/ui/view.rs`. In-game rendering is driven by the `InGamePainter` trait (`src/ui/painter.rs`) with 14 methods covering every UI element; a shared `orchestrate_ingame()` function controls paint order and click-area collection. Both the terminal frontend (`TerminalPainter` in `src/ui/frontends/terminal/`) and the pixel frontend (`PixelPainter` in `src/ui/frontends/pixels_winit/`) implement this trait. In-game UI elements (map, tools panel, budget, inspect, statistics, tool chooser, help, about, legend) are movable windows managed by `DesktopState`.
 
 `InGameScreen` is also split into focused feature modules rather than one large implementation file:
 - `ingame.rs` keeps the screen shell and top-level lifecycle
@@ -294,11 +294,15 @@ src/
 └── ui/
     ├── mod.rs                     Renderer selection + `ScreenView` dispatch
     ├── view.rs                    Frontend-neutral screen and in-game view models
+    ├── painter.rs                 InGamePainter trait (14 methods), orchestrate_ingame(), FrameLayout, StatusBarAreas
     ├── frontends/
     │   ├── mod.rs                 Frontend entry points
-    │   └── terminal/
-    │       ├── mod.rs             Terminal frontend exports
-    │       └── ingame.rs          Terminal renderer for the in-game desktop
+    │   ├── terminal/
+    │   │   ├── mod.rs             Terminal frontend exports
+    │   │   └── ingame.rs          TerminalPainter — InGamePainter impl for ratatui
+    │   └── pixels_winit/
+    │       ├── mod.rs             Pixel frontend event loop (softbuffer + winit)
+    │       └── paint.rs           PixelPainter — InGamePainter impl for pixel buffer
     ├── runtime.rs                 Shared UI runtime helpers (hit areas, window clamp/center, focus cycling)
     ├── theme.rs                   Colour palette; tile glyphs; overlay tinting
     ├── game/
@@ -360,13 +364,13 @@ src/
 
 ### Rendering Pipeline
 
-1. The `ratatui` event loop calls `TerminalRenderer::render(&mut app_state)`.
-2. The active screen builds a frontend-neutral `ScreenView`.
-3. `TerminalRenderer` matches that `ScreenView` and dispatches to the matching terminal renderer in `src/ui/screens/*` or `src/ui/frontends/terminal/ingame.rs`.
+1. The frontend event loop (terminal or pixel) calls the active screen's `build_view()` to produce a frontend-neutral `ScreenView`.
+2. For non-ingame screens, the frontend dispatches to the matching renderer in `src/ui/screens/*`.
+3. For the in-game screen, the frontend creates its `InGamePainter` implementation and calls `orchestrate_ingame()` in `src/ui/painter.rs`. This shared orchestrator drives all 14 paint steps in a fixed order, collecting click areas for hit-testing.
 4. `DesktopState` computes the in-game window layout (menu bar, status bar, map, panel, budget, inspect, tool chooser, help, about), including centering, clamping, title bars, and close-button geometry.
 5. `MapView` iterates visible tiles (camera offset + viewport size), picks colours and 2-cell sprites from `theme.rs`, and writes them into the buffer. To better match terminal font aspect ratios, **the map is rendered using double-width tile sprites** (each map tile maps to two horizontal terminal cells), with roads, rails, and power lines using dedicated left/right sprite pairs so they do not appear double-thick. Surface road traffic is also animated directly on those sprites using the current traffic overlay values, burning tiles use a small ASCII flicker cycle to make fires easier to spot, and utility overlays/layers add restrained pulses for active power lines, underground pipes, and subway stations. Water service remains a surface-oriented coverage overlay, while underground mode composites pipes/tunnels with ghosted roads and landmarks for orientation. When the map is larger than the viewport, dedicated DOS-style horizontal and vertical scrollbars are rendered beside it.
 6. The panel window renders the toolbox, minimap, and tile-info section. Layout is computed from the managed panel window rect so it stays stable while dragging, and the toolbar itself is layout-driven rather than row-index driven. The minimap uses the same 2:1 horizontal sampling as the main map so its aspect ratio, viewport outline, and click-to-center behavior stay aligned with the primary map view.
-7. Popup windows such as the tool chooser, budget window, inspect window, statistics window, help window, about window, and **Map Legend** render through dedicated `ui/game/*` modules or shared terminal helpers. Text-heavy windows now feature internal padding for readability and **interactive mouse-driven scrollbars** with up/down arrows and drag support. The menu bar is rendered last so it always appears on top.
+7. Popup windows such as the tool chooser, budget window, inspect window, statistics window, help window, about window, and **Map Legend** render through dedicated `ui/game/*` modules or shared terminal helpers. Text-heavy windows now feature internal padding for readability and **interactive mouse-driven scrollbars** with up/down arrows and drag support. The menu popup is rendered after the status bar so it always overlays correctly.
 
 ### Adding a New Tool
 

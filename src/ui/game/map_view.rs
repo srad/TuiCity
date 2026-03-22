@@ -1,8 +1,7 @@
-#[allow(unused_imports)]
 use crate::{
     app::camera::Camera,
     core::{map::Map, map::Tile, map::TileOverlay, map::ViewLayer, tool::Tool},
-    ui::runtime::{scrollbar_metrics, scrollbar_offset_from_pointer},
+    ui::runtime::scrollbar_metrics,
     ui::theme::{self, OverlayMode},
 };
 use ratatui::{buffer::Buffer, layout::Rect, style::Color, widgets::Widget};
@@ -1227,6 +1226,7 @@ impl<'a> Widget for MapPreview<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ui::runtime::scrollbar_offset_from_pointer;
     use ratatui::buffer::Buffer;
 
     #[test]

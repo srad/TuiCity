@@ -99,11 +99,11 @@ mod tests {
             crate::core::sim::SimState::default(),
         )));
         let cmd_tx = None;
-        let mut running = true;
+
         let context = AppContext {
             engine: &engine,
             cmd_tx: &cmd_tx,
-            running: &mut running,
+
         };
 
         let transition = screen.on_action(Action::MouseClick { col: 12, row: 5 }, context);

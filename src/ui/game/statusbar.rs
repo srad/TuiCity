@@ -4,20 +4,13 @@ use crate::{
         map::ViewLayer,
         sim::{SimState, TaxSector},
     },
-    ui::theme,
+    ui::{painter::StatusBarAreas, theme},
 };
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
     style::{Modifier, Style},
 };
-
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct StatusBarAreas {
-    pub pause_btn: ClickArea,
-    pub layer_surface_btn: ClickArea,
-    pub layer_underground_btn: ClickArea,
-}
 
 pub fn render_statusbar(
     area: Rect,

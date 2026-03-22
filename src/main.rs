@@ -45,26 +45,35 @@ fn run_loop(renderer: &mut dyn Renderer) -> io::Result<()> {
     let engine_arc = app.engine.clone();
 
     std::thread::spawn(move || {
-        loop {
+        while let Ok(cmd) = rx.recv() {
+            let mut engine = engine_arc.write().unwrap();
+            let _ = engine.execute_command(cmd);
+            // Drain any additional queued commands while we hold the lock
             while let Ok(cmd) = rx.try_recv() {
-                let mut engine = engine_arc.write().unwrap();
                 let _ = engine.execute_command(cmd);
             }
-            std::thread::sleep(Duration::from_millis(10));
         }
     });
 
     loop {
         renderer.render(&mut app)?;
 
+        // Block until at least one event arrives (or timeout for tick)
         if event::poll(Duration::from_millis(16))? {
-            let event = event::read()?;
-            app.on_event(&event);
-            let action = app::input::translate_event(event);
-            app.on_action(action);
-        } else {
-            app.on_tick();
+            // Drain ALL pending events before next render
+            loop {
+                let event = event::read()?;
+                app.on_event(&event);
+                let action = app::input::translate_event(event);
+                app.on_action(action);
+                if !app.running || !event::poll(Duration::from_millis(0))? {
+                    break;
+                }
+            }
         }
+
+        // Always tick — animations and sim clock must not stall during input
+        app.on_tick();
 
         if !app.running {
             break;

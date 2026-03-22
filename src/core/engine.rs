@@ -1,6 +1,4 @@
-#![allow(dead_code)]
-#[allow(unused_imports)]
-use super::map::{Map, Tile, TransportTile, ViewLayer, ZoneSpec};
+use super::map::{Map, ViewLayer};
 use super::sim::{SimState, TaxSector};
 use super::tool::Tool;
 use super::tool_placer::ToolPlacer;
@@ -144,7 +142,7 @@ impl SimulationEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::map::{ViewLayer, ZoneDensity, ZoneKind};
+    use crate::core::map::{TransportTile, ViewLayer, ZoneDensity, ZoneKind, ZoneSpec};
 
     #[test]
     fn set_tax_rate_updates_only_target_sector() {

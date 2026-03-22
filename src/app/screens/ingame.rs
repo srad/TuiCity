@@ -1,10 +1,9 @@
-#![allow(unused_imports)]
 use std::collections::VecDeque;
 
 use crate::{
     app::{
         config, input::Action, save, Camera, DesktopState, LineDrag, RectDrag, Tool, UiAreas,
-        UiRect, WindowId,
+        WindowId,
     },
     core::engine::EngineCommand,
     game_info::GAME_NAME,
@@ -371,10 +370,7 @@ impl InGameScreen {
         self.desktop.is_open(WindowId::Legend)
     }
 
-    #[allow(dead_code)]
-    pub fn is_confirm_prompt_open(&self) -> bool {
-        self.confirm_prompt_action.is_some()
-    }
+
 
     pub fn open_inspect_window(&mut self) {
         if self.inspect_pos.is_none() {
@@ -1153,12 +1149,19 @@ impl Screen for InGameScreen {
 }
 
 #[cfg(test)]
+impl InGameScreen {
+    pub fn is_confirm_prompt_open(&self) -> bool {
+        self.confirm_prompt_action.is_some()
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::{
         app::screens::BudgetFocus,
         core::{engine::SimulationEngine, map::Map, sim::SimState},
-        ui::runtime::ToolChooserKind,
+        ui::runtime::{ToolChooserKind, UiRect},
     };
     use std::sync::{Arc, RwLock};
 
@@ -1221,22 +1224,22 @@ mod tests {
             Map::new(4, 4),
             SimState::default(),
         )));
-        let mut running = true;
+
         let context = AppContext {
             engine: &engine,
             cmd_tx: &None,
-            running: &mut running,
+
         };
 
         screen.on_tick(context);
         let start = screen.news_ticker.view_model().scroll_offset;
 
         for _ in 0..4 {
-            let mut running = true;
+    
             screen.on_tick(AppContext {
                 engine: &engine,
                 cmd_tx: &None,
-                running: &mut running,
+    
             });
         }
 
@@ -1297,12 +1300,12 @@ mod tests {
             crate::core::sim::SimState::default(),
         )));
         let cmd_tx = None;
-        let mut running = true;
+
 
         let open_context = AppContext {
             engine: &engine,
             cmd_tx: &cmd_tx,
-            running: &mut running,
+
         };
         let transition = screen.on_action(Action::MenuActivate, open_context);
         assert!(transition.is_none());
@@ -1312,7 +1315,7 @@ mod tests {
         let close_context = AppContext {
             engine: &engine,
             cmd_tx: &cmd_tx,
-            running: &mut running,
+
         };
         let transition = screen.on_action(Action::MenuActivate, close_context);
         assert!(transition.is_none());
@@ -1328,11 +1331,11 @@ mod tests {
             crate::core::sim::SimState::default(),
         )));
         let cmd_tx = None;
-        let mut running = true;
+
         let context = AppContext {
             engine: &engine,
             cmd_tx: &cmd_tx,
-            running: &mut running,
+
         };
 
         let transition = screen.on_action(Action::CharInput('u'), context);
@@ -1359,11 +1362,11 @@ mod tests {
             crate::core::sim::SimState::default(),
         )));
         let cmd_tx = None;
-        let mut running = true;
+
         let context = AppContext {
             engine: &engine,
             cmd_tx: &cmd_tx,
-            running: &mut running,
+
         };
 
         screen.start_middle_pan(10, 10);
@@ -1400,11 +1403,11 @@ mod tests {
             crate::core::sim::SimState::default(),
         )));
         let cmd_tx = None;
-        let mut running = true;
+
         let context = AppContext {
             engine: &engine,
             cmd_tx: &cmd_tx,
-            running: &mut running,
+
         };
 
         let consumed = screen.handle_scrollbar_click(19, 10, &context);
@@ -1426,11 +1429,11 @@ mod tests {
             crate::core::sim::SimState::default(),
         )));
         let cmd_tx = None;
-        let mut running = true;
+
         let context = AppContext {
             engine: &engine,
             cmd_tx: &cmd_tx,
-            running: &mut running,
+
         };
 
         let consumed = screen.handle_mouse_click_action(31, 1, &context);
@@ -1451,11 +1454,11 @@ mod tests {
             crate::core::sim::SimState::default(),
         )));
         let cmd_tx = None;
-        let mut running = true;
+
         let context = AppContext {
             engine: &engine,
             cmd_tx: &cmd_tx,
-            running: &mut running,
+
         };
 
         let consumed = screen.handle_mouse_click_action(40, 20, &context);
@@ -1487,11 +1490,11 @@ mod tests {
             crate::core::sim::SimState::default(),
         )));
         let cmd_tx = None;
-        let mut running = true;
+
         let context = AppContext {
             engine: &engine,
             cmd_tx: &cmd_tx,
-            running: &mut running,
+
         };
 
         let consumed = screen.handle_mouse_click_action(19, 14, &context);
@@ -1518,11 +1521,11 @@ mod tests {
             crate::core::sim::SimState::default(),
         )));
         let cmd_tx = None;
-        let mut running = true;
+
         let context = AppContext {
             engine: &engine,
             cmd_tx: &cmd_tx,
-            running: &mut running,
+
         };
 
         let consumed = screen.handle_mouse_click_action(6, 4, &context);
@@ -1562,11 +1565,11 @@ mod tests {
             crate::core::sim::SimState::default(),
         )));
         let cmd_tx = None;
-        let mut running = true;
+
         let context = AppContext {
             engine: &engine,
             cmd_tx: &cmd_tx,
-            running: &mut running,
+
         };
 
         screen.on_action(Action::MouseMove { col: 8, row: 3 }, context);
@@ -1583,11 +1586,11 @@ mod tests {
             crate::core::sim::SimState::default(),
         )));
         let cmd_tx = None;
-        let mut running = true;
+
         let context = AppContext {
             engine: &engine,
             cmd_tx: &cmd_tx,
-            running: &mut running,
+
         };
 
         let transition = screen.on_action(Action::Quit, context);
@@ -1597,7 +1600,6 @@ mod tests {
             screen.confirm_prompt_action,
             Some(ConfirmPromptAction::Quit)
         );
-        assert!(running);
     }
 
     #[test]
@@ -1608,11 +1610,11 @@ mod tests {
             crate::core::sim::SimState::default(),
         )));
         let cmd_tx = None;
-        let mut running = true;
+
         let context = AppContext {
             engine: &engine,
             cmd_tx: &cmd_tx,
-            running: &mut running,
+
         };
 
         let transition = screen.on_action(Action::MenuBack, context);
@@ -1632,11 +1634,11 @@ mod tests {
             crate::core::sim::SimState::default(),
         )));
         let cmd_tx = None;
-        let mut running = true;
+
         let context = AppContext {
             engine: &engine,
             cmd_tx: &cmd_tx,
-            running: &mut running,
+
         };
         screen.open_confirm_prompt(ConfirmPromptAction::ReturnToStart);
         screen.confirm_prompt_selected = 1;
@@ -1655,11 +1657,11 @@ mod tests {
             crate::core::sim::SimState::default(),
         )));
         let cmd_tx = None;
-        let mut running = true;
+
         let context = AppContext {
             engine: &engine,
             cmd_tx: &cmd_tx,
-            running: &mut running,
+
         };
 
         let transition =
@@ -1680,11 +1682,11 @@ mod tests {
             crate::core::sim::SimState::default(),
         )));
         let cmd_tx = None;
-        let mut running = true;
+
         let context = AppContext {
             engine: &engine,
             cmd_tx: &cmd_tx,
-            running: &mut running,
+
         };
         screen.open_confirm_prompt(ConfirmPromptAction::LoadCity);
         screen.confirm_prompt_selected = 1;
@@ -1703,11 +1705,11 @@ mod tests {
             crate::core::sim::SimState::default(),
         )));
         let cmd_tx = None;
-        let mut running = true;
+
         let context = AppContext {
             engine: &engine,
             cmd_tx: &cmd_tx,
-            running: &mut running,
+
         };
         screen.open_confirm_prompt(ConfirmPromptAction::LoadCity);
 
@@ -1729,11 +1731,11 @@ mod tests {
             sim,
         )));
         let cmd_tx = None;
-        let mut running = true;
+
         let context = AppContext {
             engine: &engine,
             cmd_tx: &cmd_tx,
-            running: &mut running,
+
         };
 
         let transition = screen.on_action(Action::CharInput('b'), context);
@@ -1756,12 +1758,12 @@ mod tests {
             crate::core::sim::SimState::default(),
         )));
         let cmd_tx = None;
-        let mut running = true;
+
 
         let open_context = AppContext {
             engine: &engine,
             cmd_tx: &cmd_tx,
-            running: &mut running,
+
         };
         screen.on_action(Action::CharInput('b'), open_context);
         screen.ui_areas.desktop = screen.desktop.layout(UiRect::new(0, 0, 100, 40));
@@ -1771,7 +1773,7 @@ mod tests {
         let click_context = AppContext {
             engine: &engine,
             cmd_tx: &cmd_tx,
-            running: &mut running,
+
         };
         screen.on_action(
             Action::MouseClick {
@@ -1783,7 +1785,7 @@ mod tests {
         let drag_context = AppContext {
             engine: &engine,
             cmd_tx: &cmd_tx,
-            running: &mut running,
+
         };
         screen.on_action(
             Action::MouseDrag {
@@ -1806,12 +1808,12 @@ mod tests {
             crate::core::sim::SimState::default(),
         )));
         let cmd_tx = Some(tx);
-        let mut running = true;
+
 
         let open_context = AppContext {
             engine: &engine,
             cmd_tx: &cmd_tx,
-            running: &mut running,
+
         };
         screen.on_action(Action::CharInput('b'), open_context);
         screen.budget_ui.focused = BudgetFocus::Commercial;
@@ -1820,7 +1822,7 @@ mod tests {
         let event_context = AppContext {
             engine: &engine,
             cmd_tx: &cmd_tx,
-            running: &mut running,
+
         };
         screen.on_action(Action::CharInput('4'), event_context);
         let cmd = rx
@@ -1831,7 +1833,7 @@ mod tests {
         let event_context = AppContext {
             engine: &engine,
             cmd_tx: &cmd_tx,
-            running: &mut running,
+
         };
         screen.on_action(Action::CharInput('2'), event_context);
         let cmd = rx
@@ -1853,12 +1855,12 @@ mod tests {
             crate::core::sim::SimState::default(),
         )));
         let cmd_tx = Some(tx);
-        let mut running = true;
+
 
         let open_context = AppContext {
             engine: &engine,
             cmd_tx: &cmd_tx,
-            running: &mut running,
+
         };
         screen.on_action(Action::CharInput('b'), open_context);
         screen.budget_ui.focused = BudgetFocus::Residential;
@@ -1868,7 +1870,7 @@ mod tests {
             let event_context = AppContext {
                 engine: &engine,
                 cmd_tx: &cmd_tx,
-                running: &mut running,
+    
             };
             screen.on_action(Action::CharInput(key), event_context);
             let cmd = rx
@@ -1891,12 +1893,12 @@ mod tests {
             crate::core::sim::SimState::default(),
         )));
         let cmd_tx = Some(tx);
-        let mut running = true;
+
 
         let open_context = AppContext {
             engine: &engine,
             cmd_tx: &cmd_tx,
-            running: &mut running,
+
         };
         screen.on_action(Action::CharInput('b'), open_context);
         screen.budget_ui.focused = BudgetFocus::Commercial;
@@ -1905,7 +1907,7 @@ mod tests {
         let event_context = AppContext {
             engine: &engine,
             cmd_tx: &cmd_tx,
-            running: &mut running,
+
         };
         let transition = screen.on_action(Action::MoveCursor(-1, 0), event_context);
         assert!(transition.is_none());

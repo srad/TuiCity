@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub enum TerrainTile {
     #[default]
@@ -19,6 +17,7 @@ impl TerrainTile {
         }
     }
 
+    #[allow(dead_code)]
     pub fn from_tile(tile: Tile) -> Option<Self> {
         match tile {
             Tile::Grass => Some(TerrainTile::Grass),
@@ -49,6 +48,7 @@ impl TransportTile {
         }
     }
 
+    #[allow(dead_code)]
     pub fn is_surface_road(self) -> bool {
         matches!(self, TransportTile::Road | TransportTile::Onramp)
     }
@@ -137,6 +137,7 @@ impl ZoneSpec {
         self.kind.empty_tile()
     }
 
+    #[allow(dead_code)]
     pub fn label(self) -> String {
         format!("{} {}", self.density.label(), self.kind.label())
     }

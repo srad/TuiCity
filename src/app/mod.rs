@@ -17,7 +17,7 @@ use rect_drag::RectDrag;
 use crate::app::screens::{AppContext, InGameScreen, Screen, ScreenTransition, StartScreen};
 use crate::audio::{MusicCue, MusicManager};
 use crate::core::{engine::EngineCommand, map::Map, sim::SimState, tool::Tool};
-pub use crate::ui::runtime::{ClickArea, DesktopState, MapUiAreas, UiAreas, UiRect, WindowId};
+pub use crate::ui::runtime::{ClickArea, DesktopState, MapUiAreas, UiAreas, WindowId};
 
 pub struct AppState {
     pub screens: Vec<Box<dyn Screen>>,
@@ -45,28 +45,21 @@ impl AppState {
     }
 
     pub fn on_tick(&mut self) {
-        let mut running = self.running;
-        {
-            let context = AppContext {
-                engine: &self.engine,
-                cmd_tx: &self.cmd_tx,
-                running: &mut running,
-            };
-            if let Some(screen) = self.screens.last_mut() {
-                screen.on_tick(context);
-            }
+        let context = AppContext {
+            engine: &self.engine,
+            cmd_tx: &self.cmd_tx,
+        };
+        if let Some(screen) = self.screens.last_mut() {
+            screen.on_tick(context);
         }
-        self.running = running;
         self.sync_music();
     }
 
     pub fn on_event(&mut self, event: &crossterm::event::Event) -> bool {
-        let mut running = self.running;
         let transition = {
             let context = AppContext {
                 engine: &self.engine,
                 cmd_tx: &self.cmd_tx,
-                running: &mut running,
             };
             if let Some(screen) = self.screens.last_mut() {
                 screen.on_event(event, context)
@@ -74,7 +67,6 @@ impl AppState {
                 None
             }
         };
-        self.running = running;
         self.sync_music();
 
         let handled = transition.is_some();
@@ -97,12 +89,10 @@ impl AppState {
                 .last_mut()
                 .map(|screen| screen.as_any_mut().is::<InGameScreen>())
                 .unwrap_or(false);
-        let mut running = self.running;
         let transition = {
             let context = AppContext {
                 engine: &self.engine,
                 cmd_tx: &self.cmd_tx,
-                running: &mut running,
             };
             if let Some(screen) = self.screens.last_mut() {
                 screen.on_action(action, context)
@@ -110,7 +100,6 @@ impl AppState {
                 None
             }
         };
-        self.running = running;
         self.sync_music();
 
         if let Some(transition) = transition {

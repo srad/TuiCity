@@ -6,12 +6,27 @@ use ratatui::{
 };
 
 use crate::{
-    app::{ClickArea, MapUiAreas, UiRect, WindowId},
-    core::map::Tile,
+    app::{camera::Camera, screens::InGameScreen, ClickArea, MapUiAreas, WindowId},
+    core::{
+        map::{Map, Tile, ViewLayer},
+        sim::SimState,
+        tool::Tool,
+    },
     game_info::GAME_NAME,
     ui::{
-        frontends::terminal::render_confirm_dialog, game, runtime::UiRect as RuntimeRect,
-        view::InGameDesktopView,
+        frontends::terminal::render_confirm_dialog,
+        game,
+        painter::{
+            FrameLayout, InGamePainter, MapPreview, MenuBarAreas, MenuPopupAreas, PanelAreas,
+            StatusBarAreas,
+        },
+        runtime::{DesktopLayout, UiRect as RuntimeRect},
+        theme::OverlayMode,
+        view::{
+            BudgetViewModel, ConfirmDialogViewModel, NewsTickerViewModel,
+            StatisticsWindowViewModel, TextWindowViewModel, ToolChooserViewModel,
+            ToolbarPaletteViewModel,
+        },
     },
 };
 
@@ -220,263 +235,373 @@ fn indexed_color_to_rgb(idx: u8) -> (u8, u8, u8) {
     }
 }
 
-pub fn render_ingame(
-    frame: &mut Frame,
-    area: Rect,
-    screen: &mut crate::app::screens::InGameScreen,
-    view: &InGameDesktopView,
-) {
-    let ui = crate::ui::theme::ui_palette();
-    let desktop_layout =
-        screen
-            .desktop
-            .layout(UiRect::new(area.x, area.y, area.width, area.height));
-    screen.ui_areas.desktop = desktop_layout.clone();
-
-    let menu_area = to_rect(desktop_layout.menu_bar);
-    let status_area = to_rect(desktop_layout.status_bar);
-    let news_area = to_rect(desktop_layout.news_ticker);
-    let map_outer = to_rect(desktop_layout.window(WindowId::Map).outer);
-    let map_inner = to_rect(desktop_layout.window(WindowId::Map).inner);
-    let panel_outer = to_rect(desktop_layout.window(WindowId::Panel).outer);
-    let panel_inner = to_rect(desktop_layout.window(WindowId::Panel).inner);
-    let budget_outer = to_rect(desktop_layout.window(WindowId::Budget).outer);
-    let budget_inner = to_rect(desktop_layout.window(WindowId::Budget).inner);
-    let statistics_outer = to_rect(desktop_layout.window(WindowId::Statistics).outer);
-    let statistics_inner = to_rect(desktop_layout.window(WindowId::Statistics).inner);
-    let inspect_outer = to_rect(desktop_layout.window(WindowId::Inspect).outer);
-    let inspect_inner = to_rect(desktop_layout.window(WindowId::Inspect).inner);
-    let power_outer = to_rect(desktop_layout.window(WindowId::PowerPicker).outer);
-    let power_inner = to_rect(desktop_layout.window(WindowId::PowerPicker).inner);
-
-    let map_layout = game::map_view::layout_map_chrome(
-        map_inner,
-        view.map.width,
-        view.map.height,
-        screen.camera.offset_x.max(0) as usize,
-        screen.camera.offset_y.max(0) as usize,
-    );
-
-    let exposed_map_w = if panel_outer.x > map_layout.viewport.x {
-        (panel_outer.x - map_layout.viewport.x) as usize
+fn truncate(s: &str, max: usize) -> String {
+    if s.chars().count() <= max {
+        s.to_string()
     } else {
-        map_layout.viewport.width as usize
+        s.chars().take(max).collect()
     }
-    .min(map_layout.viewport.width as usize)
-    .max(1);
-    screen.camera.view_w = (exposed_map_w / 2).max(1);
-    screen.camera.view_h = map_layout.view_tiles_h.max(1);
+}
 
-    screen.ui_areas.map = MapUiAreas {
-        viewport: to_click_area(UiRect::new(
-            map_layout.viewport.x,
-            map_layout.viewport.y,
-            map_layout.viewport.width,
-            map_layout.viewport.height,
-        )),
-        vertical_bar: to_click_area(UiRect::new(
-            map_layout.vertical_bar.x,
-            map_layout.vertical_bar.y,
-            map_layout.vertical_bar.width,
-            map_layout.vertical_bar.height,
-        )),
-        vertical_dec: to_click_area(UiRect::new(
-            map_layout.vertical_dec.x,
-            map_layout.vertical_dec.y,
-            map_layout.vertical_dec.width,
-            map_layout.vertical_dec.height,
-        )),
-        vertical_track: to_click_area(UiRect::new(
-            map_layout.vertical_track.x,
-            map_layout.vertical_track.y,
-            map_layout.vertical_track.width,
-            map_layout.vertical_track.height,
-        )),
-        vertical_thumb: to_click_area(UiRect::new(
-            map_layout.vertical_thumb.x,
-            map_layout.vertical_thumb.y,
-            map_layout.vertical_thumb.width,
-            map_layout.vertical_thumb.height,
-        )),
-        vertical_inc: to_click_area(UiRect::new(
-            map_layout.vertical_inc.x,
-            map_layout.vertical_inc.y,
-            map_layout.vertical_inc.width,
-            map_layout.vertical_inc.height,
-        )),
-        horizontal_bar: to_click_area(UiRect::new(
-            map_layout.horizontal_bar.x,
-            map_layout.horizontal_bar.y,
-            map_layout.horizontal_bar.width,
-            map_layout.horizontal_bar.height,
-        )),
-        horizontal_dec: to_click_area(UiRect::new(
-            map_layout.horizontal_dec.x,
-            map_layout.horizontal_dec.y,
-            map_layout.horizontal_dec.width,
-            map_layout.horizontal_dec.height,
-        )),
-        horizontal_track: to_click_area(UiRect::new(
-            map_layout.horizontal_track.x,
-            map_layout.horizontal_track.y,
-            map_layout.horizontal_track.width,
-            map_layout.horizontal_track.height,
-        )),
-        horizontal_thumb: to_click_area(UiRect::new(
-            map_layout.horizontal_thumb.x,
-            map_layout.horizontal_thumb.y,
-            map_layout.horizontal_thumb.width,
-            map_layout.horizontal_thumb.height,
-        )),
-        horizontal_inc: to_click_area(UiRect::new(
-            map_layout.horizontal_inc.x,
-            map_layout.horizontal_inc.y,
-            map_layout.horizontal_inc.width,
-            map_layout.horizontal_inc.height,
-        )),
-        corner: to_click_area(UiRect::new(
-            map_layout.corner.x,
-            map_layout.corner.y,
-            map_layout.corner.width,
-            map_layout.corner.height,
-        )),
-    };
+// ── TerminalPainter ──────────────────────────────────────────────────────────
 
-    frame.render_widget(
-        Block::default().style(Style::default().bg(ui.desktop_bg)),
-        area,
-    );
+pub struct TerminalPainter<'a, 'f> {
+    frame: &'a mut Frame<'f>,
+    area: Rect,
+    // Computed in begin_frame
+    desktop_layout: Option<DesktopLayout>,
+    map_layout: Option<game::map_view::MapChromeLayout>,
+}
 
-    let status_areas = game::statusbar::render_statusbar(
-        status_area,
-        frame.buffer_mut(),
-        &view.sim,
-        view.paused,
-        view.view_layer,
-        view.status_message.as_deref(),
-    );
-    screen.ui_areas.pause_btn = status_areas.pause_btn;
-    screen.ui_areas.layer_surface_btn = status_areas.layer_surface_btn;
-    screen.ui_areas.layer_underground_btn = status_areas.layer_underground_btn;
-    game::news_ticker::render_news_ticker(news_area, frame.buffer_mut(), &view.news_ticker);
-
-    if screen.desktop.window(WindowId::Map).shadowed {
-        render_window_shadow(frame, map_outer);
-    }
-    frame.render_widget(Clear, map_outer);
-    frame.render_widget(
-        Block::default()
-            .borders(Borders::ALL)
-            .title(screen.desktop.window(WindowId::Map).title)
-            .title_style(Style::default().fg(ui.window_title))
-            .border_style(Style::default().fg(ui.window_border))
-            .style(Style::default().bg(ui.map_window_bg)),
-        map_outer,
-    );
-
-    if map_layout.viewport.width > 0 && map_layout.viewport.height > 0 {
-        use crate::core::tool::Tool;
-        use crate::ui::game::map_view::PreviewKind;
-
-        let footprint_tiles: Vec<(usize, usize)> = if view.rect_preview.is_empty()
-            && view.line_preview.is_empty()
-            && Tool::uses_footprint_preview(view.current_tool)
-        {
-            let (fw, fh): (usize, usize) = view.current_tool.footprint();
-            let (cx, cy) = (view.camera.cursor_x, view.camera.cursor_y);
-            let ax = cx
-                .saturating_sub(fw / 2)
-                .min(view.map.width.saturating_sub(fw));
-            let ay = cy
-                .saturating_sub(fh / 2)
-                .min(view.map.height.saturating_sub(fh));
-            (0..fh)
-                .flat_map(|dy| (0..fw).map(move |dx| (ax + dx, ay + dy)))
-                .collect()
-        } else {
-            Vec::new()
-        };
-        let footprint_all_valid = footprint_tiles.iter().all(|&(x, y)| {
-            x < view.map.width
-                && y < view.map.height
-                && view
-                    .current_tool
-                    .can_place(view.map.view_tile(view.view_layer, x, y))
-        });
-        let (preview_tiles, preview_kind): (&[(usize, usize)], PreviewKind) =
-            if !view.rect_preview.is_empty() {
-                (
-                    view.rect_preview.as_slice(),
-                    PreviewKind::Rect(view.current_tool),
-                )
-            } else if !view.line_preview.is_empty() {
-                (
-                    view.line_preview.as_slice(),
-                    PreviewKind::Line(view.current_tool),
-                )
-            } else if !footprint_tiles.is_empty() {
-                (
-                    &footprint_tiles,
-                    PreviewKind::Footprint(view.current_tool, footprint_all_valid),
-                )
-            } else {
-                (&[], PreviewKind::None)
-            };
-
-        frame.render_widget(
-            game::map_view::MapView {
-                map: &view.map,
-                camera: &view.camera,
-                line_preview: preview_tiles,
-                preview_kind,
-                overlay_mode: view.overlay_mode,
-                view_layer: view.view_layer,
-            },
-            map_layout.viewport,
-        );
-        game::map_view::render_scrollbars(&map_layout, frame.buffer_mut());
-    }
-
-    screen.ui_areas.toolbar_items.clear();
-    screen.ui_areas.tool_chooser_items.clear();
-    screen.ui_areas.dialog_items.clear();
-    screen.ui_areas.minimap = ClickArea::default();
-
-    if screen.desktop.is_open(WindowId::Panel) && panel_outer.width > 0 && panel_outer.height > 0 {
-        if screen.desktop.window(WindowId::Panel).shadowed {
-            render_window_shadow(frame, panel_outer);
+impl<'a, 'f> TerminalPainter<'a, 'f> {
+    pub fn new(frame: &'a mut Frame<'f>, area: Rect) -> Self {
+        Self {
+            frame,
+            area,
+            desktop_layout: None,
+            map_layout: None,
         }
-        frame.render_widget(Clear, panel_outer);
-        frame.render_widget(
+    }
+
+    fn dl(&self) -> &DesktopLayout {
+        self.desktop_layout.as_ref().expect("begin_frame must be called first")
+    }
+}
+
+impl<'a, 'f> InGamePainter for TerminalPainter<'a, 'f> {
+    fn begin_frame(&mut self, layout: &FrameLayout) {
+        self.desktop_layout = Some(layout.desktop_layout.clone());
+        let ui = crate::ui::theme::ui_palette();
+        self.frame.render_widget(
+            Block::default().style(Style::default().bg(ui.desktop_bg)),
+            self.area,
+        );
+    }
+
+    fn paint_map(
+        &mut self,
+        map: &Map,
+        camera: &Camera,
+        overlay_mode: OverlayMode,
+        view_layer: ViewLayer,
+        current_tool: Tool,
+        preview: MapPreview<'_>,
+    ) -> MapUiAreas {
+        let ui = crate::ui::theme::ui_palette();
+        let dl = self.dl();
+        let map_outer = to_rect(dl.window(WindowId::Map).outer);
+        let map_inner = to_rect(dl.window(WindowId::Map).inner);
+
+        let layout = game::map_view::layout_map_chrome(
+            map_inner,
+            map.width,
+            map.height,
+            camera.offset_x.max(0) as usize,
+            camera.offset_y.max(0) as usize,
+        );
+
+        // Draw map window chrome
+        self.frame.render_widget(Clear, map_outer);
+        self.frame.render_widget(
             Block::default()
                 .borders(Borders::ALL)
-                .title(screen.desktop.window(WindowId::Panel).title)
+                .title("Map")
+                .title_style(Style::default().fg(ui.window_title))
+                .border_style(Style::default().fg(ui.window_border))
+                .style(Style::default().bg(ui.map_window_bg)),
+            map_outer,
+        );
+
+        if layout.viewport.width > 0 && layout.viewport.height > 0 {
+            use game::map_view::PreviewKind;
+
+            let (preview_tiles_owned, preview_kind) = match preview {
+                MapPreview::Rect(tiles) => (tiles, PreviewKind::Rect(current_tool)),
+                MapPreview::Line(tiles) => (tiles, PreviewKind::Line(current_tool)),
+                MapPreview::Footprint(tiles, valid) => {
+                    (tiles, PreviewKind::Footprint(current_tool, valid))
+                }
+                MapPreview::None => (&[] as &[(usize, usize)], PreviewKind::None),
+            };
+
+            self.frame.render_widget(
+                game::map_view::MapView {
+                    map,
+                    camera,
+                    line_preview: preview_tiles_owned,
+                    preview_kind,
+                    overlay_mode,
+                    view_layer,
+                },
+                layout.viewport,
+            );
+            game::map_view::render_scrollbars(&layout, self.frame.buffer_mut());
+        }
+
+        let map_areas = MapUiAreas {
+            viewport: to_click_area(RuntimeRect::new(
+                layout.viewport.x, layout.viewport.y,
+                layout.viewport.width, layout.viewport.height,
+            )),
+            vertical_bar: to_click_area(RuntimeRect::new(
+                layout.vertical_bar.x, layout.vertical_bar.y,
+                layout.vertical_bar.width, layout.vertical_bar.height,
+            )),
+            vertical_dec: to_click_area(RuntimeRect::new(
+                layout.vertical_dec.x, layout.vertical_dec.y,
+                layout.vertical_dec.width, layout.vertical_dec.height,
+            )),
+            vertical_track: to_click_area(RuntimeRect::new(
+                layout.vertical_track.x, layout.vertical_track.y,
+                layout.vertical_track.width, layout.vertical_track.height,
+            )),
+            vertical_thumb: to_click_area(RuntimeRect::new(
+                layout.vertical_thumb.x, layout.vertical_thumb.y,
+                layout.vertical_thumb.width, layout.vertical_thumb.height,
+            )),
+            vertical_inc: to_click_area(RuntimeRect::new(
+                layout.vertical_inc.x, layout.vertical_inc.y,
+                layout.vertical_inc.width, layout.vertical_inc.height,
+            )),
+            horizontal_bar: to_click_area(RuntimeRect::new(
+                layout.horizontal_bar.x, layout.horizontal_bar.y,
+                layout.horizontal_bar.width, layout.horizontal_bar.height,
+            )),
+            horizontal_dec: to_click_area(RuntimeRect::new(
+                layout.horizontal_dec.x, layout.horizontal_dec.y,
+                layout.horizontal_dec.width, layout.horizontal_dec.height,
+            )),
+            horizontal_track: to_click_area(RuntimeRect::new(
+                layout.horizontal_track.x, layout.horizontal_track.y,
+                layout.horizontal_track.width, layout.horizontal_track.height,
+            )),
+            horizontal_thumb: to_click_area(RuntimeRect::new(
+                layout.horizontal_thumb.x, layout.horizontal_thumb.y,
+                layout.horizontal_thumb.width, layout.horizontal_thumb.height,
+            )),
+            horizontal_inc: to_click_area(RuntimeRect::new(
+                layout.horizontal_inc.x, layout.horizontal_inc.y,
+                layout.horizontal_inc.width, layout.horizontal_inc.height,
+            )),
+            corner: to_click_area(RuntimeRect::new(
+                layout.corner.x, layout.corner.y,
+                layout.corner.width, layout.corner.height,
+            )),
+        };
+
+        self.map_layout = Some(layout);
+        map_areas
+    }
+
+    fn paint_menu_bar(
+        &mut self,
+        menu_active: bool,
+        menu_selected: usize,
+        _menu_item_selected: usize,
+    ) -> MenuBarAreas {
+        let ui = crate::ui::theme::ui_palette();
+        let dl = self.dl();
+        let area = to_rect(dl.menu_bar);
+        let mut areas = MenuBarAreas::default();
+
+        areas.menu_bar = ClickArea {
+            x: area.x,
+            y: area.y,
+            width: area.width,
+            height: area.height,
+        };
+
+        // Fill background
+        let buf = self.frame.buffer_mut();
+        for x in area.x..area.x + area.width {
+            buf.set_string(x, area.y, " ", Style::default().fg(ui.menu_fg).bg(ui.menu_bg));
+        }
+
+        let mut x = area.x;
+        let title = format!(" {GAME_NAME} ");
+        if x + title.len() as u16 <= area.x + area.width {
+            self.frame.buffer_mut().set_string(
+                x, area.y, &title,
+                Style::default().fg(ui.menu_title).bg(ui.menu_bg).add_modifier(Modifier::BOLD),
+            );
+            x += title.len() as u16 + 1;
+        }
+
+        // Left-aligned items (first 4)
+        for (idx, menu_title) in crate::app::screens::MENU_TITLES.iter().take(4).enumerate() {
+            let text = format!(" {} ", menu_title);
+            let style = if menu_active && menu_selected == idx {
+                Style::default().fg(ui.menu_focus_fg).bg(ui.menu_focus_bg).add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(ui.menu_fg).bg(ui.menu_bg)
+            };
+            if x + text.len() as u16 <= area.x + area.width {
+                areas.menu_items[idx] = ClickArea { x, y: area.y, width: text.len() as u16, height: 1 };
+                self.frame.buffer_mut().set_string(x, area.y, &text, style);
+            }
+            x += text.len() as u16 + 1;
+        }
+
+        // Right-aligned items (remaining)
+        let mut right_x = area.x + area.width;
+        for (idx, menu_title) in crate::app::screens::MENU_TITLES.iter().enumerate().skip(4).rev() {
+            let text = format!(" {} ", menu_title);
+            let text_w = text.len() as u16;
+            if right_x < area.x + text_w { continue; }
+            right_x = right_x.saturating_sub(text_w);
+            let style = if menu_active && menu_selected == idx {
+                Style::default().fg(ui.menu_focus_fg).bg(ui.menu_focus_bg).add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(ui.menu_fg).bg(ui.menu_bg)
+            };
+            areas.menu_items[idx] = ClickArea { x: right_x, y: area.y, width: text_w, height: 1 };
+            self.frame.buffer_mut().set_string(right_x, area.y, &text, style);
+            right_x = right_x.saturating_sub(1);
+        }
+
+        areas
+    }
+
+    fn paint_menu_popup(
+        &mut self,
+        menu_selected: usize,
+        menu_item_selected: usize,
+        anchor: ClickArea,
+    ) -> MenuPopupAreas {
+        let ui = crate::ui::theme::ui_palette();
+        let dl = self.dl();
+        let menu_area = to_rect(dl.menu_bar);
+        let mut areas = MenuPopupAreas::default();
+
+        let rows = crate::app::screens::menu_rows(menu_selected);
+        if rows.is_empty() {
+            return areas;
+        }
+
+        let popup_w = 28.min(menu_area.width.max(8));
+        let popup_x = anchor.x.min(menu_area.x + menu_area.width.saturating_sub(popup_w.max(8)));
+        let popup_h = rows.len() as u16 + 2;
+        let popup = Rect::new(popup_x, menu_area.y + 1, popup_w.max(8), popup_h);
+
+        areas.menu_popup = ClickArea {
+            x: popup.x,
+            y: popup.y,
+            width: popup.width,
+            height: popup.height,
+        };
+
+        self.frame.render_widget(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(ui.menu_fg).bg(ui.menu_bg))
+                .style(Style::default().bg(ui.menu_bg)),
+            popup,
+        );
+
+        let buf = self.frame.buffer_mut();
+        for (idx, row) in rows.iter().enumerate() {
+            let y = popup.y + 1 + idx as u16;
+            areas.menu_popup_items.push(ClickArea {
+                x: popup.x + 1,
+                y,
+                width: popup.width.saturating_sub(2),
+                height: 1,
+            });
+            let selected = idx == menu_item_selected;
+            let style = if selected {
+                Style::default().fg(ui.menu_focus_fg).bg(ui.menu_focus_bg)
+            } else {
+                Style::default().fg(ui.menu_fg).bg(ui.menu_bg)
+            };
+            let content_w = popup.width.saturating_sub(2);
+            let mut line = row.label.to_string();
+            if !row.right.is_empty() {
+                let right_w = row.right.chars().count() as u16;
+                let left_w = content_w.saturating_sub(right_w + 1) as usize;
+                line = format!(
+                    "{:<width$} {}",
+                    truncate(&line, left_w),
+                    row.right,
+                    width = left_w
+                );
+            }
+            buf.set_string(
+                popup.x + 1, y,
+                format!("{:<width$}", truncate(&line, content_w as usize), width = content_w as usize),
+                style,
+            );
+        }
+
+        areas
+    }
+
+    fn paint_status_bar(
+        &mut self,
+        sim: &SimState,
+        paused: bool,
+        view_layer: ViewLayer,
+        status_message: Option<&str>,
+    ) -> StatusBarAreas {
+        let dl = self.dl();
+        let status_area = to_rect(dl.status_bar);
+        game::statusbar::render_statusbar(
+            status_area,
+            self.frame.buffer_mut(),
+            sim,
+            paused,
+            view_layer,
+            status_message,
+        )
+    }
+
+    fn paint_panel_window(
+        &mut self,
+        toolbar: &ToolbarPaletteViewModel,
+        current_tool: Tool,
+        sim: &SimState,
+        _inspect_pos: Option<(usize, usize)>,
+        map: &Map,
+        ingame: &InGameScreen,
+    ) -> PanelAreas {
+        let ui = crate::ui::theme::ui_palette();
+        let dl = self.dl();
+        let panel_outer = to_rect(dl.window(WindowId::Panel).outer);
+        let panel_inner = to_rect(dl.window(WindowId::Panel).inner);
+        let mut areas = PanelAreas::default();
+
+        if panel_outer.width == 0 || panel_outer.height == 0 {
+            return areas;
+        }
+
+        if ingame.desktop.window(WindowId::Panel).shadowed {
+            render_window_shadow(self.frame, panel_outer);
+        }
+        self.frame.render_widget(Clear, panel_outer);
+        self.frame.render_widget(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(ingame.desktop.window(WindowId::Panel).title)
                 .title_style(Style::default().fg(ui.window_title))
                 .border_style(Style::default().fg(ui.window_border))
                 .style(Style::default().bg(ui.panel_window_bg)),
             panel_outer,
         );
-        render_close_button(frame, panel_outer);
-    }
+        render_close_button(self.frame, panel_outer);
 
-    if screen.desktop.is_open(WindowId::Panel) && panel_inner.width > 0 {
-        let panel_window = screen.desktop.window(WindowId::Panel);
+        if panel_inner.width == 0 {
+            return areas;
+        }
+
+        let panel_window = ingame.desktop.window(WindowId::Panel);
         let full_inner_h = panel_window.height.saturating_sub(2).max(4);
-        let full_inner = Rect::new(
-            panel_inner.x,
-            panel_inner.y,
-            panel_inner.width,
-            full_inner_h,
-        );
+        let full_inner = Rect::new(panel_inner.x, panel_inner.y, panel_inner.width, full_inner_h);
         let ph = full_inner.height;
-        let desired_toolbar_h = game::toolbar::toolbar_height(&view.toolbar);
-        let minimum_toolbar_h = game::toolbar::minimum_toolbar_height(&view.toolbar);
+        let desired_toolbar_h = game::toolbar::toolbar_height(toolbar);
+        let minimum_toolbar_h = game::toolbar::minimum_toolbar_height(toolbar);
         let minimum_minimap_h = 8;
         let minimum_info_h = 5;
         let max_toolbar_h = ph.saturating_sub(minimum_minimap_h + minimum_info_h);
-        let toolbar_h = desired_toolbar_h
-            .min(max_toolbar_h.max(minimum_toolbar_h))
-            .min(ph);
+        let toolbar_h = desired_toolbar_h.min(max_toolbar_h.max(minimum_toolbar_h)).min(ph);
         let remaining_h = ph.saturating_sub(toolbar_h);
         let desired_minimap_h = (ph / 3).max(minimum_minimap_h);
         let max_minimap_h = remaining_h.saturating_sub(minimum_info_h);
@@ -494,140 +619,156 @@ pub fn render_ingame(
             Constraint::Length(toolbar_h),
             Constraint::Length(minimap_h),
             Constraint::Length(info_h),
-        ])
-        .split(full_inner);
+        ]).split(full_inner);
 
-        let toolbar_area = panel_vert[0].intersection(area);
-        let minimap_area = panel_vert[1].intersection(area);
-        let info_area = panel_vert[2].intersection(area);
+        let toolbar_area = panel_vert[0].intersection(self.area);
+        let minimap_area = panel_vert[1].intersection(self.area);
+        let info_area = panel_vert[2].intersection(self.area);
 
         if toolbar_area.width > 0 && toolbar_area.height > 0 {
-            screen.ui_areas.toolbar_items =
-                game::toolbar::render_toolbar(toolbar_area, frame.buffer_mut(), &view.toolbar);
+            areas.toolbar_items =
+                game::toolbar::render_toolbar(toolbar_area, self.frame.buffer_mut(), toolbar);
         }
         if minimap_area.width > 0 && minimap_area.height > 0 {
-            let render_area =
-                game::minimap::minimap_render_area(minimap_area, view.map.width, view.map.height);
-            screen.ui_areas.minimap = to_click_area(UiRect::new(
-                render_area.x,
-                render_area.y,
-                render_area.width,
-                render_area.height,
+            let render_area = game::minimap::minimap_render_area(minimap_area, map.width, map.height);
+            areas.minimap = to_click_area(RuntimeRect::new(
+                render_area.x, render_area.y, render_area.width, render_area.height,
             ));
-            frame.render_widget(
+            self.frame.render_widget(
                 game::minimap::MiniMap {
-                    map: &view.map,
-                    camera: &view.camera,
-                    overlay_mode: view.overlay_mode,
-                    view_layer: view.view_layer,
+                    map,
+                    camera: &ingame.camera,
+                    overlay_mode: OverlayMode::None,
+                    view_layer: ViewLayer::Surface,
                 },
                 minimap_area,
             );
         }
 
-        let cx = view.camera.cursor_x.min(view.map.width.saturating_sub(1));
-        let cy = view.camera.cursor_y.min(view.map.height.saturating_sub(1));
-        let tile = if view.map.width > 0 && view.map.height > 0 {
-            view.map.surface_lot_tile(cx, cy)
-        } else {
-            crate::core::map::Tile::Grass
-        };
-        let tile_overlay = if view.map.width > 0 && view.map.height > 0 {
-            view.map.get_overlay(cx, cy)
-        } else {
-            crate::core::map::TileOverlay::default()
-        };
+        let cx = ingame.camera.cursor_x.min(map.width.saturating_sub(1));
+        let cy = ingame.camera.cursor_y.min(map.height.saturating_sub(1));
+        let tile = if map.width > 0 && map.height > 0 { map.surface_lot_tile(cx, cy) } else { Tile::Grass };
+        let tile_overlay = if map.width > 0 && map.height > 0 { map.get_overlay(cx, cy) } else { crate::core::map::TileOverlay::default() };
 
         if info_area.width > 0 && info_area.height > 0 {
-            frame.render_widget(
+            self.frame.render_widget(
                 game::infopanel::InfoPanel {
                     tile,
                     overlay: tile_overlay,
-                    zone: view.map.effective_zone_kind(cx, cy),
+                    zone: map.effective_zone_kind(cx, cy),
                     x: cx,
                     y: cy,
-                    current_tool: view.current_tool,
-                    demand_res: view.sim.demand.res,
-                    demand_comm: view.sim.demand.comm,
-                    demand_ind: view.sim.demand.ind,
-                    demand_history_res: view.sim.history.demand_res.clone(),
-                    demand_history_comm: view.sim.history.demand_comm.clone(),
-                    demand_history_ind: view.sim.history.demand_ind.clone(),
-                    power_produced: view.sim.utilities.power_produced_mw,
-                    power_consumed: view.sim.utilities.power_consumed_mw,
+                    current_tool,
+                    demand_res: sim.demand.res,
+                    demand_comm: sim.demand.comm,
+                    demand_ind: sim.demand.ind,
+                    demand_history_res: sim.history.demand_res.clone(),
+                    demand_history_comm: sim.history.demand_comm.clone(),
+                    demand_history_ind: sim.history.demand_ind.clone(),
+                    power_produced: sim.utilities.power_produced_mw,
+                    power_consumed: sim.utilities.power_consumed_mw,
                 },
                 info_area,
             );
         }
+
+        areas
     }
 
-    if let Some(chooser) = &view.tool_chooser {
-        if screen.desktop.window(WindowId::PowerPicker).shadowed {
-            render_window_shadow(frame, power_outer);
-        }
-        frame.render_widget(Clear, power_outer);
-        frame.render_widget(
+    fn paint_tool_chooser(&mut self, chooser: &ToolChooserViewModel) -> Vec<ClickArea> {
+        let ui = crate::ui::theme::ui_palette();
+        let dl = self.dl();
+        let power_outer = to_rect(dl.window(WindowId::PowerPicker).outer);
+        let power_inner = to_rect(dl.window(WindowId::PowerPicker).inner);
+
+        self.frame.render_widget(Clear, power_outer);
+        self.frame.render_widget(
             Block::default()
                 .borders(Borders::ALL)
-                .title(screen.desktop.window(WindowId::PowerPicker).title)
+                .title("Tool Selection")
                 .title_style(Style::default().fg(ui.window_title))
                 .border_style(Style::default().fg(ui.window_border))
                 .style(Style::default().bg(ui.popup_bg)),
             power_outer,
         );
-        render_close_button(frame, power_outer);
-        screen.ui_areas.tool_chooser_items = game::power_popup::render_tool_chooser_content(
-            frame.buffer_mut(),
+        render_close_button(self.frame, power_outer);
+        game::power_popup::render_tool_chooser_content(
+            self.frame.buffer_mut(),
             power_inner,
             chooser,
-        );
+        )
     }
 
-    if screen.is_budget_open() {
-        if screen.desktop.window(WindowId::Budget).shadowed {
-            render_window_shadow(frame, budget_outer);
+    fn paint_confirm_dialog(&mut self, dialog: &ConfirmDialogViewModel) -> Vec<ClickArea> {
+        render_confirm_dialog(self.frame, self.area, dialog)
+    }
+
+    fn paint_budget_window(&mut self, budget: &BudgetViewModel, ingame: &InGameScreen) {
+        let ui = crate::ui::theme::ui_palette();
+        let dl = self.dl();
+        let budget_outer = to_rect(dl.window(WindowId::Budget).outer);
+        let budget_inner = to_rect(dl.window(WindowId::Budget).inner);
+
+        if ingame.desktop.window(WindowId::Budget).shadowed {
+            render_window_shadow(self.frame, budget_outer);
         }
-        frame.render_widget(Clear, budget_outer);
-        frame.render_widget(
+        self.frame.render_widget(Clear, budget_outer);
+        self.frame.render_widget(
             Block::default()
                 .borders(Borders::ALL)
-                .title(screen.desktop.window(WindowId::Budget).title)
+                .title(ingame.desktop.window(WindowId::Budget).title)
                 .title_style(Style::default().fg(ui.window_title))
                 .border_style(Style::default().fg(ui.window_border))
                 .style(Style::default().bg(ui.budget_window_bg)),
             budget_outer,
         );
-        render_close_button(frame, budget_outer);
-        game::budget::render_budget_content(frame.buffer_mut(), budget_inner, &view.budget);
+        render_close_button(self.frame, budget_outer);
+        game::budget::render_budget_content(self.frame.buffer_mut(), budget_inner, budget);
     }
 
-    if let Some(statistics) = &view.statistics {
-        if screen.desktop.window(WindowId::Statistics).shadowed {
-            render_window_shadow(frame, statistics_outer);
+    fn paint_statistics_window(&mut self, stats: &StatisticsWindowViewModel, ingame: &InGameScreen) {
+        let ui = crate::ui::theme::ui_palette();
+        let dl = self.dl();
+        let statistics_outer = to_rect(dl.window(WindowId::Statistics).outer);
+        let statistics_inner = to_rect(dl.window(WindowId::Statistics).inner);
+
+        if ingame.desktop.window(WindowId::Statistics).shadowed {
+            render_window_shadow(self.frame, statistics_outer);
         }
-        frame.render_widget(Clear, statistics_outer);
-        frame.render_widget(
+        self.frame.render_widget(Clear, statistics_outer);
+        self.frame.render_widget(
             Block::default()
                 .borders(Borders::ALL)
-                .title(screen.desktop.window(WindowId::Statistics).title)
+                .title(ingame.desktop.window(WindowId::Statistics).title)
                 .title_style(Style::default().fg(ui.window_title))
                 .border_style(Style::default().fg(ui.window_border))
                 .style(Style::default().bg(ui.popup_bg)),
             statistics_outer,
         );
-        render_close_button(frame, statistics_outer);
-        game::statistics::render_statistics_content(frame, statistics_inner, statistics);
+        render_close_button(self.frame, statistics_outer);
+        game::statistics::render_statistics_content(self.frame, statistics_inner, stats);
     }
 
-    if screen.is_inspect_open() {
-        if let Some(inspect_pos) = view.inspect_pos {
-            if inspect_pos.0 < view.map.width && inspect_pos.1 < view.map.height {
-                let title = format!(" Inspect ({},{}) ", inspect_pos.0, inspect_pos.1);
-                if screen.desktop.window(WindowId::Inspect).shadowed {
-                    render_window_shadow(frame, inspect_outer);
+    fn paint_inspect_window(
+        &mut self,
+        inspect_pos: Option<(usize, usize)>,
+        map: &Map,
+        sim: &SimState,
+        ingame: &InGameScreen,
+    ) {
+        let ui = crate::ui::theme::ui_palette();
+        let dl = self.dl();
+        let inspect_outer = to_rect(dl.window(WindowId::Inspect).outer);
+        let inspect_inner = to_rect(dl.window(WindowId::Inspect).inner);
+
+        if let Some(pos) = inspect_pos {
+            if pos.0 < map.width && pos.1 < map.height {
+                let title = format!(" Inspect ({},{}) ", pos.0, pos.1);
+                if ingame.desktop.window(WindowId::Inspect).shadowed {
+                    render_window_shadow(self.frame, inspect_outer);
                 }
-                frame.render_widget(Clear, inspect_outer);
-                frame.render_widget(
+                self.frame.render_widget(Clear, inspect_outer);
+                self.frame.render_widget(
                     Block::default()
                         .borders(Borders::ALL)
                         .title(title.as_str())
@@ -636,21 +777,15 @@ pub fn render_ingame(
                         .style(Style::default().bg(ui.inspect_window_bg)),
                     inspect_outer,
                 );
-                render_close_button(frame, inspect_outer);
+                render_close_button(self.frame, inspect_outer);
 
                 let plant_info = if matches!(
-                    view.map.surface_lot_tile(inspect_pos.0, inspect_pos.1),
+                    map.surface_lot_tile(pos.0, pos.1),
                     Tile::PowerPlantCoal | Tile::PowerPlantGas
                 ) {
-                    view.sim
-                        .plants
-                        .iter()
-                        .find(|(&(_x, _y), _)| {
-                            let (px, py) = (_x, _y);
-                            inspect_pos.0 >= px
-                                && inspect_pos.0 < px + 4
-                                && inspect_pos.1 >= py
-                                && inspect_pos.1 < py + 4
+                    sim.plants.iter()
+                        .find(|(&(px, py), _)| {
+                            pos.0 >= px && pos.0 < px + 4 && pos.1 >= py && pos.1 < py + 4
                         })
                         .map(|(_, state)| game::inspect_popup::PlantInfo::from_state(state))
                 } else {
@@ -658,255 +793,52 @@ pub fn render_ingame(
                 };
 
                 game::inspect_popup::render_inspect_content(
-                    frame.buffer_mut(),
+                    self.frame.buffer_mut(),
                     inspect_inner,
-                    inspect_pos,
-                    &view.map,
+                    pos,
+                    map,
                     plant_info,
                 );
             }
         }
     }
 
-    if let Some(help) = &view.help {
-        let layout = desktop_layout.window(WindowId::Help);
-        if screen.desktop.window(WindowId::Help).shadowed {
-            render_window_shadow(frame, to_rect(layout.outer));
+    fn paint_text_window(
+        &mut self,
+        window_id: WindowId,
+        view: &TextWindowViewModel,
+        ingame: &mut crate::app::screens::InGameScreen,
+    ) {
+        let ui = crate::ui::theme::ui_palette();
+        let dl = self.dl();
+        let layout = dl.window(window_id);
+
+        if ingame.desktop.window(window_id).shadowed {
+            render_window_shadow(self.frame, to_rect(layout.outer));
         }
         let outer = to_rect(layout.outer);
-        frame.render_widget(Clear, outer);
-        frame.render_widget(
+        self.frame.render_widget(Clear, outer);
+        self.frame.render_widget(
             Block::default()
                 .borders(Borders::ALL)
-                .title(screen.desktop.window(WindowId::Help).title)
+                .title(ingame.desktop.window(window_id).title)
                 .title_style(Style::default().fg(ui.window_title))
                 .border_style(Style::default().fg(ui.window_border))
                 .style(Style::default().bg(ui.popup_bg)),
             outer,
         );
-        render_close_button(frame, outer);
-        render_text_window_content(frame, &layout, help, ui.popup_bg, ui.text_primary);
+        render_close_button(self.frame, outer);
+        render_text_window_content(self.frame, &layout, view, ui.popup_bg, ui.text_primary);
     }
 
-    if let Some(about) = &view.about {
-        let layout = desktop_layout.window(WindowId::About);
-        if screen.desktop.window(WindowId::About).shadowed {
-            render_window_shadow(frame, to_rect(layout.outer));
-        }
-        let outer = to_rect(layout.outer);
-        frame.render_widget(Clear, outer);
-        frame.render_widget(
-            Block::default()
-                .borders(Borders::ALL)
-                .title(screen.desktop.window(WindowId::About).title)
-                .title_style(Style::default().fg(ui.window_title))
-                .border_style(Style::default().fg(ui.window_border))
-                .style(Style::default().bg(ui.popup_bg)),
-            outer,
-        );
-        render_close_button(frame, outer);
-        render_text_window_content(frame, &layout, about, ui.popup_bg, ui.text_primary);
+    fn paint_news_ticker(&mut self, ticker: &NewsTickerViewModel) {
+        let dl = self.dl();
+        let news_area = to_rect(dl.news_ticker);
+        game::news_ticker::render_news_ticker(news_area, self.frame.buffer_mut(), ticker);
     }
 
-    if let Some(legend) = &view.legend {
-        let layout = desktop_layout.window(WindowId::Legend);
-        if screen.desktop.window(WindowId::Legend).shadowed {
-            render_window_shadow(frame, to_rect(layout.outer));
-        }
-        let outer = to_rect(layout.outer);
-        frame.render_widget(Clear, outer);
-        frame.render_widget(
-            Block::default()
-                .borders(Borders::ALL)
-                .title(screen.desktop.window(WindowId::Legend).title)
-                .title_style(Style::default().fg(ui.window_title))
-                .border_style(Style::default().fg(ui.window_border))
-                .style(Style::default().bg(ui.popup_bg)),
-            outer,
-        );
-        render_close_button(frame, outer);
-        render_text_window_content(frame, &layout, legend, ui.popup_bg, ui.text_primary);
-    }
-
-    render_menu_bar(frame, menu_area, screen, view);
-
-    if let Some(dialog) = &view.confirm_dialog {
-        screen.ui_areas.dialog_items = render_confirm_dialog(frame, area, dialog);
-    }
-}
-
-fn render_menu_bar(
-    frame: &mut Frame,
-    area: Rect,
-    screen: &mut crate::app::screens::InGameScreen,
-    view: &InGameDesktopView,
-) {
-    let ui = crate::ui::theme::ui_palette();
-    screen.ui_areas.menu_bar = ClickArea {
-        x: area.x,
-        y: area.y,
-        width: area.width,
-        height: area.height,
-    };
-    screen.ui_areas.menu_items = [ClickArea::default(); 6];
-    screen.ui_areas.menu_popup = ClickArea::default();
-    screen.ui_areas.menu_popup_items.clear();
-    {
-        let buf = frame.buffer_mut();
-        for x in area.x..area.x + area.width {
-            buf.set_string(
-                x,
-                area.y,
-                " ",
-                Style::default().fg(ui.menu_fg).bg(ui.menu_bg),
-            );
-        }
-    }
-
-    let mut x = area.x;
-    let title = format!(" {GAME_NAME} ");
-    if x + title.len() as u16 <= area.x + area.width {
-        frame.buffer_mut().set_string(
-            x,
-            area.y,
-            &title,
-            Style::default()
-                .fg(ui.menu_title)
-                .bg(ui.menu_bg)
-                .add_modifier(Modifier::BOLD),
-        );
-        x += title.len() as u16 + 1;
-    }
-
-    for (idx, title) in crate::app::screens::MENU_TITLES.iter().take(4).enumerate() {
-        let text = format!(" {} ", title);
-        let style = if view.menu_active && view.menu_selected == idx {
-            Style::default()
-                .fg(ui.menu_focus_fg)
-                .bg(ui.menu_focus_bg)
-                .add_modifier(Modifier::BOLD)
-        } else {
-            Style::default().fg(ui.menu_fg).bg(ui.menu_bg)
-        };
-        if x + text.len() as u16 <= area.x + area.width {
-            screen.ui_areas.menu_items[idx] = ClickArea {
-                x,
-                y: area.y,
-                width: text.len() as u16,
-                height: 1,
-            };
-            frame.buffer_mut().set_string(x, area.y, &text, style);
-        }
-        x += text.len() as u16 + 1;
-    }
-
-    let mut right_x = area.x + area.width;
-    for (idx, title) in crate::app::screens::MENU_TITLES
-        .iter()
-        .enumerate()
-        .skip(4)
-        .rev()
-    {
-        let text = format!(" {} ", title);
-        let text_w = text.len() as u16;
-        if right_x < area.x + text_w {
-            continue;
-        }
-        right_x = right_x.saturating_sub(text_w);
-        let style = if view.menu_active && view.menu_selected == idx {
-            Style::default()
-                .fg(ui.menu_focus_fg)
-                .bg(ui.menu_focus_bg)
-                .add_modifier(Modifier::BOLD)
-        } else {
-            Style::default().fg(ui.menu_fg).bg(ui.menu_bg)
-        };
-        screen.ui_areas.menu_items[idx] = ClickArea {
-            x: right_x,
-            y: area.y,
-            width: text_w,
-            height: 1,
-        };
-        frame.buffer_mut().set_string(right_x, area.y, &text, style);
-        right_x = right_x.saturating_sub(1);
-    }
-
-    if !view.menu_active {
-        return;
-    }
-
-    let menu = view.menu_selected;
-    let rows = crate::app::screens::menu_rows(menu);
-    if rows.is_empty() {
-        return;
-    }
-    let anchor = screen.ui_areas.menu_items[menu];
-    let popup_w = 28.min(area.width.max(8));
-    let popup_x = anchor
-        .x
-        .min(area.x + area.width.saturating_sub(popup_w.max(8)));
-    let popup_h = rows.len() as u16 + 2;
-    let popup = Rect::new(popup_x, area.y + 1, popup_w.max(8), popup_h);
-    screen.ui_areas.menu_popup = ClickArea {
-        x: popup.x,
-        y: popup.y,
-        width: popup.width,
-        height: popup.height,
-    };
-    frame.render_widget(
-        Block::default()
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(ui.menu_fg).bg(ui.menu_bg))
-            .style(Style::default().bg(ui.menu_bg)),
-        popup,
-    );
-    let buf = frame.buffer_mut();
-    for (idx, _) in rows.iter().enumerate() {
-        if let Some((label, right, _)) = screen.menu_row(menu, idx, &view.sim) {
-            let y = popup.y + 1 + idx as u16;
-            screen.ui_areas.menu_popup_items.push(ClickArea {
-                x: popup.x + 1,
-                y,
-                width: popup.width.saturating_sub(2),
-                height: 1,
-            });
-            let selected = idx == view.menu_item_selected;
-            let style = if selected {
-                Style::default().fg(ui.menu_focus_fg).bg(ui.menu_focus_bg)
-            } else {
-                Style::default().fg(ui.menu_fg).bg(ui.menu_bg)
-            };
-            let content_w = popup.width.saturating_sub(2);
-            let mut line = label;
-            if !right.is_empty() {
-                let right_w = right.chars().count() as u16;
-                let left_w = content_w.saturating_sub(right_w + 1) as usize;
-                line = format!(
-                    "{:<width$} {}",
-                    truncate(&line, left_w),
-                    right,
-                    width = left_w
-                );
-            }
-            buf.set_string(
-                popup.x + 1,
-                y,
-                format!(
-                    "{:<width$}",
-                    truncate(&line, content_w as usize),
-                    width = content_w as usize
-                ),
-                style,
-            );
-        }
-    }
-}
-
-fn truncate(s: &str, max: usize) -> String {
-    if s.chars().count() <= max {
-        s.to_string()
-    } else {
-        s.chars().take(max).collect()
+    fn end_frame(&mut self) {
+        // No-op — ratatui auto-presents
     }
 }
 

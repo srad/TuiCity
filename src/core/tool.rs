@@ -35,37 +35,6 @@ pub enum Tool {
 }
 
 impl Tool {
-    #[allow(dead_code)]
-    pub const ALL: [Tool; 27] = [
-        Tool::Inspect,
-        Tool::ZoneResLight,
-        Tool::ZoneResDense,
-        Tool::ZoneCommLight,
-        Tool::ZoneCommDense,
-        Tool::ZoneIndLight,
-        Tool::ZoneIndDense,
-        Tool::Road,
-        Tool::Highway,
-        Tool::Onramp,
-        Tool::Rail,
-        Tool::PowerLine,
-        Tool::WaterPipe,
-        Tool::Subway,
-        Tool::PowerPlantCoal,
-        Tool::PowerPlantGas,
-        Tool::BusDepot,
-        Tool::RailDepot,
-        Tool::SubwayStation,
-        Tool::WaterPump,
-        Tool::WaterTower,
-        Tool::WaterTreatment,
-        Tool::Desalination,
-        Tool::Park,
-        Tool::Police,
-        Tool::Fire,
-        Tool::Bulldoze,
-    ];
-
     pub fn cost(&self) -> i64 {
         match self {
             Tool::Inspect => 0,

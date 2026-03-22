@@ -52,12 +52,15 @@ pub fn run() -> io::Result<()> {
     app.cmd_tx = Some(tx);
 
     let engine_arc = app.engine.clone();
-    std::thread::spawn(move || loop {
-        while let Ok(cmd) = rx.try_recv() {
+    std::thread::spawn(move || {
+        while let Ok(cmd) = rx.recv() {
             let mut engine = engine_arc.write().unwrap();
             let _ = engine.execute_command(cmd);
+            // Drain any additional queued commands while we hold the lock
+            while let Ok(cmd) = rx.try_recv() {
+                let _ = engine.execute_command(cmd);
+            }
         }
-        std::thread::sleep(Duration::from_millis(10));
     });
 
     let mut cursor_pos: (f64, f64) = (0.0, 0.0);
@@ -197,14 +200,11 @@ pub fn run() -> io::Result<()> {
 
 /// Build a `ScreenView` snapshot without keeping a long-lived borrow on the screen.
 fn build_view(app: &mut AppState) -> ScreenView {
-    let mut running = app.running;
     let context = crate::app::screens::AppContext {
         engine: &app.engine,
         cmd_tx: &app.cmd_tx,
-        running: &mut running,
     };
-    let view = app
-        .screens
+    app.screens
         .last_mut()
         .map(|s| s.build_view(context))
         .unwrap_or_else(|| {
@@ -212,7 +212,5 @@ fn build_view(app: &mut AppState) -> ScreenView {
                 selected: 0,
                 options: vec![],
             })
-        });
-    app.running = running;
-    view
+        })
 }

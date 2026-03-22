@@ -370,13 +370,13 @@ mod tests {
             Map::new(4, 4),
             SimState::default(),
         )));
-        let mut running = true;
+
         let cmd_tx = None;
 
         screen.on_tick(AppContext {
             engine: &engine,
             cmd_tx: &cmd_tx,
-            running: &mut running,
+
         });
 
         assert!(!screen.state.is_loading);
@@ -410,7 +410,7 @@ mod tests {
             Map::new(4, 4),
             SimState::default(),
         )));
-        let mut running = true;
+
         let cmd_tx = None;
         let event = Event::Mouse(MouseEvent {
             kind: MouseEventKind::Moved,
@@ -424,7 +424,7 @@ mod tests {
             AppContext {
                 engine: &engine,
                 cmd_tx: &cmd_tx,
-                running: &mut running,
+    
             },
         );
 
@@ -458,7 +458,7 @@ mod tests {
             Map::new(4, 4),
             SimState::default(),
         )));
-        let mut running = true;
+
         let cmd_tx = None;
         let event = Event::Mouse(MouseEvent {
             kind: MouseEventKind::Moved,
@@ -472,7 +472,7 @@ mod tests {
             AppContext {
                 engine: &engine,
                 cmd_tx: &cmd_tx,
-                running: &mut running,
+    
             },
         );
 
@@ -530,7 +530,7 @@ mod tests {
             Map::new(4, 4),
             SimState::default(),
         )));
-        let mut running = true;
+
         let cmd_tx = None;
 
         let transition = screen.on_action(
@@ -538,7 +538,7 @@ mod tests {
             AppContext {
                 engine: &engine,
                 cmd_tx: &cmd_tx,
-                running: &mut running,
+    
             },
         );
 
@@ -589,7 +589,7 @@ mod tests {
             Map::new(4, 4),
             SimState::default(),
         )));
-        let mut running = true;
+
         let cmd_tx = None;
 
         let transition = screen.on_action(
@@ -597,7 +597,7 @@ mod tests {
             AppContext {
                 engine: &engine,
                 cmd_tx: &cmd_tx,
-                running: &mut running,
+    
             },
         );
 
@@ -643,7 +643,7 @@ mod tests {
             Map::new(4, 4),
             SimState::default(),
         )));
-        let mut running = true;
+
         let cmd_tx = None;
 
         let transition = screen.on_action(
@@ -651,7 +651,7 @@ mod tests {
             AppContext {
                 engine: &engine,
                 cmd_tx: &cmd_tx,
-                running: &mut running,
+    
             },
         );
 
@@ -697,7 +697,7 @@ mod tests {
             Map::new(4, 4),
             SimState::default(),
         )));
-        let mut running = true;
+
         let cmd_tx = None;
 
         let transition = screen.on_action(
@@ -705,7 +705,7 @@ mod tests {
             AppContext {
                 engine: &engine,
                 cmd_tx: &cmd_tx,
-                running: &mut running,
+    
             },
         );
 
@@ -751,7 +751,7 @@ mod tests {
             Map::new(4, 4),
             SimState::default(),
         )));
-        let mut running = true;
+
         let cmd_tx = None;
 
         let transition = screen.on_action(
@@ -759,7 +759,7 @@ mod tests {
             AppContext {
                 engine: &engine,
                 cmd_tx: &cmd_tx,
-                running: &mut running,
+    
             },
         );
 
