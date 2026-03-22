@@ -23,7 +23,7 @@ pub fn render_settings(
 
     let panel_w = area.width.saturating_sub(18).clamp(48, 66);
     let available_h = area.height.saturating_sub(8).max(10);
-    let panel_h = available_h.min(18);
+    let panel_h = available_h.min(26);
     let panel_x = area.x + area.width.saturating_sub(panel_w) / 2;
     let panel_y = area.y + 4;
 

@@ -43,6 +43,7 @@ pub struct SettingsViewModel {
     pub options: Vec<String>,
     pub selected: usize,
     pub current_theme_label: String,
+    pub current_frontend_label: String,
 }
 
 #[derive(Clone, Debug)]

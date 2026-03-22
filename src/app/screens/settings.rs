@@ -31,7 +31,7 @@ impl SettingsScreen {
     }
 
     fn option_count(&self) -> usize {
-        4
+        5
     }
 
     fn activate_selected(&mut self) -> Option<ScreenTransition> {
@@ -47,7 +47,15 @@ impl SettingsScreen {
                 let _ = config::persist_music_preference(!current);
                 None
             }
-            3 => Some(ScreenTransition::Pop),
+            3 => {
+                let next = match config::get_frontend_kind() {
+                    config::FrontendKind::Terminal => config::FrontendKind::PixelsGui,
+                    config::FrontendKind::PixelsGui => config::FrontendKind::Terminal,
+                };
+                let _ = config::persist_frontend_preference(next);
+                None
+            }
+            4 => Some(ScreenTransition::Pop),
             _ => None,
         }
     }
@@ -103,15 +111,22 @@ impl Screen for SettingsScreen {
         } else {
             "Enable Music"
         };
+        let frontend_kind = config::get_frontend_kind();
+        let frontend_label = format!(
+            "Renderer: {} (restart required)",
+            frontend_kind.label()
+        );
         crate::ui::view::ScreenView::Settings(crate::ui::view::SettingsViewModel {
             options: vec![
                 "Theme Settings".to_string(),
                 "Cycle Theme".to_string(),
                 music_label.to_string(),
+                frontend_label,
                 "Back".to_string(),
             ],
             selected: self.state.selected,
             current_theme_label: theme::current_theme().label().to_string(),
+            current_frontend_label: frontend_kind.label().to_string(),
         })
     }
 }

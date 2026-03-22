@@ -6,6 +6,9 @@ pub struct Camera {
     pub cursor_y: usize,
     pub view_w: usize,
     pub view_h: usize,
+    /// Columns per map tile in the active frontend's screen coordinate system.
+    /// 2 for the terminal (2 chars per tile), 1 for the pixel frontend (1 cell per tile).
+    pub col_scale: u8,
 }
 
 impl Default for Camera {
@@ -17,6 +20,7 @@ impl Default for Camera {
             cursor_y: 10,
             view_w: 80,
             view_h: 40,
+            col_scale: 2,
         }
     }
 }
@@ -70,7 +74,7 @@ impl Camera {
     }
 
     pub fn screen_to_map(&self, sx: u16, sy: u16) -> (usize, usize) {
-        let mx = ((sx as i32) / 2 + self.offset_x).max(0) as usize;
+        let mx = ((sx as i32) / self.col_scale as i32 + self.offset_x).max(0) as usize;
         let my = (sy as i32 + self.offset_y).max(0) as usize;
         (mx, my)
     }

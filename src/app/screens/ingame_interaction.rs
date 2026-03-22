@@ -314,8 +314,9 @@ impl InGameScreen {
         drag.last_row = row;
         drag.carry_cols += delta_cols;
 
-        let tile_dx = drag.carry_cols / 2;
-        drag.carry_cols -= tile_dx * 2;
+        let scale = self.camera.col_scale as i32;
+        let tile_dx = drag.carry_cols / scale;
+        drag.carry_cols -= tile_dx * scale;
         self.map_pan_drag = Some(drag);
 
         if tile_dx != 0 || delta_rows != 0 {

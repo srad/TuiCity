@@ -12,25 +12,32 @@ use crossterm::{
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 
+use app::config::FrontendKind;
 use ui::{Renderer, TerminalRenderer};
 
 fn main() -> io::Result<()> {
-    // Terminal setup
+    match app::config::get_frontend_kind() {
+        FrontendKind::PixelsGui => ui::frontends::pixels_winit::run(),
+        FrontendKind::Terminal => run_terminal(),
+    }?;
+    Ok(())
+}
+
+fn run_terminal() -> io::Result<()> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
 
     let mut renderer = TerminalRenderer::new()?;
-    let result = run(&mut renderer);
+    let result = run_loop(&mut renderer);
 
-    // Always restore terminal
     disable_raw_mode()?;
     execute!(io::stdout(), LeaveAlternateScreen, DisableMouseCapture)?;
 
     result
 }
 
-fn run(renderer: &mut dyn Renderer) -> io::Result<()> {
+fn run_loop(renderer: &mut dyn Renderer) -> io::Result<()> {
     let mut app = app::AppState::new();
     let (tx, rx) = mpsc::channel();
     app.cmd_tx = Some(tx);
@@ -39,13 +46,10 @@ fn run(renderer: &mut dyn Renderer) -> io::Result<()> {
 
     std::thread::spawn(move || {
         loop {
-            // Process all pending commands
             while let Ok(cmd) = rx.try_recv() {
                 let mut engine = engine_arc.write().unwrap();
                 let _ = engine.execute_command(cmd);
             }
-
-            // Sleep a bit to prevent 100% CPU usage
             std::thread::sleep(Duration::from_millis(10));
         }
     });
@@ -54,11 +58,8 @@ fn run(renderer: &mut dyn Renderer) -> io::Result<()> {
         renderer.render(&mut app)?;
 
         if event::poll(Duration::from_millis(16))? {
-            // ~60fps poll
             let event = event::read()?;
-
             app.on_event(&event);
-
             let action = app::input::translate_event(event);
             app.on_action(action);
         } else {

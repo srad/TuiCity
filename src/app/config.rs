@@ -6,12 +6,31 @@ use super::save;
 
 const CONFIG_FILE_NAME: &str = "config.json";
 
+#[derive(Default, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FrontendKind {
+    #[default]
+    Terminal,
+    PixelsGui,
+}
+
+impl FrontendKind {
+    pub fn label(self) -> &'static str {
+        match self {
+            FrontendKind::Terminal => "Terminal",
+            FrontendKind::PixelsGui => "Pixel GUI",
+        }
+    }
+}
+
 #[derive(Default, serde::Serialize, serde::Deserialize)]
 pub struct UserConfig {
     #[serde(default)]
     pub theme: Option<ThemePreset>,
     #[serde(default)]
     pub music_enabled: Option<bool>,
+    #[serde(default)]
+    pub frontend: Option<FrontendKind>,
 }
 
 pub fn apply_user_config() {
@@ -33,6 +52,16 @@ pub fn is_music_enabled() -> bool {
 pub fn persist_music_preference(enabled: bool) -> io::Result<()> {
     let mut config = load_user_config();
     config.music_enabled = Some(enabled);
+    save_user_config(&config)
+}
+
+pub fn get_frontend_kind() -> FrontendKind {
+    load_user_config().frontend.unwrap_or_default()
+}
+
+pub fn persist_frontend_preference(kind: FrontendKind) -> io::Result<()> {
+    let mut config = load_user_config();
+    config.frontend = Some(kind);
     save_user_config(&config)
 }
 
