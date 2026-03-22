@@ -4,6 +4,13 @@ All notable changes to TuiCity 2000 are documented here.
 
 ## [Unreleased]
 
+### Multi-Tile Building Art
+
+- **Per-position character art for footprint buildings** — multi-tile buildings (Police, Fire, WaterTreatment, Desalination, PowerPlantCoal, PowerPlantGas, Park, WaterTower, BusDepot, RailDepot) now render with unique characters at each tile position instead of repeating the same glyph. Buildings display box-drawing frames (`┌─┐│└┘`) with labels and interior detail, making them visually distinct structures on the map.
+- **Render-time position inference** — tile position within a building is inferred by scanning same-tile neighbours (no map data or save format changes). A new `building_offset()` function in `map_view.rs` determines each tile's (dx, dy) offset within its footprint.
+- **Central art table** — 10 building art definitions (`POLICE_ART`, `FIRE_ART`, `COAL_PLANT_ART`, etc.) stored as `(left_char, right_char)` arrays in `theme.rs`, indexed row-major by position.
+- **Footprint preview shows building art** — the placement preview now displays the actual building art shape instead of a uniform character, so players see the final structure before committing.
+
 ### Event Loop Architecture — Responsiveness
 
 - **Blocking engine thread** — replaced the `try_recv()` + `sleep(10ms)` polling loop with blocking `recv()`. The engine command thread now wakes instantly when a command arrives (zero latency, down from up to 10ms). After processing the first command, remaining queued commands are drained while still holding the write lock to avoid lock churn during bursts. Applied to both terminal and pixel frontends.

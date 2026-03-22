@@ -376,9 +376,44 @@ pub(crate) fn committed_tile_sprite(
             glyph.bg
         };
         theme::network_sprite(tile, n, e, s, w, glyph.fg, bg)
+    } else if let Some(art) = theme::building_art(tile) {
+        let (dx, dy) = building_offset(map, layer, tile, x, y);
+        let (fw, _fh) = theme::tile_footprint_size(tile);
+        let idx = dy * fw + dx;
+        let (left, right) = if idx < art.len() {
+            art[idx]
+        } else {
+            (glyph.ch, glyph.ch)
+        };
+        theme::TileSprite::pair(left, right, glyph.fg, glyph.bg)
     } else {
         theme::tile_sprite(tile, overlay)
     }
+}
+
+/// Infer (dx, dy) offset of a tile within its multi-tile building footprint
+/// by scanning west and north for same-tile neighbors.
+fn building_offset(
+    map: &Map,
+    layer: ViewLayer,
+    tile: Tile,
+    x: usize,
+    y: usize,
+) -> (usize, usize) {
+    let (fw, fh) = theme::tile_footprint_size(tile);
+    if fw <= 1 && fh <= 1 {
+        return (0, 0);
+    }
+
+    let mut dx = 0;
+    while dx < fw - 1 && x > dx && map.view_tile(layer, x - dx - 1, y) == tile {
+        dx += 1;
+    }
+    let mut dy = 0;
+    while dy < fh - 1 && y > dy && map.view_tile(layer, x, y - dy - 1) == tile {
+        dy += 1;
+    }
+    (dx, dy)
 }
 
 fn traffic_animation_phase() -> u32 {
@@ -994,22 +1029,36 @@ impl<'a> Widget for MapView<'a> {
                                 }
                             }
                             PreviewKind::Footprint(tool, all_valid) => {
-                                let preview_ch = tool
-                                    .target_tile()
-                                    .map(|t| theme::tile_glyph(t, TileOverlay::default()).ch)
-                                    .unwrap_or('?');
-                                if *all_valid {
-                                    theme::TileSprite::uniform(
-                                        preview_ch,
-                                        ui.preview_valid_fg,
-                                        ui.preview_valid_bg,
-                                    )
+                                let (preview_fg, preview_bg) = if *all_valid {
+                                    (ui.preview_valid_fg, ui.preview_valid_bg)
                                 } else {
-                                    theme::TileSprite::uniform(
-                                        preview_ch,
-                                        ui.preview_invalid_fg,
-                                        ui.preview_invalid_bg,
-                                    )
+                                    (ui.preview_invalid_fg, ui.preview_invalid_bg)
+                                };
+                                let target = tool.target_tile();
+                                let art = target.and_then(theme::building_art);
+                                if let (Some(art), Some(target_tile)) = (art, target) {
+                                    let (fw, fh) = theme::tile_footprint_size(target_tile);
+                                    let ax = self.camera.cursor_x
+                                        .saturating_sub(fw / 2)
+                                        .min(self.map.width.saturating_sub(fw));
+                                    let ay = self.camera.cursor_y
+                                        .saturating_sub(fh / 2)
+                                        .min(self.map.height.saturating_sub(fh));
+                                    let dx = map_x.saturating_sub(ax);
+                                    let dy = map_y.saturating_sub(ay);
+                                    let idx = dy * fw + dx;
+                                    let (left, right) = if idx < art.len() {
+                                        art[idx]
+                                    } else {
+                                        let ch = theme::tile_glyph(target_tile, TileOverlay::default()).ch;
+                                        (ch, ch)
+                                    };
+                                    theme::TileSprite::pair(left, right, preview_fg, preview_bg)
+                                } else {
+                                    let preview_ch = target
+                                        .map(|t| theme::tile_glyph(t, TileOverlay::default()).ch)
+                                        .unwrap_or('?');
+                                    theme::TileSprite::uniform(preview_ch, preview_fg, preview_bg)
                                 }
                             }
                             PreviewKind::None => committed_tile_sprite(
@@ -1544,8 +1593,9 @@ mod tests {
         }
         .render(area, &mut buf);
 
-        assert_eq!(buf.cell((0, 0)).unwrap().symbol(), "P");
-        assert_eq!(buf.cell((1, 0)).unwrap().symbol(), "]");
+        // Building art: top-left corner of police station
+        assert_eq!(buf.cell((0, 0)).unwrap().symbol(), "┌");
+        assert_eq!(buf.cell((1, 0)).unwrap().symbol(), "─");
     }
 
     #[test]
@@ -1666,8 +1716,9 @@ mod tests {
         }
         .render(area, &mut buf);
 
-        assert_eq!(buf.cell((0, 0)).unwrap().symbol(), "P");
-        assert_eq!(buf.cell((1, 0)).unwrap().symbol(), "]");
+        // Building art: top-left corner of police station
+        assert_eq!(buf.cell((0, 0)).unwrap().symbol(), "┌");
+        assert_eq!(buf.cell((1, 0)).unwrap().symbol(), "─");
     }
 
     #[test]

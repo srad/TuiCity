@@ -1274,6 +1274,98 @@ pub fn tile_sprite(tile: Tile, overlay: TileOverlay) -> TileSprite {
     TileSprite::pair(left, right, glyph.fg, glyph.bg)
 }
 
+// ── Feature 3b: Multi-tile building art ──────────────────────────────────────
+
+/// Footprint size (width, height) for multi-tile buildings.
+/// Mirrors `Tool::footprint()` but keyed on tile type for the renderer.
+pub fn tile_footprint_size(tile: Tile) -> (usize, usize) {
+    match tile {
+        Tile::PowerPlantCoal | Tile::PowerPlantGas => (4, 4),
+        Tile::Police | Tile::Fire => (3, 3),
+        Tile::WaterTreatment | Tile::Desalination => (3, 3),
+        Tile::WaterTower | Tile::Park | Tile::BusDepot | Tile::RailDepot => (2, 2),
+        _ => (1, 1),
+    }
+}
+
+// Per-position (left_char, right_char) for each tile in a building, row-major.
+// Index = dy * width + dx.
+
+const POLICE_ART: [(char, char); 9] = [
+    ('┌', '─'), ('P', 'D'), ('─', '┐'),
+    ('│', ' '), ('*', '*'), (' ', '│'),
+    ('└', '─'), ('─', '─'), ('─', '┘'),
+];
+
+const FIRE_ART: [(char, char); 9] = [
+    ('┌', '─'), ('F', 'D'), ('─', '┐'),
+    ('│', ' '), ('*', '*'), (' ', '│'),
+    ('└', '─'), ('─', '─'), ('─', '┘'),
+];
+
+const WATER_TREATMENT_ART: [(char, char); 9] = [
+    ('┌', '─'), ('W', 'T'), ('─', '┐'),
+    ('│', ' '), ('~', '~'), (' ', '│'),
+    ('└', '─'), ('─', '─'), ('─', '┘'),
+];
+
+const DESALINATION_ART: [(char, char); 9] = [
+    ('┌', '─'), ('D', 'S'), ('─', '┐'),
+    ('│', ' '), ('~', '~'), (' ', '│'),
+    ('└', '─'), ('─', '─'), ('─', '┘'),
+];
+
+const COAL_PLANT_ART: [(char, char); 16] = [
+    ('┌', '─'), ('─', '─'), ('─', '─'), ('─', '┐'),
+    ('│', ' '), ('C', 'O'), ('A', 'L'), (' ', '│'),
+    ('│', ' '), (' ', '@'), ('@', ' '), (' ', '│'),
+    ('└', '─'), ('─', '─'), ('─', '─'), ('─', '┘'),
+];
+
+const GAS_PLANT_ART: [(char, char); 16] = [
+    ('┌', '─'), ('─', '─'), ('─', '─'), ('─', '┐'),
+    ('│', ' '), ('G', 'A'), ('S', ' '), (' ', '│'),
+    ('│', ' '), (' ', '@'), ('@', ' '), (' ', '│'),
+    ('└', '─'), ('─', '─'), ('─', '─'), ('─', '┘'),
+];
+
+const PARK_ART: [(char, char); 4] = [
+    ('"', '^'), ('^', '"'),
+    ('"', '.'), ('.', '"'),
+];
+
+const WATER_TOWER_ART: [(char, char); 4] = [
+    ('[', '='), ('=', ']'),
+    ('|', ' '), (' ', '|'),
+];
+
+const BUS_DEPOT_ART: [(char, char); 4] = [
+    ('┌', 'B'), ('D', '┐'),
+    ('└', '─'), ('─', '┘'),
+];
+
+const RAIL_DEPOT_ART: [(char, char); 4] = [
+    ('┌', 'R'), ('D', '┐'),
+    ('└', '─'), ('─', '┘'),
+];
+
+/// Returns per-position character art for multi-tile buildings, or `None` for 1×1 tiles.
+pub fn building_art(tile: Tile) -> Option<&'static [(char, char)]> {
+    match tile {
+        Tile::Police => Some(&POLICE_ART),
+        Tile::Fire => Some(&FIRE_ART),
+        Tile::WaterTreatment => Some(&WATER_TREATMENT_ART),
+        Tile::Desalination => Some(&DESALINATION_ART),
+        Tile::PowerPlantCoal => Some(&COAL_PLANT_ART),
+        Tile::PowerPlantGas => Some(&GAS_PLANT_ART),
+        Tile::Park => Some(&PARK_ART),
+        Tile::WaterTower => Some(&WATER_TOWER_ART),
+        Tile::BusDepot => Some(&BUS_DEPOT_ART),
+        Tile::RailDepot => Some(&RAIL_DEPOT_ART),
+        _ => None,
+    }
+}
+
 // ── Feature 4: Network characters (Borders) ──────────────────────────────────
 
 fn network_sprite_chars(tile: Tile, n: bool, e: bool, s: bool, w: bool) -> (char, char) {
