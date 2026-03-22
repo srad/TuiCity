@@ -1191,6 +1191,8 @@ impl<'a> Widget for MapView<'a> {
 /// Read-only map view (no cursor) for the New City preview
 pub struct MapPreview<'a> {
     pub map: &'a Map,
+    /// Optional cursor tile to highlight (e.g. the map-generator paint cursor).
+    pub cursor: Option<(usize, usize)>,
 }
 
 impl<'a> Widget for MapPreview<'a> {
@@ -1266,7 +1268,16 @@ impl<'a> Widget for MapPreview<'a> {
                 );
                 let bx = render_area.x + (v_col as u16 * 2);
                 let by = render_area.y + v_row as u16;
-                write_tile_sprite(buf, area, bx, by, sprite);
+
+                // Highlight the cursor tile with inverted colours.
+                if self.cursor == Some((map_x, map_y)) {
+                    let mut highlighted = sprite;
+                    std::mem::swap(&mut highlighted.left.fg, &mut highlighted.left.bg);
+                    std::mem::swap(&mut highlighted.right.fg, &mut highlighted.right.bg);
+                    write_tile_sprite(buf, area, bx, by, highlighted);
+                } else {
+                    write_tile_sprite(buf, area, bx, by, sprite);
+                }
             }
         }
     }

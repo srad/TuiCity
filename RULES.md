@@ -473,7 +473,18 @@ Taxes are collected every month (1/12th), not annually. Tax rates clamped to 0�
 | Fire Department | $500 | 3×3 |
 | Park | $80 | 2×2 |
 | Bulldoze | $1 | 1×1 drag |
+| Add Water | $300 | 1×1 |
+| Add Land | $100 | 1×1 |
+| Plant Trees | $20 | 1×1 |
 | Inspect | Free | 1×1 |
+
+### Terrain Tool Placement Rules
+
+| Tool | Can place on |
+|------|-------------|
+| Add Water | Grass, Trees, Dirt — also clears any zone on the tile |
+| Add Land | Water only |
+| Plant Trees | Grass, Trees, Dirt |
 
 ---
 

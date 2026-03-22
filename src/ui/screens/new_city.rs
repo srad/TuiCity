@@ -1,5 +1,8 @@
 use crate::{
-    app::screens::{NewCityField, NewCityState},
+    app::{
+        screens::{NewCityField, NewCityState, TerrainBrush},
+        ClickArea,
+    },
     ui::{game::map_view::MapPreview, theme, view::NewCityViewModel},
 };
 use ratatui::{
@@ -27,10 +30,18 @@ pub fn render_new_city(
         .title_style(Style::default().fg(ui.window_title))
         .style(Style::default().bg(ui.map_window_bg));
     let inner_map = map_block.inner(map_area);
+    // Store the inner map bounds so the app screen can translate click coords to tile coords.
+    state.inner_map_area = ClickArea {
+        x: inner_map.x,
+        y: inner_map.y,
+        width: inner_map.width,
+        height: inner_map.height,
+    };
     frame.render_widget(map_block, map_area);
     frame.render_widget(
         MapPreview {
             map: &view.preview_map,
+            cursor: if view.map_cursor_active { Some(view.cursor) } else { None },
         },
         inner_map,
     );
@@ -195,6 +206,50 @@ fn render_controls(
         row += 2;
     }
 
+    // ── Terrain brush row ────────────────────────────────────────────────────
+    {
+        let brush_label = match view.terrain_brush {
+            None => "Paint Terrain: [none]",
+            Some(TerrainBrush::Water) => "Paint Terrain: [Water]",
+            Some(TerrainBrush::Land) => "Paint Terrain: [Land]",
+            Some(TerrainBrush::Trees) => "Paint Terrain: [Trees]",
+        };
+        let brush_style = if view.terrain_brush.is_some() {
+            Style::default().fg(ui.accent_soft)
+        } else {
+            Style::default().fg(ui.text_secondary)
+        };
+        buf.set_string(area.x, row, brush_label, brush_style);
+        row += 1;
+
+        let brushes: [Option<TerrainBrush>; 4] =
+            [None, Some(TerrainBrush::Water), Some(TerrainBrush::Land), Some(TerrainBrush::Trees)];
+        let labels = ["None", "Water", "Land", "Trees"];
+        // Each button gets equal width; any leftover goes to the last button.
+        let btn_w = (w / 4).max(1);
+        for (i, (brush_opt, label)) in brushes.iter().zip(labels.iter()).enumerate() {
+            let bx = area.x + (i as u16) * btn_w;
+            let bw = if i == 3 { w.saturating_sub(btn_w * 3) } else { btn_w };
+            let is_active = view.terrain_brush == *brush_opt;
+            let style = if is_active {
+                Style::default()
+                    .fg(ui.button_focus_fg)
+                    .bg(ui.button_focus_bg)
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(ui.button_fg).bg(ui.button_bg)
+            };
+            buf.set_string(
+                bx,
+                row,
+                format!("{:<width$}", label, width = bw as usize),
+                style,
+            );
+            state.brush_areas[i] = ClickArea { x: bx, y: row, width: bw, height: 1 };
+        }
+        row += 2;
+    }
+
     for (field, text) in [
         (NewCityField::RegenerateBtn, "[Regenerate Map]"),
         (NewCityField::StartBtn, "  [▶ Start City]  "),
@@ -224,7 +279,11 @@ fn render_controls(
     }
 
     if row < area.y + area.height {
-        let hint = "↑↓ Focus  ←→ Adjust  Enter Select";
+        let hint = if view.map_cursor_active {
+            "Arrows:Move  Enter:Paint  Esc:Exit  Tab:Brush"
+        } else {
+            "↑↓:Focus  ←→:Adjust  Tab:Brush  M:MapMode"
+        };
         let trimmed: String = hint.chars().take(w as usize).collect();
         buf.set_string(
             area.x,

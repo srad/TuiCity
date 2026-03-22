@@ -1,4 +1,4 @@
-use super::map::{Map, Tile, TransportTile, ViewLayer};
+use super::map::{Map, TerrainTile, Tile, TransportTile, ViewLayer};
 use super::sim::SimState;
 use super::tool::{Tool, ToolContext};
 
@@ -72,6 +72,20 @@ impl<'a> ToolPlacer<'a> {
             self.place_network_cell(tool, layer, x, y);
         } else if tool == Tool::Bulldoze {
             self.bulldoze_tile(layer, x, y);
+        } else if matches!(
+            tool,
+            Tool::TerrainWater | Tool::TerrainLand | Tool::TerrainTrees
+        ) {
+            let terrain = match tool {
+                Tool::TerrainWater => TerrainTile::Water,
+                Tool::TerrainLand => TerrainTile::Grass,
+                Tool::TerrainTrees => TerrainTile::Trees,
+                _ => unreachable!(),
+            };
+            if terrain == TerrainTile::Water {
+                self.map.set_zone_spec(x, y, None);
+            }
+            self.map.set_terrain(x, y, terrain);
         } else {
             let new_tile = match tool.target_tile() {
                 Some(t) => t,

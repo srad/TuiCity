@@ -54,6 +54,10 @@ pub struct NewCityViewModel {
     pub seed_text: String,
     pub water_pct: usize,
     pub trees_pct: usize,
+    pub terrain_brush: Option<crate::app::screens::TerrainBrush>,
+    /// Cursor tile position and whether map cursor mode is active.
+    pub cursor: (usize, usize),
+    pub map_cursor_active: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -104,6 +108,7 @@ pub struct ToolbarPaletteViewModel {
     pub utility_tool: Tool,
     pub power_plant_tool: Tool,
     pub building_tool: Tool,
+    pub terrain_tool: Tool,
     pub chooser: Option<ToolChooserKind>,
     pub view_layer: ViewLayer,
 }

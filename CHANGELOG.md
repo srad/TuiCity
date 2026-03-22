@@ -4,6 +4,50 @@ All notable changes to TuiCity 2000 are documented here.
 
 ## [Unreleased]
 
+### Terraforming Tools
+
+#### In-Game Terrain Editing
+
+- **Add Water** ($300, 1×1) — converts a grass, trees, or dirt tile to water; clears any zone on the target tile
+- **Add Land** ($100, 1×1) — fills a water tile with grass
+- **Plant Trees** ($20, 1×1) — places a forest tile on grass, existing trees, or dirt
+- All three tools are grouped under a new **Terrain** chooser row in the toolbox (button label `[W/L/T]`)
+- Placement goes through `ToolPlacer::place_tool` with a dedicated terrain branch that calls `map.set_terrain()` directly, bypassing normal occupant clearing
+
+#### Map Generator Free Terrain Painting
+
+- The **New City** screen now has a four-button brush selector: **None / Water / Land / Trees**
+- **Mouse click** on the map preview paints the clicked tile with the active brush; clicking without a brush instead places the map cursor there and activates cursor mode
+- **Mouse drag** paints every tile under the cursor as the mouse moves (button held + moved)
+- **Tab** cycles the brush (None → Water → Land → Trees → None) from anywhere in the form
+- **M** toggles map cursor mode; in cursor mode arrow keys move a highlighted cursor and paint the tile under it continuously; **Enter** paints without moving; **Esc** exits cursor mode
+- Coordinate translation mirrors the `MapPreview` renderer's endpoint-interpolation formula exactly (`v_col * (mw-1) / (num_v_tiles_x-1)`), ensuring the painted tile is always the tile the clicked visual cell displays
+- Terrain painting in the generator is free
+
+### New Buildings and Power Plants
+
+- **Nuclear Plant** (4×4, $15,000, unlocks 1955) — 2,000 MW; explodes on expiry like coal/gas; contributes to fire risk at gas-plant level
+- **Wind Farm** (1×1, $500, unlocks 1970) — 40 MW; permanent lifespan, no EOL explosion, no pollution
+- **Solar Plant** (2×2, $1,000, unlocks 1990) — 100 MW; permanent lifespan, no EOL explosion
+- **Hospital** (3×3, $2,000) — raises land value within radius 4; high power (200 MW) and water (200 units) demand
+- **School** (1×1, $1,000) — reduces crime within radius 8 by up to 40 points; raises land value within radius 5
+- **Stadium** (4×4, $5,000) — raises land value within radius 7 by up to 35 points; high power (300 MW) and water (50 units) demand
+- **Library** (1×1, $500) — reduces crime within radius 5 by up to 20 points; raises land value within radius 4
+- All new buildings appear in the **Buildings** toolbox chooser; Nuclear/Wind/Solar appear in the **Power Plants** chooser
+
+### Year-Based Tool Unlocks (Generic Availability System)
+
+- **`ToolContext` struct** added to `src/core/tool.rs` — a generic snapshot of world state used to determine tool availability. Currently holds `year` and `unlock_mode`; designed to be extended with budget thresholds, population requirements, prerequisites, and other future conditions without changing any call sites.
+- **`Tool::is_available(&ctx)`** replaces the old `is_unlocked(year, mode)` — single unified gate used by both the UI and the placement engine.
+- **`Tool::unavailable_reason(&ctx)`** returns a short reason string (e.g. `"unlocks 1955"`) when a tool is locked, `None` when available. Used to annotate greyed-out items.
+- **Chooser popup greys locked tools** — locked tools are rendered in the dim palette colour with the unlock year shown in parentheses (e.g. `Nuclear Plant  (unlocks 1955)`). Greyed items produce no click area and cannot be selected with the mouse.
+- **Keyboard shortcuts respect locks** — direct key presses for locked tools are silently ignored; no error message is shown.
+- **Sandbox mode** bypasses all year locks as before.
+
+### Esc Deselects Active Tool
+
+- Pressing `Esc` now follows a priority chain: close tool chooser popup → close inspect window → cancel active drag → **deselect active tool (switch to Inspect)** → open "Return to Start" confirm prompt. Previously it went straight to the quit prompt after cancelling drags.
+
 ### Multi-Tile Building Art
 
 - **Per-position character art for footprint buildings** — multi-tile buildings (Police, Fire, WaterTreatment, Desalination, PowerPlantCoal, PowerPlantGas, Park, WaterTower, BusDepot, RailDepot) now render with unique characters at each tile position instead of repeating the same glyph. Buildings display box-drawing frames (`┌─┐│└┘`) with labels and interior detail, making them visually distinct structures on the map.

@@ -174,7 +174,6 @@ impl Map {
         self.terrain[self.idx(x, y)]
     }
 
-    #[allow(dead_code)]
     pub fn set_terrain(&mut self, x: usize, y: usize, terrain: TerrainTile) {
         let idx = self.idx(x, y);
         self.terrain[idx] = terrain;

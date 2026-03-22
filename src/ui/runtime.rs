@@ -42,6 +42,7 @@ pub enum ToolChooserKind {
     Utilities,
     PowerPlants,
     Buildings,
+    Terrain,
 }
 
 impl ToolChooserKind {
@@ -52,6 +53,7 @@ impl ToolChooserKind {
             ToolChooserKind::Utilities => " Utility Selection ",
             ToolChooserKind::PowerPlants => " Power Plant Selection ",
             ToolChooserKind::Buildings => " Building Selection ",
+            ToolChooserKind::Terrain => " Terrain Tools ",
         }
     }
 
@@ -62,6 +64,7 @@ impl ToolChooserKind {
             ToolChooserKind::Utilities => "Utilities",
             ToolChooserKind::PowerPlants => "Power Plants",
             ToolChooserKind::Buildings => "Buildings",
+            ToolChooserKind::Terrain => "Terrain",
         }
     }
 
@@ -109,6 +112,11 @@ impl ToolChooserKind {
                 Tool::Stadium,
                 Tool::Library,
             ],
+            ToolChooserKind::Terrain => &[
+                Tool::TerrainWater,
+                Tool::TerrainLand,
+                Tool::TerrainTrees,
+            ],
         }
     }
 
@@ -146,6 +154,9 @@ impl ToolChooserKind {
             | Tool::School
             | Tool::Stadium
             | Tool::Library => Some(ToolChooserKind::Buildings),
+            Tool::TerrainWater | Tool::TerrainLand | Tool::TerrainTrees => {
+                Some(ToolChooserKind::Terrain)
+            }
             _ => None,
         }
     }

@@ -91,6 +91,24 @@ Selecting **New City** opens an interactive form with a live preview. You can us
 
 As you adjust the values, the preview map and the hex seed update in real-time. You can type into the name and seed fields, use **Left/Right** on the focused Water % and Trees % sliders, click those bars to jump to a value, click **Regenerate** to roll a fresh map, and activate **Start** with either **Enter** or a mouse click.
 
+#### Terrain Painting in the Map Generator
+
+You can freely sculpt the terrain before starting your city using the brush buttons or keyboard:
+
+| Control | Action |
+|---------|--------|
+| Click a brush button (**None / Water / Land / Trees**) | Select that brush |
+| **Tab** | Cycle through brushes (None → Water → Land → Trees → None) |
+| Click on the map (with a brush selected) | Paint that tile |
+| Click + drag on the map | Paint every tile along the drag path |
+| **M** | Toggle map cursor mode |
+| Arrow keys (map cursor mode) | Move the cursor and paint continuously |
+| **Enter** (map cursor mode) | Paint the tile under the cursor without moving |
+| **Esc** (map cursor mode) | Exit map cursor mode |
+| **Tab** (map cursor mode) | Cycle brush while in cursor mode |
+
+Painting is free in the map generator — no cost is charged until you start the city.
+
 ### Controls
 
 | Key / Input | Action |
@@ -109,7 +127,7 @@ As you adjust the values, the preview map and the hex seed update in real-time. 
 | `q` / `Ctrl+C` | Open the quit prompt |
 | `Ctrl+S` | Save city |
 | `u` | Toggle the active surface / underground layer |
-| `Esc` | Cancel drag, close modal windows, or go back |
+| `Esc` | Cancel drag → close modal/chooser → deselect active tool → go back |
 | `Tab` | Cycle map overlay modes (Normal → Power Grid → Water Service → Traffic → Pollution → Land Value → Crime → Fire Risk) |
 | `F1` | Open menu bar |
 | `b` / `B` / `$` | Open budget window |
@@ -140,8 +158,8 @@ Select a tool by pressing its hotkey or from the toolbox chooser. Moving the mou
 | `p` | Power Line | $5 | 1×1 drag | Surface electricity distribution; can run through zones |
 | `w` | Water Pipe | $5 | 1×1 drag | Underground water distribution; selecting it switches to the underground layer |
 | `m` | Subway Tunnel | $50 | 1×1 drag | Underground subway network |
-| `e` | Coal Plant | $3000 | 4×4 | Early power generation |
-| `g` | Gas Plant | $6000 | 4×4 | Higher-capacity power generation |
+| `e` | Coal Plant | $3000 | 4×4 | Power generation; available from start |
+| `g` | Gas Plant | $6000 | 4×4 | Higher-capacity power generation; available from start |
 | `d` | Bus Depot | $250 | 2×2 | Enables bus trips on connected road networks |
 | `t` | Rail Depot | $500 | 2×2 | Connects nearby lots to connected rail lines |
 | `n` | Subway Station | $500 | 1×1 | Connects nearby lots to connected subway tunnels |
@@ -151,13 +169,25 @@ Select a tool by pressing its hotkey or from the toolbox chooser. Moving the mou
 
 #### Additional Toolbox Tools
 
-| Tool | Cost | Footprint | Description |
-|------|------|-----------|-------------|
-| Bulldoze | $1 | 1×1 drag | Remove surface or underground contents depending on the active layer |
-| Water Pump | $200 | 1×1 | Powered water production; stronger when placed next to water |
-| Water Tower | $350 | 2×2 | Moderate powered water production |
-| Water Treatment | $750 | 3×3 | High water production utility |
-| Desalination | $1200 | 3×3 | Highest-capacity water production utility |
+All tools listed below are accessible from the toolbox chooser. Tools with a year requirement are greyed out and cannot be selected until that year is reached; hovering over them shows the unlock year.
+
+| Tool | Cost | Footprint | Unlocks | Description |
+|------|------|-----------|---------|-------------|
+| Add Water | $300 | 1×1 | — | Convert a land tile to water (Terrain chooser) |
+| Add Land | $100 | 1×1 | — | Fill a water tile with land (Terrain chooser) |
+| Plant Trees | $20 | 1×1 | — | Place forest on land (Terrain chooser) |
+| Bulldoze | $1 | 1×1 drag | — | Remove surface or underground contents depending on the active layer |
+| Hospital | $2,000 | 3×3 | — | Raises land value; high power and water demand |
+| School | $1,000 | 1×1 | — | Reduces crime, raises land value |
+| Stadium | $5,000 | 4×4 | — | Large land value boost across a wide radius |
+| Library | $500 | 1×1 | — | Minor crime reduction and land value boost |
+| Nuclear Plant | $15,000 | 4×4 | 1955 | 2,000 MW; explodes on expiry |
+| Wind Farm | $500 | 1×1 | 1970 | 40 MW; permanent, no explosion risk |
+| Solar Plant | $1,000 | 2×2 | 1990 | 100 MW; permanent, no explosion risk |
+| Water Pump | $200 | 1×1 | — | Powered water production; stronger when placed next to water |
+| Water Tower | $350 | 2×2 | — | Moderate powered water production |
+| Water Treatment | $750 | 3×3 | — | High water production utility |
+| Desalination | $1,200 | 3×3 | — | Highest-capacity water production utility |
 
 ### Tips
 
@@ -408,7 +438,6 @@ src/
 
 ### Todos
 
-- **Historical unlocks**: decide whether to expose unlock mode and year-based tool progression more visibly in the UI, including sandbox overrides inside in-game settings
 - **Testing depth**: keep expanding regression tests around layered interactions, especially binary save/load coverage, underground editing edge cases, and multi-system failures where power, water, and transport all interact
 
 *TuiCity 2000 is a hobby project. Contributions, bug reports, and feature requests are welcome via GitHub Issues.*

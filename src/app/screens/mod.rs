@@ -24,7 +24,7 @@ pub use ingame::InGameScreen;
 pub use ingame_budget::BudgetFocus;
 pub use ingame_menu::{menu_rows, MENU_TITLES};
 pub use load_city::{LoadCityScreen, LoadCityState};
-pub use new_city::{NewCityField, NewCityScreen, NewCityState};
+pub use new_city::{NewCityField, NewCityScreen, NewCityState, TerrainBrush};
 pub use settings::{SettingsScreen, SettingsState};
 pub use start::{StartScreen, StartState};
 pub use theme_settings::{ThemeSettingsScreen, ThemeSettingsState};

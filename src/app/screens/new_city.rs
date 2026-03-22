@@ -2,7 +2,7 @@ use crate::{
     app::{input::Action, ClickArea},
     core::{
         engine::EngineCommand,
-        map::{gen, Map},
+        map::{gen, Map, TerrainTile},
     },
 };
 
@@ -39,6 +39,33 @@ impl NewCityField {
     }
 }
 
+/// Terrain brushes available in the map generator for free tile painting.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum TerrainBrush {
+    Water,
+    Land,
+    Trees,
+}
+
+impl TerrainBrush {
+    pub fn to_terrain(self) -> TerrainTile {
+        match self {
+            TerrainBrush::Water => TerrainTile::Water,
+            TerrainBrush::Land => TerrainTile::Grass,
+            TerrainBrush::Trees => TerrainTile::Trees,
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn label(self) -> &'static str {
+        match self {
+            TerrainBrush::Water => "Water",
+            TerrainBrush::Land => "Land",
+            TerrainBrush::Trees => "Trees",
+        }
+    }
+}
+
 pub struct NewCityState {
     pub seed: u64,
     pub preview_map: Map,
@@ -48,6 +75,17 @@ pub struct NewCityState {
     pub water_pct: usize,
     pub trees_pct: usize,
     pub field_areas: [ClickArea; 7],
+    /// Currently selected terrain brush for free painting on the map preview.
+    pub terrain_brush: Option<TerrainBrush>,
+    /// Click areas for the [None] [Water] [Land] [Trees] brush buttons (4 items).
+    pub brush_areas: [ClickArea; 4],
+    /// Bounds of the inner map preview widget (set by the renderer each frame).
+    pub inner_map_area: ClickArea,
+    /// When true, arrow keys move the map cursor instead of navigating fields.
+    pub map_cursor_active: bool,
+    /// Current cursor position in map tile coordinates.
+    pub cursor_x: usize,
+    pub cursor_y: usize,
 }
 
 impl NewCityState {
@@ -83,7 +121,40 @@ impl NewCityState {
             water_pct: params.water_pct as usize,
             trees_pct: params.trees_pct as usize,
             field_areas: [ClickArea::default(); 7],
+            terrain_brush: None,
+            brush_areas: [ClickArea::default(); 4],
+            inner_map_area: ClickArea::default(),
+            map_cursor_active: false,
+            cursor_x: 64,
+            cursor_y: 64,
         }
+    }
+
+    /// Cycle to the next brush: None → Water → Land → Trees → None.
+    pub fn cycle_brush(&mut self) {
+        self.terrain_brush = match self.terrain_brush {
+            None => Some(TerrainBrush::Water),
+            Some(TerrainBrush::Water) => Some(TerrainBrush::Land),
+            Some(TerrainBrush::Land) => Some(TerrainBrush::Trees),
+            Some(TerrainBrush::Trees) => None,
+        };
+    }
+
+    /// Paint the terrain at the cursor position with the active brush (if any).
+    pub fn paint_at_cursor(&mut self) {
+        if let Some(brush) = self.terrain_brush {
+            let mx = self.cursor_x.min(self.preview_map.width.saturating_sub(1));
+            let my = self.cursor_y.min(self.preview_map.height.saturating_sub(1));
+            self.preview_map.set_terrain(mx, my, brush.to_terrain());
+        }
+    }
+
+    /// Move the map cursor by (dx, dy), clamped to map bounds.
+    pub fn move_cursor(&mut self, dx: i32, dy: i32) {
+        let w = self.preview_map.width;
+        let h = self.preview_map.height;
+        self.cursor_x = (self.cursor_x as i32 + dx).clamp(0, w as i32 - 1) as usize;
+        self.cursor_y = (self.cursor_y as i32 + dy).clamp(0, h as i32 - 1) as usize;
     }
 
     pub fn regenerate(&mut self) {
@@ -142,6 +213,30 @@ impl Screen for NewCityScreen {
     }
 
     fn on_action(&mut self, action: Action, context: AppContext) -> Option<ScreenTransition> {
+        // ── Map cursor mode: arrow keys move cursor, Enter paints, Esc exits ──
+        if self.state.map_cursor_active {
+            match action {
+                Action::MoveCursor(dx, dy) => {
+                    self.state.move_cursor(dx, dy);
+                    self.state.paint_at_cursor();
+                    return None;
+                }
+                Action::MenuSelect => {
+                    self.state.paint_at_cursor();
+                    return None;
+                }
+                Action::MenuBack => {
+                    self.state.map_cursor_active = false;
+                    return None;
+                }
+                Action::CharInput('\t') => {
+                    self.state.cycle_brush();
+                    return None;
+                }
+                _ => {}
+            }
+        }
+
         match action {
             Action::MenuBack => Some(ScreenTransition::Pop),
             Action::MoveCursor(dx, dy) => {
@@ -161,6 +256,33 @@ impl Screen for NewCityScreen {
                 None
             }
             Action::MouseClick { col, row } => {
+                // Brush button clicks (4 buttons: None/Water/Land/Trees)
+                let brushes: [Option<TerrainBrush>; 4] = [
+                    None,
+                    Some(TerrainBrush::Water),
+                    Some(TerrainBrush::Land),
+                    Some(TerrainBrush::Trees),
+                ];
+                for (i, area) in self.state.brush_areas.iter().enumerate() {
+                    if area.contains(col, row) {
+                        self.state.terrain_brush = brushes[i];
+                        return None;
+                    }
+                }
+                // Map preview click — paint if brush is selected; enter map mode otherwise
+                if let Some((tx, ty)) =
+                    map_click_to_tile(col, row, self.state.inner_map_area, &self.state.preview_map)
+                {
+                    if let Some(brush) = self.state.terrain_brush {
+                        self.state.preview_map.set_terrain(tx, ty, brush.to_terrain());
+                    } else {
+                        // Clicking the map without a brush activates map cursor mode at that tile
+                        self.state.cursor_x = tx;
+                        self.state.cursor_y = ty;
+                        self.state.map_cursor_active = true;
+                    }
+                    return None;
+                }
                 for (idx, area) in self.state.field_areas.iter().enumerate() {
                     if area.contains(col, row) {
                         let field = NewCityField::ALL[idx];
@@ -196,6 +318,16 @@ impl Screen for NewCityScreen {
                 }
                 None
             }
+            Action::MouseDrag { col, row } => {
+                if let Some((tx, ty)) =
+                    map_click_to_tile(col, row, self.state.inner_map_area, &self.state.preview_map)
+                {
+                    if let Some(brush) = self.state.terrain_brush {
+                        self.state.preview_map.set_terrain(tx, ty, brush.to_terrain());
+                    }
+                }
+                None
+            }
             Action::DeleteChar => {
                 match self.state.focused_field {
                     NewCityField::CityName => {
@@ -210,19 +342,29 @@ impl Screen for NewCityScreen {
                 None
             }
             Action::CharInput(c) => {
-                match self.state.focused_field {
-                    NewCityField::CityName => {
-                        if !c.is_control() {
-                            self.state.city_name.push(c);
-                        }
+                match c {
+                    '\t' => {
+                        // Tab cycles terrain brush regardless of focused field
+                        self.state.cycle_brush();
                     }
-                    NewCityField::SeedInput => {
-                        if c.is_ascii_hexdigit() {
-                            self.state.seed_input.push(c.to_ascii_uppercase());
-                            self.state.apply_seed_input();
-                        }
+                    'm' | 'M' => {
+                        // M toggles map cursor mode (only useful when a brush is selected)
+                        self.state.map_cursor_active = !self.state.map_cursor_active;
                     }
-                    _ => {}
+                    _ => match self.state.focused_field {
+                        NewCityField::CityName => {
+                            if !c.is_control() {
+                                self.state.city_name.push(c);
+                            }
+                        }
+                        NewCityField::SeedInput => {
+                            if c.is_ascii_hexdigit() {
+                                self.state.seed_input.push(c.to_ascii_uppercase());
+                                self.state.apply_seed_input();
+                            }
+                        }
+                        _ => {}
+                    },
                 }
                 None
             }
@@ -251,6 +393,9 @@ impl Screen for NewCityScreen {
             seed_text: self.state.seed_input.clone(),
             water_pct: self.state.water_pct,
             trees_pct: self.state.trees_pct,
+            terrain_brush: self.state.terrain_brush,
+            cursor: (self.state.cursor_x, self.state.cursor_y),
+            map_cursor_active: self.state.map_cursor_active,
         })
     }
 }
@@ -300,6 +445,65 @@ impl NewCityScreen {
         } else {
             Some(ScreenTransition::Replace(Box::new(InGameScreen::new())))
         }
+    }
+}
+
+/// Translates a terminal (col, row) click within the map preview to a map tile (x, y).
+/// Returns `None` if the click is outside the rendered map area.
+/// Mirrors the aspect-fitting logic from `MapPreview::render`.
+fn map_click_to_tile(
+    col: u16,
+    row: u16,
+    inner: ClickArea,
+    map: &Map,
+) -> Option<(usize, usize)> {
+    if inner.width == 0 || inner.height == 0 {
+        return None;
+    }
+    let mw = map.width as f32;
+    let mh = map.height as f32;
+    let map_aspect = (2.0 * mw) / mh;
+
+    let (rw, rh) = if inner.width as f32 / inner.height as f32 > map_aspect {
+        let h = inner.height as f32;
+        let w = h * map_aspect;
+        ((w as u16 / 2 * 2).max(2), (h as u16).max(1))
+    } else {
+        let w = inner.width as f32;
+        let h = w / map_aspect;
+        ((w as u16 / 2 * 2).max(2), (h as u16).max(1))
+    };
+
+    let rx = inner.x + (inner.width.saturating_sub(rw)) / 2;
+    let ry = inner.y + (inner.height.saturating_sub(rh)) / 2;
+
+    if col < rx || col >= rx + rw || row < ry || row >= ry + rh {
+        return None;
+    }
+
+    // Visual tile column/row (each visual tile is 2 terminal chars wide, 1 tall).
+    let v_col = ((col - rx) / 2) as usize;
+    let v_row = (row - ry) as usize;
+    let num_v_tiles_x = (rw / 2) as usize;
+    let num_v_tiles_y = rh as usize;
+
+    // Mirror the endpoint-interpolation used in MapPreview::render exactly,
+    // so the painted tile is always the same tile that visual cell displays.
+    let tile_x = if num_v_tiles_x <= 1 {
+        0
+    } else {
+        (v_col * (map.width - 1)) / (num_v_tiles_x - 1)
+    };
+    let tile_y = if num_v_tiles_y <= 1 {
+        0
+    } else {
+        (v_row * (map.height - 1)) / (num_v_tiles_y - 1)
+    };
+
+    if tile_x < map.width && tile_y < map.height {
+        Some((tile_x, tile_y))
+    } else {
+        None
     }
 }
 

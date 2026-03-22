@@ -12,7 +12,7 @@ use ratatui::{
     style::{Modifier, Style},
 };
 
-const TOOLBAR_ROWS: u16 = 7;
+const TOOLBAR_ROWS: u16 = 8;
 
 pub fn toolbar_height(_: &ToolbarPaletteViewModel) -> u16 {
     TOOLBAR_ROWS
@@ -84,6 +84,7 @@ pub fn render_toolbar(
             toolbar.power_plant_tool,
         ),
         (rows[6], ToolChooserKind::Buildings, toolbar.building_tool),
+        (rows[7], ToolChooserKind::Terrain, toolbar.terrain_tool),
     ];
 
     for (row, kind, selected_tool) in chooser_rows {
@@ -214,6 +215,7 @@ fn chooser_key(kind: ToolChooserKind) -> &'static str {
         ToolChooserKind::Utilities => "[P/W/M]",
         ToolChooserKind::PowerPlants => "[E/G/N/V/O]",
         ToolChooserKind::Buildings => "[S/F/K/H/J/X/Q]",
+        ToolChooserKind::Terrain => "[W/L/T]",
     }
 }
 
@@ -239,6 +241,7 @@ mod tests {
             utility_tool: Tool::PowerLine,
             power_plant_tool: Tool::PowerPlantCoal,
             building_tool: Tool::Police,
+            terrain_tool: Tool::TerrainWater,
             chooser: None,
             view_layer: crate::core::map::ViewLayer::Surface,
         };

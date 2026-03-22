@@ -39,6 +39,9 @@ pub enum Tool {
     PowerPlantWind,
     PowerPlantSolar,
     Bulldoze,
+    TerrainWater,
+    TerrainLand,
+    TerrainTrees,
 }
 
 /// Snapshot of world state used to determine whether a tool can be selected.
@@ -85,6 +88,9 @@ impl Tool {
             Tool::PowerPlantWind => 500,
             Tool::PowerPlantSolar => 1_000,
             Tool::Bulldoze => 1,
+            Tool::TerrainWater => 300,
+            Tool::TerrainLand => 100,
+            Tool::TerrainTrees => 20,
         }
     }
 
@@ -121,6 +127,9 @@ impl Tool {
             Tool::PowerPlantWind => Some(Tile::PowerPlantWind),
             Tool::PowerPlantSolar => Some(Tile::PowerPlantSolar),
             Tool::Bulldoze => Some(Tile::Grass),
+            Tool::TerrainWater => Some(Tile::Water),
+            Tool::TerrainLand => Some(Tile::Grass),
+            Tool::TerrainTrees => Some(Tile::Trees),
         }
     }
 
@@ -190,6 +199,9 @@ impl Tool {
             Tool::PowerPlantWind => "Wind Farm",
             Tool::PowerPlantSolar => "Solar Plant",
             Tool::Bulldoze => "Bulldoze",
+            Tool::TerrainWater => "Add Water",
+            Tool::TerrainLand => "Add Land",
+            Tool::TerrainTrees => "Plant Trees",
         }
     }
 
@@ -229,6 +241,9 @@ impl Tool {
             Tool::PowerPlantWind => 'v',
             Tool::PowerPlantSolar => 'o',
             Tool::Bulldoze => 'b',
+            Tool::TerrainWater => 'w',
+            Tool::TerrainLand => 'l',
+            Tool::TerrainTrees => 't',
         }
     }
 
@@ -270,6 +285,11 @@ impl Tool {
         match self {
             Tool::Bulldoze => !matches!(tile, Tile::Water),
             Tool::Inspect => false,
+            Tool::TerrainWater => {
+                matches!(tile, Tile::Grass | Tile::Trees | Tile::Dirt)
+            }
+            Tool::TerrainLand => matches!(tile, Tile::Water),
+            Tool::TerrainTrees => matches!(tile, Tile::Grass | Tile::Trees | Tile::Dirt),
             Tool::Road | Tool::Highway | Tool::Onramp => matches!(
                 tile,
                 Tile::Grass

@@ -187,6 +187,7 @@ pub struct InGameScreen {
     pub utility_tool: Tool,
     pub power_plant_tool: Tool,
     pub building_tool: Tool,
+    pub terrain_tool: Tool,
     pub ui_areas: UiAreas,
     pub paused: bool,
     pub menu_active: bool,
@@ -226,6 +227,7 @@ impl InGameScreen {
             utility_tool: Tool::PowerLine,
             power_plant_tool: Tool::PowerPlantCoal,
             building_tool: Tool::Police,
+            terrain_tool: Tool::TerrainWater,
             ui_areas: UiAreas::default(),
             paused: false,
             menu_active: false,
@@ -555,6 +557,7 @@ impl InGameScreen {
             utility_tool: self.utility_tool,
             power_plant_tool: self.power_plant_tool,
             building_tool: self.building_tool,
+            terrain_tool: self.terrain_tool,
             chooser: self.open_tool_chooser,
             view_layer: self.view_layer,
         }
@@ -622,6 +625,7 @@ impl InGameScreen {
             ToolChooserKind::Utilities => self.utility_tool,
             ToolChooserKind::PowerPlants => self.power_plant_tool,
             ToolChooserKind::Buildings => self.building_tool,
+            ToolChooserKind::Terrain => self.terrain_tool,
         }
     }
 
@@ -632,6 +636,7 @@ impl InGameScreen {
             ToolChooserKind::Utilities => self.utility_tool = tool,
             ToolChooserKind::PowerPlants => self.power_plant_tool = tool,
             ToolChooserKind::Buildings => self.building_tool = tool,
+            ToolChooserKind::Terrain => self.terrain_tool = tool,
         }
     }
 
