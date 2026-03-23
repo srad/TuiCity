@@ -5,7 +5,7 @@ mod game_info;
 mod textgen;
 mod ui;
 
-use std::{fs::File, io, time::Duration};
+use std::{fs::File, io, time::{Duration, Instant}};
 
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture},
@@ -83,9 +83,36 @@ fn silence_stderr() {
     }
 }
 
+/// Rate-limits ticks to a fixed interval regardless of how often it is checked.
+///
+/// Accepts an explicit `now` so that tests can drive it with synthetic timestamps
+/// instead of real wall-clock time.
+struct TickGate {
+    interval: Duration,
+    last: Instant,
+}
+
+impl TickGate {
+    fn new(interval: Duration) -> Self {
+        Self { interval, last: Instant::now() }
+    }
+
+    /// Returns `true` (and resets the timer) if `now` is at least one interval
+    /// past the last tick; otherwise returns `false`.
+    fn check(&mut self, now: Instant) -> bool {
+        if now.duration_since(self.last) >= self.interval {
+            self.last = now;
+            true
+        } else {
+            false
+        }
+    }
+}
+
 fn run_loop(renderer: &mut dyn Renderer) -> io::Result<()> {
     let mut app = app::AppState::new();
     app.attach_engine_channel();
+    let mut tick_gate = TickGate::new(Duration::from_millis(16));
 
     loop {
         if let Err(e) = renderer.render(&mut app) {
@@ -107,8 +134,12 @@ fn run_loop(renderer: &mut dyn Renderer) -> io::Result<()> {
             }
         }
 
-        // Always tick — animations and sim clock must not stall during input
-        app.on_tick();
+        // Tick at a fixed rate regardless of how many input events arrived.
+        // Without this gate, fast mouse movement shortens the loop and causes
+        // time-dependent state (e.g. the news ticker scroll) to advance faster.
+        if tick_gate.check(Instant::now()) {
+            app.on_tick();
+        }
 
         if !app.running {
             break;
@@ -116,4 +147,46 @@ fn run_loop(renderer: &mut dyn Renderer) -> io::Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tick_gate_does_not_fire_before_interval() {
+        let mut gate = TickGate::new(Duration::from_millis(16));
+        let t0 = gate.last;
+        assert!(!gate.check(t0));
+        assert!(!gate.check(t0 + Duration::from_millis(5)));
+        assert!(!gate.check(t0 + Duration::from_millis(15)));
+    }
+
+    #[test]
+    fn tick_gate_fires_once_at_interval_then_resets() {
+        let mut gate = TickGate::new(Duration::from_millis(16));
+        let t0 = gate.last;
+
+        assert!(gate.check(t0 + Duration::from_millis(16)));
+        // Immediately after firing the timer resets; sub-interval checks must not fire.
+        assert!(!gate.check(t0 + Duration::from_millis(17)));
+        assert!(!gate.check(t0 + Duration::from_millis(31)));
+        // One full interval past the last fire: fires again.
+        assert!(gate.check(t0 + Duration::from_millis(32)));
+    }
+
+    #[test]
+    fn tick_gate_suppresses_burst_of_rapid_checks() {
+        // Regression: fast mouse movement must not cause extra ticks.
+        let mut gate = TickGate::new(Duration::from_millis(16));
+        let t0 = gate.last;
+        let mut tick_count = 0u32;
+        // Simulate 200 events arriving within 1 ms (well under the 16 ms interval).
+        for i in 0..200u64 {
+            if gate.check(t0 + Duration::from_micros(i * 5)) {
+                tick_count += 1;
+            }
+        }
+        assert_eq!(tick_count, 0, "burst of rapid events must not trigger any tick");
+    }
 }
