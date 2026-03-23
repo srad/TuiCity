@@ -38,6 +38,7 @@ pub enum MenuAction {
     OverlayFireRisk,
     OpenSettings,
     OpenAdvisor,
+    ToggleNewspaper,
     OpenHelp,
     OpenAbout,
 }
@@ -122,7 +123,7 @@ const DISASTER_ROWS: [MenuRow; 3] = [
         action: MenuAction::DisasterTornado,
     },
 ];
-const WINDOWS_ROWS: [MenuRow; 15] = [
+const WINDOWS_ROWS: [MenuRow; 16] = [
     MenuRow {
         label: "Toolbox",
         right: "",
@@ -147,6 +148,11 @@ const WINDOWS_ROWS: [MenuRow; 15] = [
         label: "Advisors",
         right: "A",
         action: MenuAction::OpenAdvisor,
+    },
+    MenuRow {
+        label: "Newspaper",
+        right: "N",
+        action: MenuAction::ToggleNewspaper,
     },
     MenuRow {
         label: "Map Legend",
@@ -325,6 +331,7 @@ impl InGameScreen {
             MenuAction::OpenBudget => self.open_budget(context),
             MenuAction::OpenStatistics => self.open_stats_window(),
             MenuAction::OpenAdvisor => self.toggle_advisor_window(),
+            MenuAction::ToggleNewspaper => self.toggle_newspaper_window(context),
             MenuAction::ToggleLegend => self.toggle_legend_window(),
             MenuAction::ToggleLayer => self.toggle_view_layer(),
             MenuAction::OverlayNone => self.overlay_mode = OverlayMode::None,
@@ -544,7 +551,11 @@ mod tests {
         );
         assert_eq!(InGameScreen::menu_action_for(3, 4), MenuAction::OpenAdvisor);
         assert_eq!(
-            InGameScreen::menu_action_for(3, 14),
+            InGameScreen::menu_action_for(3, 5),
+            MenuAction::ToggleNewspaper
+        );
+        assert_eq!(
+            InGameScreen::menu_action_for(3, 15),
             MenuAction::OverlayFireRisk
         );
         assert_eq!(MENU_TITLES[4], "Help");
@@ -647,10 +658,10 @@ mod tests {
         let sim = SimState::default();
 
         let (layer_label, layer_value, _) = screen
-            .menu_row(3, 6, &sim)
+            .menu_row(3, 7, &sim)
             .expect("windows layer row should exist");
         let (water_label, _, _) = screen
-            .menu_row(3, 9, &sim)
+            .menu_row(3, 10, &sim)
             .expect("windows water overlay row should exist");
 
         assert_eq!(layer_label, "View Layer");

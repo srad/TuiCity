@@ -33,11 +33,11 @@ impl DownloadHandle {
     }
 }
 
-/// Default HuggingFace repo and filenames for SmolLM2-360M Instruct (Q8_0 quantization).
-/// At ~360M parameters (~380 MB quantized) this gives better output quality on CPU.
-const HF_MODEL_REPO: &str = "bartowski/SmolLM2-360M-Instruct-GGUF";
-const HF_MODEL_FILE: &str = "SmolLM2-360M-Instruct-Q8_0.gguf";
-const HF_TOKENIZER_REPO: &str = "HuggingFaceTB/SmolLM2-360M-Instruct";
+/// Default HuggingFace repo and filenames for SmolLM2-1.7B Instruct (Q4_K_M quantization).
+/// At ~1.7B parameters (~1.0 GB quantized) this gives good instruction-following on CPU.
+const HF_MODEL_REPO: &str = "bartowski/SmolLM2-1.7B-Instruct-GGUF";
+const HF_MODEL_FILE: &str = "SmolLM2-1.7B-Instruct-Q4_K_M.gguf";
+const HF_TOKENIZER_REPO: &str = "HuggingFaceTB/SmolLM2-1.7B-Instruct";
 const HF_TOKENIZER_FILE: &str = "tokenizer.json";
 
 /// Local filenames we save to.

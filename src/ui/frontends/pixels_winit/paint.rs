@@ -13,9 +13,10 @@ use crate::{
         runtime::{ToolChooserKind, ToolbarHitArea, ToolbarHitTarget, UiRect, WindowId},
         theme::{self, OverlayMode},
         view::{
-            AdvisorViewModel, BudgetViewModel, ConfirmDialogViewModel, NewsTickerViewModel,
-            ScreenView, SettingsViewModel, StartViewModel, StatisticsWindowViewModel,
-            TextWindowViewModel, ToolChooserViewModel, ToolbarPaletteViewModel,
+            AdvisorViewModel, BudgetViewModel, ConfirmDialogViewModel, NewspaperViewModel,
+            NewsTickerViewModel, ScreenView, SettingsViewModel, StartViewModel,
+            StatisticsWindowViewModel, TextWindowViewModel, ToolChooserViewModel,
+            ToolbarPaletteViewModel,
         },
     },
 };
@@ -1915,6 +1916,152 @@ impl<'a> InGamePainter for PixelPainter<'a> {
                 self.buf, self.width, inner_x, ly, &truncated, 0xeee8e1, 0x232237, self.scale,
             );
         }
+    }
+
+    fn paint_newspaper_window(
+        &mut self,
+        newspaper: &NewspaperViewModel,
+        ingame: &InGameScreen,
+    ) -> Vec<ClickArea> {
+        let win = ingame.desktop.window(WindowId::Newspaper);
+        let wx = win.x as u32 * self.cw;
+        let wy = win.y as u32 * self.ch;
+        let ww = (win.width as u32 * self.cw).min(self.width.saturating_sub(wx));
+        let wh = (win.height as u32 * self.ch).min(self.height.saturating_sub(wy));
+        if ww < 8 || wh < 6 {
+            return Vec::new();
+        }
+        self.window_chrome(wx, wy, ww, wh, win.title);
+
+        let inner_x = wx + self.cw;
+        let inner_y = wy + self.ch;
+        let inner_w = ww.saturating_sub(self.cw * 2);
+        let inner_h = wh.saturating_sub(self.ch * 2);
+        let cols = (inner_w / self.cw).max(1) as usize;
+        let fg = 0xeee8e1u32;
+        let dim = 0x8888aau32;
+        let bg = 0x232237u32;
+        let hl_fg = 0x1c1c2au32;
+        let hl_bg = 0xffdd77u32;
+        let rule_fg = 0x555577u32;
+
+        // ── Masthead ──
+        let month_name = match newspaper.month {
+            1 => "January", 2 => "February", 3 => "March", 4 => "April",
+            5 => "May", 6 => "June", 7 => "July", 8 => "August",
+            9 => "September", 10 => "October", 11 => "November", 12 => "December",
+            _ => "???",
+        };
+
+        // Top rule
+        let rule: String = "═".repeat(cols);
+        draw_str(self.buf, self.width, inner_x, inner_y, &rule, rule_fg, bg, self.scale);
+
+        // Title
+        let masthead = format!("THE {} DAILY TRIBUNE", newspaper.city_name.to_uppercase());
+        let mast_len = masthead.len().min(cols);
+        let mast_row = inner_y + self.ch;
+        let mast_px = inner_x + ((cols.saturating_sub(mast_len)) as u32 * self.cw) / 2;
+        draw_str(self.buf, self.width, mast_px, mast_row, &masthead[..mast_len], fg, bg, self.scale);
+
+        // Date
+        let date_line = format!("{} {}", month_name, newspaper.year);
+        let date_len = date_line.len().min(cols);
+        let date_row = inner_y + self.ch * 2;
+        let date_px = inner_x + ((cols.saturating_sub(date_len)) as u32 * self.cw) / 2;
+        draw_str(self.buf, self.width, date_px, date_row, &date_line[..date_len], dim, bg, self.scale);
+
+        // Bottom rule
+        let rule_row = inner_y + self.ch * 3;
+        draw_str(self.buf, self.width, inner_x, rule_row, &rule, rule_fg, bg, self.scale);
+
+        let body_y = inner_y + self.ch * 4;
+        let body_h = inner_h.saturating_sub(self.ch * 4);
+
+        if newspaper.pending {
+            let msg = "The presses are rolling...";
+            let mx = inner_x + ((cols.saturating_sub(msg.len())) as u32 * self.cw) / 2;
+            draw_str(self.buf, self.width, mx, body_y + body_h / 2, msg, dim, bg, self.scale);
+            return Vec::new();
+        }
+
+        if newspaper.sections.is_empty() {
+            draw_str(self.buf, self.width, inner_x, body_y, "No edition available.", dim, bg, self.scale);
+            return Vec::new();
+        }
+
+        // ── Detail view ──
+        if let Some(idx) = newspaper.detail_index {
+            if let Some(section) = newspaper.sections.get(idx) {
+                let title: String = section.title.chars().take(cols).collect();
+                draw_str(self.buf, self.width, inner_x, body_y, &title, fg, bg, self.scale);
+                let thin: String = "─".repeat(cols);
+                draw_str(self.buf, self.width, inner_x, body_y + self.ch, &thin, rule_fg, bg, self.scale);
+                let text_y = body_y + self.ch * 2;
+                let text_h = body_h.saturating_sub(self.ch * 3);
+                for (i, line) in section.body.lines().enumerate() {
+                    let ly = text_y + i as u32 * self.ch;
+                    if ly + self.ch > text_y + text_h { break; }
+                    let truncated: String = line.chars().take(cols).collect();
+                    draw_str(self.buf, self.width, inner_x, ly, &truncated, fg, bg, self.scale);
+                }
+                let hint = "[Esc] Back";
+                let hy = inner_y + inner_h - self.ch;
+                let hx = inner_x + inner_w.saturating_sub(hint.len() as u32 * self.cw);
+                draw_str(self.buf, self.width, hx, hy, hint, dim, bg, self.scale);
+            }
+            return Vec::new();
+        }
+
+        // ── Front page: clickable headlines ──
+        let mut click_areas = Vec::new();
+        let mut y = body_y;
+        let max_y = body_y + body_h;
+
+        for (i, section) in newspaper.sections.iter().enumerate() {
+            if y + self.ch * 2 >= max_y { break; }
+
+            // Headline row (highlighted)
+            let icon = match section.title.as_str() {
+                "LEAD STORY" => "■",  "CITY BEAT" => "●",  "EDITORIAL" => "▸",
+                "CLASSIFIEDS" => "◆", "WEATHER" => "☀",   _ => "►",
+            };
+            let headline = format!(" {} {} ", icon, section.title);
+            let hl_len = headline.len().min(cols);
+            fill_rect(self.buf, self.width, inner_x, y, inner_w, self.ch, hl_bg);
+            draw_str(self.buf, self.width, inner_x, y, &headline[..hl_len], hl_fg, hl_bg, self.scale);
+
+            // Click area in terminal cell coordinates
+            let cell_x = win.x + 3; // padded_inner offset
+            let cell_y = (y / self.ch) as u16;
+            let cell_w = win.width.saturating_sub(6);
+            click_areas.push(ClickArea { x: cell_x, y: cell_y, width: cell_w, height: 1 });
+
+            y += self.ch;
+
+            // Preview line
+            if y + self.ch <= max_y {
+                let preview: String = section.body.lines().next().unwrap_or("")
+                    .chars().take(cols.saturating_sub(2)).collect();
+                draw_str(self.buf, self.width, inner_x + self.cw, y, &preview, dim, bg, self.scale);
+            }
+            y += self.ch;
+
+            // Separator
+            if y + self.ch <= max_y && i + 1 < newspaper.sections.len() {
+                let sep: String = "─".repeat(cols);
+                draw_str(self.buf, self.width, inner_x, y, &sep, rule_fg, bg, self.scale);
+                y += self.ch;
+            }
+        }
+
+        // Footer hint
+        let hint = "Click a headline to read more";
+        let hy = inner_y + inner_h - self.ch;
+        let hx = inner_x + ((cols.saturating_sub(hint.len())) as u32 * self.cw) / 2;
+        draw_str(self.buf, self.width, hx, hy, hint, dim, bg, self.scale);
+
+        click_areas
     }
 
     fn paint_news_ticker(&mut self, ticker: &NewsTickerViewModel) {

@@ -186,6 +186,7 @@ pub struct UiAreas {
     pub toolbar_items: Vec<ToolbarHitArea>,
     pub tool_chooser_items: Vec<(ClickArea, crate::core::tool::Tool)>,
     pub dialog_items: Vec<ClickArea>,
+    pub newspaper_sections: Vec<ClickArea>,
     pub desktop: DesktopLayout,
 }
 
@@ -279,10 +280,11 @@ pub enum WindowId {
     About,
     Legend,
     Advisor,
+    Newspaper,
 }
 
 impl WindowId {
-    pub const ALL: [WindowId; 10] = [
+    pub const ALL: [WindowId; 11] = [
         WindowId::Map,
         WindowId::Panel,
         WindowId::Budget,
@@ -293,6 +295,7 @@ impl WindowId {
         WindowId::About,
         WindowId::Legend,
         WindowId::Advisor,
+        WindowId::Newspaper,
     ];
 
     pub fn index(self) -> usize {
@@ -307,6 +310,7 @@ impl WindowId {
             WindowId::About => 7,
             WindowId::Legend => 8,
             WindowId::Advisor => 9,
+            WindowId::Newspaper => 10,
         }
     }
 }
@@ -448,7 +452,7 @@ pub struct DesktopLayout {
     pub menu_bar: UiRect,
     pub status_bar: UiRect,
     pub news_ticker: UiRect,
-    windows: [WindowLayout; 9],
+    windows: [WindowLayout; 11],
 }
 
 impl DesktopLayout {
@@ -459,7 +463,7 @@ impl DesktopLayout {
 
 #[derive(Clone, Debug)]
 pub struct DesktopState {
-    windows: [WindowState; 10],
+    windows: [WindowState; 11],
     pub drag: Option<WindowDragState>,
     pub z_order: Vec<WindowId>,
 }
@@ -526,9 +530,17 @@ impl DesktopState {
         advisor.modal = true;
         advisor.center_on_open = true;
 
+        let mut newspaper = WindowState::new(0, 0, 72, 22);
+        newspaper.title = " The Daily Tribune ";
+        newspaper.visible = false;
+        newspaper.closable = true;
+        newspaper.modal = true;
+        newspaper.center_on_open = true;
+
         Self {
             windows: [
                 map, panel, budget, statistics, inspect, power, help, about, legend, advisor,
+                newspaper,
             ],
             drag: None,
             z_order: vec![
@@ -542,6 +554,7 @@ impl DesktopState {
                 WindowId::About,
                 WindowId::Legend,
                 WindowId::Advisor,
+                WindowId::Newspaper,
             ],
         }
     }
@@ -654,7 +667,7 @@ impl DesktopState {
             full.width,
             full.height.saturating_sub(3),
         );
-        let mut windows = [WindowLayout::default(); 9];
+        let mut windows = [WindowLayout::default(); 11];
 
         for id in WindowId::ALL {
             let win = self.window_mut(id);

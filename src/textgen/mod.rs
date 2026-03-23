@@ -142,6 +142,9 @@ fn build_inference_params(task: &LlmTask) -> (String, usize, f32) {
             context,
             alert_kind,
         } => (prompt::alert_prompt(context, alert_kind), 60, 0.8),
+        LlmTask::WriteNewspaperArticle { context } => {
+            (prompt::newspaper_article_prompt(context), 300, 0.7)
+        }
     }
 }
 

@@ -96,6 +96,13 @@ const ADVISOR_TRANSPORT: &[&str] = &[
     "Watch the trip success rate as a key indicator of network health.",
 ];
 
+const NEWSPAPER_ARTICLES: &[&str] = &[
+    "LEAD STORY\nCITY GROWTH CONTINUES STEADY PACE\nThe mayor's office reports continued development across all sectors. New buildings are sprouting up and residents seem cautiously optimistic about the future.\n\nCITY BEAT\nLocal park becomes unexpected bird sanctuary. \"We didn't plan it,\" says parks department, \"but we're not complaining.\"\n\nEDITORIAL\nDear Mayor: a balanced city is a happy city. Don't forget that residential zones need commercial shops nearby, and industry needs workers. Keep those roads connected!\n\nCLASSIFIEDS\nWANTED: Experienced urban planner. Must enjoy staring at grids for hours. Competitive salary.\nFOR SALE: Slightly used bulldozer. Only driven on Sundays. Contact City Hall.\nLOST: One sense of direction. Last seen near the highway interchange.\n\nWEATHER\nSunny with a chance of unexpected zoning changes. High of 72. Pack an umbrella just in case the mayor builds a water tower nearby.",
+    "LEAD STORY\nINFRASTRUCTURE DEBATE HEATS UP\nCitizens gathered at town hall to discuss the state of roads and utilities. \"We need more power!\" shouted one resident, while another demanded better water service.\n\nCITY BEAT\nThe annual chili cook-off at Founders Park drew record crowds this weekend. Fire department stood by, just in case.\n\nEDITORIAL\nA word to the wise, Mayor: police and fire stations aren't glamorous, but your citizens sleep better knowing they're there. Don't skimp on safety.\n\nCLASSIFIEDS\nHELP WANTED: Bus driver for new depot. Must enjoy scenic routes through industrial zones.\nROOM FOR RENT: Cozy apartment near power plant. Comes with free ambient humming sound.\nFOUND: Large pile of rubble where a building used to be. Owner please claim.\n\nWEATHER\nPartly cloudy with industrial haze. Temperatures mild. Pollution index: don't ask.",
+    "LEAD STORY\nTAX REVENUE REACHES NEW MILESTONE\nThe treasury is looking healthy as commercial districts report strong activity. Financial advisors recommend investing in city services while times are good.\n\nCITY BEAT\nSchool spelling bee winner can spell 'infrastructure' — and wants more of it. \"I live next to a dirt road,\" says 10-year-old champion.\n\nEDITORIAL\nMr. Mayor, the people love parks. Parks boost land value, reduce pollution, and make everyone smile. You literally cannot build too many parks. Well, maybe you can. But try.\n\nCLASSIFIEDS\nSEEKING: Roommate for downtown apartment. Must tolerate traffic noise and occasional tornado sirens.\nFOR SALE: Premium waterfront lot. Only slightly flooded.\nJOB OPENING: News ticker operator. Must type fast and know 47 synonyms for 'development'.\n\nWEATHER\nBeautiful day in the city! Clear skies, gentle breeze, and zero percent chance of the mayor reading this forecast.",
+    "LEAD STORY\nRESIDENTS CALL FOR MORE SERVICES\nA growing population means growing demands. Citizens want more schools, hospitals, and transit options. \"We love this city,\" said one resident, \"but rush hour is murder.\"\n\nCITY BEAT\nLibrary reports surge in borrowing of urban planning books. Librarians suspect one very dedicated reader.\n\nEDITORIAL\nTransit, transit, transit. Three words for the mayor today. A city that can't move is a city that can't grow. Connect those roads, build those depots!\n\nCLASSIFIEDS\nWANTED: Traffic engineer. Preferably one who can perform miracles.\nFOR SALE: Beautiful home. Slightly smoky. Located downwind from industrial zone. Priced to move!\nLOST CAT: Last seen heading toward the fish market near the waterfront.\n\nWEATHER\nExpect sunshine followed by more sunshine. This is a simulation — we don't actually have clouds. Well, we do, but they're decorative.",
+];
+
 const ALERT_TEMPLATES: &[&str] = &[
     "Citizens are concerned about the current situation. City officials are working on a response.",
     "The mayor has called an emergency meeting to address the crisis.",
@@ -126,7 +133,10 @@ impl TextGenerator for StaticGenerator {
         _temperature: f32,
     ) -> Result<String, String> {
         // Detect which kind of prompt this is by checking for known patterns.
-        let text = if prompt.starts_with("City names:") || prompt.contains("city name") {
+        let text = if prompt.contains("LEAD STORY") || prompt.contains("CLASSIFIEDS") {
+            // Newspaper article (full page)
+            self.pick(NEWSPAPER_ARTICLES).to_string()
+        } else if prompt.starts_with("City names:") || prompt.contains("city name") {
             self.pick(CITY_NAMES).to_string()
         } else if prompt.contains("editor")
             || prompt.contains("newspaper")

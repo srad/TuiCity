@@ -87,7 +87,7 @@ impl LlmSetupScreen {
 
         self.confirm_dialog = Some(ConfirmDialogViewModel {
             title: "Download Model".to_string(),
-            message: "Download SmolLM2-360M (~380 MB)?\nThis enables AI-generated text for city names,\nnewspaper articles, and advisor tips.".to_string(),
+            message: "Download SmolLM2-1.7B (~1.0 GB)?\nThis enables AI-generated text for city names,\nnewspaper articles, and advisor tips.".to_string(),
             selected: 0,
             buttons: vec![
                 ConfirmDialogButtonViewModel {

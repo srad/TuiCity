@@ -217,6 +217,23 @@ pub struct AdvisorViewModel {
     pub pending: bool,
 }
 
+#[derive(Clone, Debug)]
+pub struct NewspaperSection {
+    pub title: String,
+    pub body: String,
+}
+
+#[derive(Clone, Debug)]
+pub struct NewspaperViewModel {
+    pub sections: Vec<NewspaperSection>,
+    pub pending: bool,
+    pub city_name: String,
+    pub month: u8,
+    pub year: i32,
+    /// Which section is expanded in the detail popup (None = front page).
+    pub detail_index: Option<usize>,
+}
+
 #[derive(Clone)]
 pub struct InGameDesktopView {
     pub map: Map,
@@ -243,6 +260,7 @@ pub struct InGameDesktopView {
     pub about: Option<TextWindowViewModel>,
     pub legend: Option<TextWindowViewModel>,
     pub advisor: Option<AdvisorViewModel>,
+    pub newspaper: Option<NewspaperViewModel>,
 }
 
 #[derive(Clone)]

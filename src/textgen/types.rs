@@ -13,6 +13,9 @@ pub enum LlmTask {
         context: CityContext,
         alert_kind: AlertKind,
     },
+    WriteNewspaperArticle {
+        context: CityContext,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -112,6 +115,7 @@ pub enum LlmTaskTag {
     Newspaper,
     Advisor(AdvisorDomain),
     Alert,
+    NewspaperArticle,
 }
 
 impl LlmTask {
@@ -121,6 +125,7 @@ impl LlmTask {
             LlmTask::WriteNewspaper { .. } => LlmTaskTag::Newspaper,
             LlmTask::AdvisorAdvice { domain, .. } => LlmTaskTag::Advisor(*domain),
             LlmTask::GenerateAlert { .. } => LlmTaskTag::Alert,
+            LlmTask::WriteNewspaperArticle { .. } => LlmTaskTag::NewspaperArticle,
         }
     }
 }

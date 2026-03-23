@@ -5,6 +5,8 @@ const TMPL_CITY_NAME: &str = include_str!("../../assets/prompts/city_name.txt");
 const TMPL_NEWSPAPER: &str = include_str!("../../assets/prompts/newspaper.txt");
 const TMPL_ADVISOR: &str = include_str!("../../assets/prompts/advisor.txt");
 const TMPL_ALERT: &str = include_str!("../../assets/prompts/alert.txt");
+const TMPL_NEWSPAPER_ARTICLE: &str =
+    include_str!("../../assets/prompts/newspaper_article.txt");
 const RULES_SUMMARY: &str = include_str!("../../assets/prompts/rules_summary.txt");
 
 /// Replace all `{{key}}` occurrences in `template` with the corresponding value.
@@ -92,6 +94,33 @@ fn format_context(ctx: &CityContext) -> String {
 
 pub fn city_name_prompt() -> String {
     TMPL_CITY_NAME.to_string()
+}
+
+pub fn newspaper_article_prompt(ctx: &CityContext) -> String {
+    let month_name = match ctx.month {
+        1 => "January",
+        2 => "February",
+        3 => "March",
+        4 => "April",
+        5 => "May",
+        6 => "June",
+        7 => "July",
+        8 => "August",
+        9 => "September",
+        10 => "October",
+        11 => "November",
+        12 => "December",
+        _ => "Unknown",
+    };
+    render(
+        TMPL_NEWSPAPER_ARTICLE,
+        &[
+            ("city_name", &ctx.city_name),
+            ("month_name", month_name),
+            ("year", &ctx.year.to_string()),
+            ("city_status", &format_context(ctx)),
+        ],
+    )
 }
 
 pub fn newspaper_prompt(ctx: &CityContext) -> String {

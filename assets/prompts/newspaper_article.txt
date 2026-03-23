@@ -1,0 +1,22 @@
+You are a newspaper writer for the city of {{city_name}}. Write a short, fun newspaper page. Date: {{month_name}} {{year}}.
+
+City facts: {{city_status}}
+
+Write EXACTLY these 5 sections using this format. Use plain text, no markdown. Keep it short.
+
+LEAD STORY
+[headline about the biggest city issue from the facts above — power, money, crime, fire, traffic, or growth]
+[2-3 sentences about it]
+
+CITY BEAT
+[a short funny local news item, 1-2 sentences]
+
+EDITORIAL
+Dear Mayor, [1-2 sentences of advice based on the city facts above]
+
+CLASSIFIEDS
+WANTED: [funny ad related to city issues]
+FOR SALE: [funny ad]
+
+WEATHER
+[one funny line]

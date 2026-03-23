@@ -76,6 +76,8 @@ mod inner {
                 .map(|d| d.as_nanos() as u32)
                 .unwrap_or(42);
             let mut sampler = LlamaSampler::chain_simple([
+                LlamaSampler::min_p(0.05, 1),
+                LlamaSampler::top_p(0.9, 1),
                 LlamaSampler::temp(temperature),
                 LlamaSampler::dist(seed),
             ]);

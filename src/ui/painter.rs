@@ -38,8 +38,8 @@ use crate::{
         theme::OverlayMode,
         view::{
             AdvisorViewModel, BudgetViewModel, ConfirmDialogViewModel, InGameDesktopView,
-            NewsTickerViewModel, StatisticsWindowViewModel, TextWindowViewModel,
-            ToolChooserViewModel, ToolbarPaletteViewModel,
+            NewsTickerViewModel, NewspaperViewModel, StatisticsWindowViewModel,
+            TextWindowViewModel, ToolChooserViewModel, ToolbarPaletteViewModel,
         },
     },
 };
@@ -189,6 +189,13 @@ pub trait InGamePainter {
 
     /// Render the City Advisors window.
     fn paint_advisor_window(&mut self, advisor: &AdvisorViewModel, ingame: &InGameScreen);
+
+    /// Render the Newspaper front page. Returns click areas for each section headline.
+    fn paint_newspaper_window(
+        &mut self,
+        newspaper: &NewspaperViewModel,
+        ingame: &InGameScreen,
+    ) -> Vec<ClickArea>;
 
     /// Render the news ticker at the bottom of the screen.
     fn paint_news_ticker(&mut self, ticker: &NewsTickerViewModel);
@@ -353,6 +360,12 @@ pub fn orchestrate_ingame(
         painter.paint_advisor_window(advisor, ingame);
     }
 
+    // Newspaper window
+    ingame.ui_areas.newspaper_sections.clear();
+    if let Some(newspaper) = &view.newspaper {
+        ingame.ui_areas.newspaper_sections = painter.paint_newspaper_window(newspaper, ingame);
+    }
+
     // News ticker
     painter.paint_news_ticker(&view.news_ticker);
 
@@ -482,6 +495,15 @@ pub mod tests {
             self.calls.push("paint_advisor_window");
         }
 
+        fn paint_newspaper_window(
+            &mut self,
+            _newspaper: &NewspaperViewModel,
+            _ingame: &InGameScreen,
+        ) -> Vec<ClickArea> {
+            self.calls.push("paint_newspaper_window");
+            Vec::new()
+        }
+
         fn paint_news_ticker(&mut self, _ticker: &NewsTickerViewModel) {
             self.calls.push("paint_news_ticker");
         }
@@ -522,6 +544,7 @@ pub mod tests {
                 about: _,
                 legend: _,
                 advisor: _,
+                newspaper: _,
             } = v;
         };
     }
