@@ -1039,7 +1039,7 @@ impl<'a, 'f> InGamePainter for TerminalPainter<'a, 'f> {
                 Style::default().fg(ui.button_fg).bg(ui.button_bg)
             };
             let text = format!(" {} ", label);
-            let w = text.len().min((inner.width - tab_x + inner.x) as usize);
+            let w = text.len().min((inner.x + inner.width).saturating_sub(tab_x) as usize);
             if w == 0 {
                 break;
             }
@@ -1461,5 +1461,114 @@ mod tests {
             darken_color(Color::Reset, Color::Rgb(20, 40, 60), 0.5),
             Color::Rgb(10, 20, 30)
         );
+    }
+
+    // ── Advisor tab-row arithmetic ───────────────────────────────────────────
+
+    /// The tab remaining-width expression in paint_advisor_window is:
+    ///   `inner.width - tab_x + inner.x`
+    /// Because Rust evaluates left-to-right this computes `(inner.width - tab_x)`
+    /// first.  On a 40-column terminal `inner.width` is 34 and after rendering
+    /// "Economy" + "City Planning" + the partial "Education" tab, `tab_x`
+    /// reaches 38.  `34u16 - 38u16` underflows and panics in debug mode.
+    ///
+    /// This test directly reproduces that arithmetic to confirm the overflow.
+    #[test]
+    #[should_panic]
+    fn advisor_tab_remaining_overflows_with_buggy_formula() {
+        // Values that occur on a 40-column terminal:
+        //   padded_inner.x = 3, padded_inner.width = 34
+        //   tab_x after Economy(9) + City Planning(15) + partial Education(8):
+        //     3 + 9+1 + 15+1 + 8+1 = 38
+        //
+        // black_box prevents compile-time constant-folding so the overflow
+        // manifests as a runtime panic (exactly as it does in the real game).
+        let inner_width: u16 = std::hint::black_box(34);
+        let inner_x: u16 = std::hint::black_box(3);
+        let tab_x: u16 = std::hint::black_box(38);
+
+        // BUG: (inner_width - tab_x) underflows before + inner_x can rescue it.
+        let _ = (inner_width - tab_x + inner_x) as usize;
+    }
+
+    /// Helper that mirrors what the corrected expression should be.
+    /// `(inner_x + inner_width).saturating_sub(tab_x)` evaluates the right-edge
+    /// first and can never underflow.
+    #[test]
+    fn advisor_tab_remaining_correct_formula_returns_zero_when_exhausted() {
+        let inner_width: u16 = std::hint::black_box(34);
+        let inner_x: u16 = std::hint::black_box(3);
+        let tab_x: u16 = std::hint::black_box(38); // beyond right edge
+
+        let remaining = (inner_x + inner_width).saturating_sub(tab_x) as usize;
+        assert_eq!(remaining, 0);
+    }
+
+    #[test]
+    fn advisor_tab_remaining_correct_formula_returns_space_when_within_bounds() {
+        let inner_width: u16 = std::hint::black_box(34);
+        let inner_x: u16 = std::hint::black_box(3);
+        let tab_x: u16 = std::hint::black_box(29); // after Economy + City Planning
+
+        // Right edge = inner_x + inner_width = 37; remaining = 37 - 29 = 8
+        let remaining = (inner_x + inner_width).saturating_sub(tab_x) as usize;
+        assert_eq!(remaining, 8);
+    }
+
+    // ── Full rendering smoke tests ───────────────────────────────────────────
+
+    fn render_advisor_at_size(cols: u16, rows: u16) {
+        use ratatui::{backend::TestBackend, Terminal};
+
+        let backend = TestBackend::new(cols, rows);
+        let mut terminal = Terminal::new(backend).unwrap();
+
+        let mut ingame = InGameScreen::new();
+        ingame.open_advisor_window();
+
+        // Compute the desktop layout before entering the draw closure so that
+        // `ingame` can be borrowed immutably inside.
+        let area = ratatui::layout::Rect::new(0, 0, cols, rows);
+        let full =
+            crate::ui::runtime::UiRect::new(area.x, area.y, area.width, area.height);
+        let desktop_layout = ingame.desktop.layout(full);
+
+        terminal
+            .draw(|frame| {
+                let mut painter = TerminalPainter::new(frame, area);
+                let frame_layout = FrameLayout {
+                    desktop_layout: desktop_layout.clone(),
+                    view_w: 0,
+                    view_h: 0,
+                    col_scale: 1,
+                };
+                painter.begin_frame(&frame_layout);
+                let advisor = AdvisorViewModel {
+                    domain: crate::textgen::types::AdvisorDomain::Economy,
+                    text: None,
+                    pending: false,
+                };
+                painter.paint_advisor_window(&advisor, &ingame);
+            })
+            .unwrap();
+    }
+
+    /// Clicking "Advisors" on a wide terminal must not crash.
+    #[test]
+    fn advisor_window_renders_on_wide_terminal() {
+        render_advisor_at_size(120, 40);
+    }
+
+    /// Clicking "Advisors" on a narrow terminal (40 cols) triggers the u16
+    /// underflow in the tab row and panics before the fix is applied.
+    #[test]
+    fn advisor_window_renders_on_narrow_terminal() {
+        render_advisor_at_size(40, 24);
+    }
+
+    /// Even a borderline width just under the default window size must work.
+    #[test]
+    fn advisor_window_renders_on_medium_terminal() {
+        render_advisor_at_size(60, 30);
     }
 }
