@@ -59,6 +59,9 @@ impl<'a> ToolPlacer<'a> {
 
         if let Some(zone_spec) = tool.zone_spec() {
             self.map.set_zone_spec(x, y, Some(zone_spec));
+            // SC2K-style: auto-place water pipe under zones so they
+            // participate in the underground water network.
+            self.map.set_water_pipe(x, y, true);
         } else if matches!(
             tool,
             Tool::Road
@@ -92,6 +95,8 @@ impl<'a> ToolPlacer<'a> {
                 None => return Ok(()),
             };
             self.map.set(x, y, new_tile);
+            // Auto-place water pipe under 1×1 buildings.
+            self.map.set_water_pipe(x, y, true);
         }
 
         self.sim.economy.treasury -= cost;
@@ -168,6 +173,7 @@ impl<'a> ToolPlacer<'a> {
 
         for (x, y) in tiles_to_place {
             self.map.set_zone_spec(x, y, Some(zone_spec));
+            self.map.set_water_pipe(x, y, true);
             self.sim.plants.remove(&(x, y));
         }
         self.sim.economy.treasury -= total_cost;
@@ -349,6 +355,9 @@ impl<'a> ToolPlacer<'a> {
         for dy in 0..fh {
             for dx in 0..fw {
                 self.map.set(ax + dx, ay + dy, new_tile);
+                // SC2K-style: auto-place water pipe under all placed buildings
+                // so they join the underground water network.
+                self.map.set_water_pipe(ax + dx, ay + dy, true);
                 self.sim.plants.remove(&(ax + dx, ay + dy));
             }
         }

@@ -1226,11 +1226,22 @@ pub fn tile_glyph(tile: Tile, overlay: TileOverlay) -> TileGlyph {
             fg: Color::Rgb(255, 255, 100),
             bg: Color::Rgb(30, 30, 40),
         },
-        Tile::WaterPipe => TileGlyph {
-            ch: ' ',
-            fg: Color::Rgb(120, 210, 255),
-            bg: Color::Rgb(18, 42, 60),
-        },
+        Tile::WaterPipe => {
+            // Grey when dry (no water service), blue when connected.
+            if overlay.water_service > 0 {
+                TileGlyph {
+                    ch: ' ',
+                    fg: Color::Rgb(120, 210, 255),
+                    bg: Color::Rgb(18, 42, 60),
+                }
+            } else {
+                TileGlyph {
+                    ch: ' ',
+                    fg: Color::Rgb(130, 130, 130),
+                    bg: Color::Rgb(35, 35, 40),
+                }
+            }
+        }
         Tile::SubwayTunnel => TileGlyph {
             ch: ' ',
             fg: Color::Rgb(220, 220, 220),

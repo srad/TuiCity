@@ -362,6 +362,11 @@ fn apply_growth_change(map: &mut Map, x: usize, y: usize, tile: Tile) {
         map.set_occupant(x, y, Some(tile));
     }
 
+    // Zone buildings always have underground pipes (SC2K-style).
+    if tile.is_building() || tile.is_zone() {
+        map.set_water_pipe(x, y, true);
+    }
+
     // Reset neglect counter when a tile is rebuilt
     let idx = y * map.width + x;
     map.overlays[idx].neglected_months = 0;

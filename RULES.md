@@ -155,8 +155,9 @@ All require power to produce. If unpowered, production = 0.
 ### Water Conduction Rules
 
 - Spreads underground: `next_level = current_level − 3` per tile. Stops when level ≤ 1.
-- **Conducts:** pipes, water facilities, developed buildings.
-- **Receives but does not relay:** empty zones.
+- **Conducts (relays):** water pipes (underground), water facilities (WaterPump, WaterTower, WaterTreatment, Desalination).
+- **Receives but does not relay:** developed buildings, service buildings (without a pipe), empty zones.
+- SC2K-style: zoning and building placement auto-places a water pipe underground. Players must connect zone areas to water facilities via manual pipe lines.
 
 ---
 

@@ -2385,6 +2385,10 @@ fn draw_square_tile(
     let tile = rendered_tile(map, snapshot.view_layer, map_x, map_y);
     let overlay = map.get_overlay(map_x, map_y);
     let mut bg = tile_fill_color(tile, snapshot.view_layer);
+    // Dry pipes get a neutral dark-grey background instead of blue.
+    if tile == Tile::WaterPipe && overlay.water_service == 0 {
+        bg = (35, 35, 40, 255);
+    }
     if let Some(tint) = theme::overlay_tint(snapshot.overlay_mode, overlay) {
         bg = blend_color(bg, color_to_rgba(tint, bg), 96);
     }
@@ -2463,19 +2467,27 @@ fn draw_square_tile(
             }),
             1,
         ),
-        Tile::WaterPipe => draw_network_tile(
-            framebuffer,
-            framebuffer_width,
-            px,
-            py,
-            tile_size,
-            bg,
-            (83, 191, 255, 255),
-            connection_mask(map, snapshot.view_layer, map_x, map_y, |neighbor| {
-                neighbor.water_connects()
-            }),
-            2,
-        ),
+        Tile::WaterPipe => {
+            // Grey when dry, blue when connected to the water network.
+            let pipe_color = if overlay.water_service > 0 {
+                (83, 191, 255, 255)
+            } else {
+                (130, 130, 130, 255)
+            };
+            draw_network_tile(
+                framebuffer,
+                framebuffer_width,
+                px,
+                py,
+                tile_size,
+                bg,
+                pipe_color,
+                connection_mask(map, snapshot.view_layer, map_x, map_y, |neighbor| {
+                    neighbor.water_connects()
+                }),
+                2,
+            )
+        }
         Tile::SubwayTunnel => draw_network_tile(
             framebuffer,
             framebuffer_width,

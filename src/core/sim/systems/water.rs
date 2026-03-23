@@ -90,19 +90,21 @@ impl SimSystem for WaterSystem {
                 let idx = ny * map.width + nx;
                 let underground = map.underground_at(nx, ny);
                 let lot_tile = map.surface_lot_tile(nx, ny);
+                // SC2K-style: only underground pipes and water facilities
+                // conduct water. Buildings placed on zones get auto-piped,
+                // so they conduct via the pipe layer, not the building itself.
                 let conductive = underground.water_pipe
-                    || lot_tile.is_building()
                     || matches!(
                         lot_tile,
-                        Tile::Police
-                            | Tile::Fire
-                            | Tile::Hospital
-                            | Tile::WaterPump
+                        Tile::WaterPump
                             | Tile::WaterTower
                             | Tile::WaterTreatment
                             | Tile::Desalination
                     );
-                let receivable = conductive || lot_tile.is_zone();
+                let receivable = conductive
+                    || lot_tile.is_building()
+                    || lot_tile.is_zone()
+                    || lot_tile.is_service_building();
                 if !receivable || map.overlays[idx].water_service >= next_level {
                     continue;
                 }
@@ -159,21 +161,42 @@ mod tests {
     use crate::core::sim::SimState;
 
     #[test]
-    fn water_buildings_relay_to_adjacent_zones_but_empty_zones_do_not_chain() {
+    fn water_pipes_relay_to_adjacent_zones_but_empty_zones_do_not_chain() {
         let mut map = Map::new(6, 1);
         let mut sim = SimState::default();
 
         map.set(0, 0, Tile::WaterTower);
         map.overlays[0].power_level = 255;
         map.set(1, 0, Tile::ResLow);
+        map.set_water_pipe(1, 0, true);
         map.set(2, 0, Tile::ZoneRes);
+        map.set_water_pipe(2, 0, true);
         map.set(3, 0, Tile::ZoneRes);
+        map.set_water_pipe(3, 0, true);
 
         WaterSystem.tick(&mut map, &mut sim);
 
         assert!(map.get_overlay(1, 0).has_water());
         assert!(map.get_overlay(2, 0).has_water());
-        assert_eq!(map.get_overlay(3, 0).water_service, 0);
+        assert!(map.get_overlay(3, 0).has_water());
+    }
+
+    #[test]
+    fn building_without_pipe_receives_but_does_not_relay() {
+        let mut map = Map::new(4, 1);
+        let mut sim = SimState::default();
+
+        map.set(0, 0, Tile::WaterTower);
+        map.overlays[0].power_level = 255;
+        // Building without pipe: receives water but doesn't relay it further.
+        map.set(1, 0, Tile::ResLow);
+        map.set(2, 0, Tile::ZoneRes);
+        map.set_water_pipe(2, 0, true);
+
+        WaterSystem.tick(&mut map, &mut sim);
+
+        assert!(map.get_overlay(1, 0).has_water());
+        assert_eq!(map.get_overlay(2, 0).water_service, 0);
     }
 
     #[test]
@@ -192,6 +215,7 @@ mod tests {
             }),
         );
         map.set_power_line(1, 0, true);
+        map.set_water_pipe(1, 0, true);
 
         WaterSystem.tick(&mut map, &mut sim);
 
@@ -209,6 +233,7 @@ mod tests {
         map.overlays[0].power_level = 255;
         map.set_water_pipe(1, 0, true);
         map.set(2, 0, Tile::ResHigh);
+        map.set_water_pipe(2, 0, true);
         map.set(7, 0, Tile::ResHigh);
 
         WaterSystem.tick(&mut map, &mut sim);
