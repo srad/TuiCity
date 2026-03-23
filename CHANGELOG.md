@@ -4,6 +4,14 @@ All notable changes to TuiCity 2000 are documented here.
 
 ## [Unreleased]
 
+### Frontend Support
+
+- **Pixel frontend disabled in product flow:** normal startup now always runs the supported terminal frontend
+- **Legacy config fallback:** saved `"pixel"` frontend preferences still deserialize safely, but now fall back to terminal behavior
+- **Settings cleanup:** the user-facing frontend switch was removed so the app no longer advertises pixel mode as a supported option
+- **Pixel code parked:** the `miniquad` pixel implementation remains in-tree for possible future revisit, but it is not currently supported or exposed
+- **Docs updated:** README wording now describes terminal as the supported frontend
+
 ### Terminal Frontends
 
 - **Pixels frontend removed:** the old `pixels_winit` renderer and its `winit` / `softbuffer` / `font8x8` dependency surface are gone

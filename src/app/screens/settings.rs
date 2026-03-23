@@ -31,7 +31,7 @@ impl SettingsScreen {
     }
 
     fn item_count(&self) -> usize {
-        6 // 5 options + back
+        5 // 4 options + back
     }
 
     fn activate_selected(&mut self) -> Option<ScreenTransition> {
@@ -47,14 +47,36 @@ impl SettingsScreen {
                 let _ = config::persist_music_preference(!current);
                 None
             }
-            3 => {
-                let next = config::get_frontend_kind().next();
-                let _ = config::persist_frontend_preference(next);
-                None
-            }
-            4 => Some(ScreenTransition::Push(Box::new(LlmSetupScreen::new()))),
-            5 => Some(ScreenTransition::Pop), // Back (auto-appended by renderer)
+            3 => Some(ScreenTransition::Push(Box::new(LlmSetupScreen::new()))),
+            4 => Some(ScreenTransition::Pop), // Back (auto-appended by renderer)
             _ => None,
+        }
+    }
+
+    pub fn view_model(&self, context: AppContext<'_>) -> crate::ui::view::SettingsViewModel {
+        let music_label = if config::is_music_enabled() {
+            "Disable Music"
+        } else {
+            "Enable Music"
+        };
+        let llm_status = if context.textgen.has_model() {
+            crate::ui::view::LlmStatus::Active
+        } else if cfg!(feature = "llm") {
+            crate::ui::view::LlmStatus::Unavailable
+        } else {
+            crate::ui::view::LlmStatus::Disabled
+        };
+
+        crate::ui::view::SettingsViewModel {
+            options: vec![
+                "Theme Settings".to_string(),
+                "Cycle Theme".to_string(),
+                music_label.to_string(),
+                "LLM Setup".to_string(),
+            ],
+            selected: self.state.selected,
+            current_theme_label: theme::current_theme().label().to_string(),
+            llm_status,
         }
     }
 }
@@ -102,44 +124,11 @@ impl Screen for SettingsScreen {
             _ => None,
         }
     }
-
-    fn build_view(&self, context: AppContext<'_>) -> crate::ui::view::ScreenView {
-        let music_label = if config::is_music_enabled() {
-            "Disable Music"
-        } else {
-            "Enable Music"
-        };
-        let frontend_kind = config::get_frontend_kind();
-        let frontend_label = format!("Frontend: {} (restart required)", frontend_kind.label());
-
-        let llm_status = if context.textgen.has_model() {
-            crate::ui::view::LlmStatus::Active
-        } else if cfg!(feature = "llm") {
-            crate::ui::view::LlmStatus::Unavailable
-        } else {
-            crate::ui::view::LlmStatus::Disabled
-        };
-
-        crate::ui::view::ScreenView::Settings(crate::ui::view::SettingsViewModel {
-            options: vec![
-                "Theme Settings".to_string(),
-                "Cycle Theme".to_string(),
-                music_label.to_string(),
-                frontend_label,
-                "LLM Setup".to_string(),
-            ],
-            selected: self.state.selected,
-            current_theme_label: theme::current_theme().label().to_string(),
-            current_frontend_label: frontend_kind.label().to_string(),
-            llm_status,
-        })
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ui::view::ScreenView;
     use std::sync::{Arc, RwLock};
 
     fn test_context() -> (
@@ -156,7 +145,7 @@ mod tests {
     }
 
     #[test]
-    fn settings_view_has_five_options_plus_auto_back() {
+    fn settings_view_has_four_options_plus_auto_back() {
         let screen = SettingsScreen::new();
         let (engine, textgen) = test_context();
         let context = AppContext {
@@ -164,20 +153,16 @@ mod tests {
             cmd_tx: &None,
             textgen: &textgen,
         };
-        let view = screen.build_view(context);
-        match view {
-            ScreenView::Settings(vm) => {
-                assert_eq!(vm.options.len(), 5);
-                // Back button is auto-appended by the renderer
-            }
-            _ => panic!("expected Settings view"),
-        }
+        let view = screen.view_model(context);
+        assert_eq!(view.options.len(), 4);
+        assert!(view.options.iter().all(|option| !option.contains("Frontend")));
+        // Back button is auto-appended by the renderer
     }
 
     #[test]
     fn llm_setup_pushes_new_screen() {
         let mut screen = SettingsScreen::new();
-        screen.state.selected = 4;
+        screen.state.selected = 3;
         let (engine, textgen) = test_context();
         let context = AppContext {
             engine: &engine,

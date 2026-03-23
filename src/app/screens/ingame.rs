@@ -551,7 +551,7 @@ impl InGameScreen {
         }
     }
 
-    pub fn build_view(
+    pub fn view_model(
         &self,
         sim: &crate::core::sim::SimState,
         map: &crate::core::map::Map,
@@ -1551,10 +1551,6 @@ impl Screen for InGameScreen {
         None
     }
 
-    fn build_view(&self, context: AppContext<'_>) -> crate::ui::view::ScreenView {
-        let engine = context.engine.read().unwrap();
-        crate::ui::view::ScreenView::InGame(self.build_view(&engine.sim, &engine.map))
-    }
 }
 
 /// Parse LLM newspaper output into pages using explicit PAGE and SECTION markers.

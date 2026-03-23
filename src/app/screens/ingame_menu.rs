@@ -325,7 +325,8 @@ impl InGameScreen {
             }
             MenuAction::ToggleToolbar => {
                 self.close_tool_chooser();
-                self.desktop.toggle(WindowId::Panel, false);
+                self.desktop.open(WindowId::Panel, false);
+                self.desktop.focus(WindowId::Panel);
             }
             MenuAction::ToggleInspect => self.toggle_inspect_window(),
             MenuAction::OpenBudget => self.open_budget(context),
@@ -667,5 +668,30 @@ mod tests {
         assert_eq!(layer_label, "View Layer");
         assert_eq!(layer_value, "Surface");
         assert_eq!(water_label, "Overlay: Water Service");
+    }
+
+    #[test]
+    fn toolbox_menu_action_keeps_panel_open() {
+        let mut screen = InGameScreen::new();
+        screen.desktop.close(WindowId::Panel);
+        let engine = std::sync::Arc::new(std::sync::RwLock::new(
+            crate::core::engine::SimulationEngine::new(
+                crate::core::map::Map::new(10, 10),
+                crate::core::sim::SimState::default(),
+            ),
+        ));
+        let cmd_tx = None;
+        let tg = crate::textgen::TextGenService::start(std::path::PathBuf::from("/nonexistent"));
+
+        let context = AppContext {
+            engine: &engine,
+            cmd_tx: &cmd_tx,
+            textgen: &tg,
+        };
+
+        let transition = screen.handle_menu_action(MenuAction::ToggleToolbar, &context);
+
+        assert!(transition.is_none());
+        assert!(screen.desktop.is_open(WindowId::Panel));
     }
 }

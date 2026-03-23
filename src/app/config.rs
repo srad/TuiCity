@@ -13,27 +13,19 @@ pub enum FrontendKind {
     #[default]
     #[serde(alias = "terminal")]
     TerminalAscii,
-    #[serde(alias = "pixels_gui")]
-    TerminalVga,
+    Pixel,
 }
 
 impl FrontendKind {
     pub fn label(self) -> &'static str {
         match self {
             FrontendKind::TerminalAscii => "Terminal ASCII",
-            FrontendKind::TerminalVga => "Terminal VGA",
+            FrontendKind::Pixel => "Pixel DOS",
         }
     }
 
-    pub fn next(self) -> Self {
-        match self {
-            FrontendKind::TerminalAscii => FrontendKind::TerminalVga,
-            FrontendKind::TerminalVga => FrontendKind::TerminalAscii,
-        }
-    }
-
-    pub fn is_vga(self) -> bool {
-        matches!(self, FrontendKind::TerminalVga)
+    pub fn is_pixel(self) -> bool {
+        matches!(self, FrontendKind::Pixel)
     }
 }
 
@@ -76,13 +68,7 @@ pub fn persist_music_preference(enabled: bool) -> io::Result<()> {
 }
 
 pub fn get_frontend_kind() -> FrontendKind {
-    load_user_config().frontend.unwrap_or_default()
-}
-
-pub fn persist_frontend_preference(kind: FrontendKind) -> io::Result<()> {
-    let mut config = load_user_config();
-    config.frontend = Some(kind);
-    save_user_config(&config)
+    supported_frontend_kind(load_user_config().frontend.unwrap_or_default())
 }
 
 pub fn is_llm_enabled() -> bool {
@@ -150,22 +136,42 @@ fn apply_default_llm_preference(config: &mut UserConfig, model_present: bool) ->
     }
 }
 
+fn supported_frontend_kind(kind: FrontendKind) -> FrontendKind {
+    match kind {
+        FrontendKind::TerminalAscii => FrontendKind::TerminalAscii,
+        FrontendKind::Pixel => FrontendKind::TerminalAscii,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{apply_default_llm_preference, FrontendKind, UserConfig};
 
     #[test]
-    fn frontend_kind_labels_match_terminal_modes() {
+    fn frontend_kind_labels_match_runtime_modes() {
         assert_eq!(FrontendKind::TerminalAscii.label(), "Terminal ASCII");
-        assert_eq!(FrontendKind::TerminalVga.label(), "Terminal VGA");
+        assert_eq!(FrontendKind::Pixel.label(), "Pixel DOS");
     }
 
     #[test]
-    fn frontend_kind_deserializes_legacy_values() {
-        let ascii: FrontendKind = serde_json::from_str("\"terminal\"").expect("legacy terminal");
-        let vga: FrontendKind = serde_json::from_str("\"pixels_gui\"").expect("legacy pixels");
+    fn frontend_kind_deserializes_current_values() {
+        let ascii: FrontendKind =
+            serde_json::from_str("\"terminal_ascii\"").expect("terminal ascii");
+        let pixel: FrontendKind = serde_json::from_str("\"pixel\"").expect("pixel frontend");
         assert_eq!(ascii, FrontendKind::TerminalAscii);
-        assert_eq!(vga, FrontendKind::TerminalVga);
+        assert_eq!(pixel, FrontendKind::Pixel);
+    }
+
+    #[test]
+    fn pixel_frontend_is_coerced_to_supported_terminal_mode() {
+        assert_eq!(
+            super::supported_frontend_kind(FrontendKind::Pixel),
+            FrontendKind::TerminalAscii
+        );
+        assert_eq!(
+            super::supported_frontend_kind(FrontendKind::TerminalAscii),
+            FrontendKind::TerminalAscii
+        );
     }
 
     #[test]

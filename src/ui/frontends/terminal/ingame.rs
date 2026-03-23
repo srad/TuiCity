@@ -275,18 +275,16 @@ fn truncate(s: &str, max: usize) -> String {
 pub struct TerminalPainter<'a, 'f> {
     frame: &'a mut Frame<'f>,
     area: Rect,
-    vga_mode: bool,
     // Computed in begin_frame
     desktop_layout: Option<DesktopLayout>,
     map_layout: Option<game::map_view::MapChromeLayout>,
 }
 
 impl<'a, 'f> TerminalPainter<'a, 'f> {
-    pub fn new(frame: &'a mut Frame<'f>, area: Rect, vga_mode: bool) -> Self {
+    pub fn new(frame: &'a mut Frame<'f>, area: Rect) -> Self {
         Self {
             frame,
             area,
-            vga_mode,
             desktop_layout: None,
             map_layout: None,
         }
@@ -299,7 +297,7 @@ impl<'a, 'f> TerminalPainter<'a, 'f> {
     }
 
     fn window_border_type(&self) -> BorderType {
-        if self.vga_mode {
+        if crate::ui::theme::is_pixel_style() {
             BorderType::Double
         } else {
             BorderType::Plain
@@ -307,7 +305,7 @@ impl<'a, 'f> TerminalPainter<'a, 'f> {
     }
 
     fn newspaper_palette(&self) -> (Color, Color, Color, Color, Color, Color, Color) {
-        if self.vga_mode {
+        if crate::ui::theme::is_pixel_style() {
             (
                 Color::Rgb(224, 220, 182),
                 Color::Rgb(28, 22, 16),

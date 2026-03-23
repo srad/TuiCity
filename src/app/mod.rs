@@ -71,7 +71,7 @@ impl AppState {
         self.sync_music();
     }
 
-    pub fn on_event(&mut self, event: &crossterm::event::Event) -> bool {
+    pub fn on_event(&mut self, event: &input::UiEvent) -> bool {
         let transition = {
             let context = AppContext {
                 engine: &self.engine,
@@ -175,6 +175,22 @@ impl AppState {
             MusicCue::None
         };
         self.music.sync(cue);
+    }
+
+    pub fn attach_engine_channel(&mut self) {
+        let (tx, rx) = std::sync::mpsc::channel();
+        self.cmd_tx = Some(tx);
+
+        let engine_arc = self.engine.clone();
+        std::thread::spawn(move || {
+            while let Ok(cmd) = rx.recv() {
+                let mut engine = engine_arc.write().unwrap();
+                let _ = engine.execute_command(cmd);
+                while let Ok(cmd) = rx.try_recv() {
+                    let _ = engine.execute_command(cmd);
+                }
+            }
+        });
     }
 }
 

@@ -473,9 +473,9 @@ impl DesktopState {
         let mut map = WindowState::new(0, 2, 999, 999);
         map.title = " MAP ";
 
-        let mut panel = WindowState::new(u16::MAX, 4, 24, 35);
+        let mut panel = WindowState::new(u16::MAX, 4, 30, 35);
         panel.title = " TOOLBOX ";
-        panel.closable = true;
+        panel.closable = false;
 
         let mut budget = WindowState::new(8, 4, 74, 29);
         budget.title = " Budget Control Center ";

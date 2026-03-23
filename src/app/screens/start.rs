@@ -18,6 +18,18 @@ impl StartScreen {
             state: StartState::default(),
         }
     }
+
+    pub fn view_model(&self) -> crate::ui::view::StartViewModel {
+        crate::ui::view::StartViewModel {
+            selected: self.state.selected,
+            options: vec![
+                "Load Existing City".to_string(),
+                "Create New City".to_string(),
+                "Settings".to_string(),
+                "Quit Game".to_string(),
+            ],
+        }
+    }
 }
 
 impl Screen for StartScreen {
@@ -49,18 +61,6 @@ impl Screen for StartScreen {
             Action::MenuSelect => self.activate_selected(),
             _ => None,
         }
-    }
-
-    fn build_view(&self, _context: AppContext<'_>) -> crate::ui::view::ScreenView {
-        crate::ui::view::ScreenView::Start(crate::ui::view::StartViewModel {
-            selected: self.state.selected,
-            options: vec![
-                "Load Existing City".to_string(),
-                "Create New City".to_string(),
-                "Settings".to_string(),
-                "Quit Game".to_string(),
-            ],
-        })
     }
 }
 

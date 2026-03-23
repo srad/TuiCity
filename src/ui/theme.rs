@@ -96,6 +96,12 @@ impl ThemePreset {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RenderStyle {
+    TerminalAscii,
+    PixelDos,
+}
+
 // ── Feature 2: Color Palette ──────────────────────────────────────────────────
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -201,9 +207,9 @@ fn active_theme_lock() -> &'static RwLock<ThemePreset> {
     ACTIVE_THEME.get_or_init(|| RwLock::new(ThemePreset::Copper))
 }
 
-fn terminal_vga_lock() -> &'static RwLock<bool> {
-    static TERMINAL_VGA: OnceLock<RwLock<bool>> = OnceLock::new();
-    TERMINAL_VGA.get_or_init(|| RwLock::new(false))
+fn render_style_lock() -> &'static RwLock<RenderStyle> {
+    static RENDER_STYLE: OnceLock<RwLock<RenderStyle>> = OnceLock::new();
+    RENDER_STYLE.get_or_init(|| RwLock::new(RenderStyle::TerminalAscii))
 }
 
 pub fn current_theme() -> ThemePreset {
@@ -226,28 +232,32 @@ pub fn cycle_theme() -> ThemePreset {
     *guard
 }
 
-pub fn set_terminal_vga(enabled: bool) {
-    *terminal_vga_lock()
+pub fn set_render_style(style: RenderStyle) {
+    *render_style_lock()
         .write()
-        .expect("terminal frontend lock should not be poisoned") = enabled;
+        .expect("render style lock should not be poisoned") = style;
 }
 
-pub fn is_terminal_vga() -> bool {
-    *terminal_vga_lock()
+pub fn render_style() -> RenderStyle {
+    *render_style_lock()
         .read()
-        .expect("terminal frontend lock should not be poisoned")
+        .expect("render style lock should not be poisoned")
+}
+
+pub fn is_pixel_style() -> bool {
+    matches!(render_style(), RenderStyle::PixelDos)
 }
 
 pub fn ui_palette() -> UiPalette {
     let palette = palette_for(current_theme());
-    if is_terminal_vga() {
-        vga_palette(palette)
+    if is_pixel_style() {
+        pixel_palette(palette)
     } else {
         palette
     }
 }
 
-fn vga_palette(mut ui: UiPalette) -> UiPalette {
+fn pixel_palette(mut ui: UiPalette) -> UiPalette {
     ui.desktop_bg = Color::Rgb(0, 0, 40);
     ui.title = Color::Rgb(255, 255, 85);
     ui.subtitle = Color::Rgb(170, 255, 255);

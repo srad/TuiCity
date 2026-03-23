@@ -184,6 +184,16 @@ impl LoadCityScreen {
             buttons,
         })
     }
+
+    pub fn view_model(&self) -> crate::ui::view::LoadCityViewModel {
+        crate::ui::view::LoadCityViewModel {
+            saves: self.state.saves_snapshot.clone(),
+            selected: self.state.selected,
+            is_loading: self.state.is_loading,
+            loading_indicator: LOADING_FRAMES[self.state.spinner_frame],
+            confirm_dialog: self.confirm_dialog_view_model(),
+        }
+    }
 }
 
 impl Screen for LoadCityScreen {
@@ -193,7 +203,7 @@ impl Screen for LoadCityScreen {
 
     fn on_event(
         &mut self,
-        _event: &crossterm::event::Event,
+        _event: &crate::app::input::UiEvent,
         _context: AppContext,
     ) -> Option<ScreenTransition> {
         self.poll_loading();
@@ -321,16 +331,6 @@ impl Screen for LoadCityScreen {
             _ => None,
         }
     }
-
-    fn build_view(&self, _context: AppContext<'_>) -> crate::ui::view::ScreenView {
-        crate::ui::view::ScreenView::LoadCity(crate::ui::view::LoadCityViewModel {
-            saves: self.state.saves_snapshot.clone(),
-            selected: self.state.selected,
-            is_loading: self.state.is_loading,
-            loading_indicator: LOADING_FRAMES[self.state.spinner_frame],
-            confirm_dialog: self.confirm_dialog_view_model(),
-        })
-    }
 }
 
 #[cfg(test)]
@@ -436,7 +436,7 @@ mod tests {
         });
 
         let transition = screen.on_event(
-            &event,
+            &crate::app::input::terminal_ui_event(&event),
             AppContext {
                 engine: &engine,
                 cmd_tx: &cmd_tx,
@@ -485,7 +485,7 @@ mod tests {
         });
 
         let transition = screen.on_event(
-            &event,
+            &crate::app::input::terminal_ui_event(&event),
             AppContext {
                 engine: &engine,
                 cmd_tx: &cmd_tx,

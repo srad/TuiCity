@@ -320,6 +320,60 @@ impl LlmSetupScreen {
             _ => true,
         }
     }
+
+    pub fn view_model(&self, context: AppContext<'_>) -> crate::ui::view::LlmSetupViewModel {
+        let llm_enabled = config::is_llm_enabled();
+        let selected_model = self.selected_model();
+        let execution_mode = self.execution_mode();
+        let model_installed = self.model_installed();
+        let runtime_info = context.textgen.runtime_info();
+
+        let is_cancelling = self.download_status.is_cancelling();
+        let download_progress = self.download_status.snapshot().map(|snapshot| {
+            let percent = snapshot.total_bytes.and_then(|total| {
+                if total == 0 {
+                    None
+                } else {
+                    Some(((snapshot.downloaded_bytes.saturating_mul(100)) / total).min(100) as u8)
+                }
+            });
+            DownloadProgressViewModel {
+                label: snapshot.label.clone(),
+                downloaded_bytes: snapshot.downloaded_bytes,
+                total_bytes: snapshot.total_bytes,
+                percent,
+                cancelling: is_cancelling,
+            }
+        });
+
+        let download_notice = match &self.download_status {
+            DownloadStatus::Cancelled => {
+                Some("Download canceled. Partial files were cleaned up.".to_string())
+            }
+            _ => None,
+        };
+        let download_failed = match &self.download_status {
+            DownloadStatus::Failed(error) => Some(error.clone()),
+            _ => None,
+        };
+
+        crate::ui::view::LlmSetupViewModel {
+            llm_enabled,
+            model_installed,
+            selected_model_label: selected_model.label().to_string(),
+            selected_model_description: selected_model.description().to_string(),
+            selected_model_size_label: selected_model.download_size_label().to_string(),
+            gpu_mode_label: execution_mode.label().to_string(),
+            gpu_mode_description: execution_mode.description().to_string(),
+            backend_status: runtime_info.status_line,
+            gpu_status: runtime_info.acceleration_line,
+            download_progress,
+            download_notice,
+            download_failed,
+            selected: self.state.selected,
+            confirm_dialog: self.confirm_dialog.clone(),
+        }
+    }
 }
 
 impl Screen for LlmSetupScreen {
@@ -413,60 +467,6 @@ impl Screen for LlmSetupScreen {
             _ => None,
         }
     }
-
-    fn build_view(&self, context: AppContext<'_>) -> crate::ui::view::ScreenView {
-        let llm_enabled = config::is_llm_enabled();
-        let selected_model = self.selected_model();
-        let execution_mode = self.execution_mode();
-        let model_installed = self.model_installed();
-        let runtime_info = context.textgen.runtime_info();
-
-        let is_cancelling = self.download_status.is_cancelling();
-        let download_progress = self.download_status.snapshot().map(|snapshot| {
-            let percent = snapshot.total_bytes.and_then(|total| {
-                if total == 0 {
-                    None
-                } else {
-                    Some(((snapshot.downloaded_bytes.saturating_mul(100)) / total).min(100) as u8)
-                }
-            });
-            DownloadProgressViewModel {
-                label: snapshot.label.clone(),
-                downloaded_bytes: snapshot.downloaded_bytes,
-                total_bytes: snapshot.total_bytes,
-                percent,
-                cancelling: is_cancelling,
-            }
-        });
-
-        let download_notice = match &self.download_status {
-            DownloadStatus::Cancelled => {
-                Some("Download canceled. Partial files were cleaned up.".to_string())
-            }
-            _ => None,
-        };
-        let download_failed = match &self.download_status {
-            DownloadStatus::Failed(error) => Some(error.clone()),
-            _ => None,
-        };
-
-        crate::ui::view::ScreenView::LlmSetup(crate::ui::view::LlmSetupViewModel {
-            llm_enabled,
-            model_installed,
-            selected_model_label: selected_model.label().to_string(),
-            selected_model_description: selected_model.description().to_string(),
-            selected_model_size_label: selected_model.download_size_label().to_string(),
-            gpu_mode_label: execution_mode.label().to_string(),
-            gpu_mode_description: execution_mode.description().to_string(),
-            backend_status: runtime_info.status_line,
-            gpu_status: runtime_info.acceleration_line,
-            download_progress,
-            download_notice,
-            download_failed,
-            selected: self.state.selected,
-            confirm_dialog: self.confirm_dialog.clone(),
-        })
-    }
 }
 
 #[cfg(test)]
@@ -503,8 +503,8 @@ mod tests {
             cmd_tx: &None,
             textgen: &textgen,
         };
-        let view = screen.build_view(context);
-        assert!(matches!(view, crate::ui::view::ScreenView::LlmSetup(_)));
+        let view = screen.view_model(context);
+        assert_eq!(view.selected, 0);
     }
 
     #[test]

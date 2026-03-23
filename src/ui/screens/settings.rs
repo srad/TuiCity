@@ -53,8 +53,8 @@ fn render_title(buf: &mut Buffer, area: Rect, y: u16, view: &SettingsViewModel) 
         crate::ui::view::LlmStatus::Disabled => ("LLM: Off".to_string(), Color::Rgb(140, 140, 140)),
     };
     let full_text = format!(
-        "Theme: {}  |  Frontend: {}  |  {}",
-        view.current_theme_label, view.current_frontend_label, llm_label
+        "Theme: {}  |  {}",
+        view.current_theme_label, llm_label
     );
     common::set_centered_string(
         buf,

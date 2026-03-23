@@ -283,7 +283,6 @@ TuiCity 2000 is structured around three main pillars:
 pub trait Screen {
     fn on_action(&mut self, action: Action, context: AppContext) -> Option<ScreenTransition>;
     fn on_tick(&mut self, context: AppContext);
-    fn build_view(&self, context: AppContext<'_>) -> ScreenView;
 }
 ```
 
@@ -293,9 +292,9 @@ pub trait Screen {
 
 The simulation runs in a dedicated OS thread managed by `core/engine.rs`. The main UI thread sends `EngineCommand` messages over a `std::sync::mpsc` channel. The sim thread processes commands (step, pause, save, load, place tile, replace state) and writes results back into a shared engine instance that the UI reads for rendering.
 
-**3. Frontend-Neutral Screen Views + Multi-Terminal Rendering**
+**3. Split Presentation Layers**
 
-Shared geometry and window helpers now live in `src/ui/runtime.rs` (`ClickArea`, `MapUiAreas`, `UiAreas`, centered/clamped window helpers). This layer now also centralizes **window layout geometry** (padding, scrollbar placement) and provides a **generic hit-testing system**, allowing the game to identify interactions with buttons, title bars, and scrollbar components in a window-agnostic way. Each screen builds a frontend-neutral `ScreenView` in `src/ui/view.rs`. The game now ships two terminal-native frontends: **Terminal ASCII** for the current clean readable presentation, and **Terminal VGA** for a denser retro-DOS look. In-game rendering is driven by the `InGamePainter` trait (`src/ui/painter.rs`) with 15 methods covering every UI element; a shared `orchestrate_ingame()` function controls paint order and click-area collection while the active terminal frontend selects the palette and chrome style. In-game UI elements (map, tools panel, budget, inspect, statistics, tool chooser, help, about, legend, advisors, newspaper) are movable windows managed by `DesktopState`.
+Shared geometry and window helpers live in `src/ui/runtime.rs` (`ClickArea`, `MapUiAreas`, `UiAreas`, centered/clamped window helpers). This layer centralizes **window layout geometry** (padding, scrollbar placement) and generic hit-testing primitives without forcing every presentation path to share painters. The supported runtime is currently **Terminal ASCII** via `ratatui`. Pixel rendering code remains in-tree as a parked implementation, but it is not part of the normal supported product flow.
 
 `InGameScreen` is also split into focused feature modules rather than one large implementation file:
 - `ingame.rs` keeps the screen shell and top-level lifecycle
@@ -307,11 +306,11 @@ Shared geometry and window helpers now live in `src/ui/runtime.rs` (`ClickArea`,
 
 ```
 src/
-├── main.rs                        Entry point; sets up terminal, spawns sim thread, runs event loop
+├── main.rs                        Entry point; runs the supported terminal runtime, spawns sim thread, runs event loop
 ├── app/
 │   ├── mod.rs                     AppState and shared app shell
 │   ├── camera.rs                  Camera (viewport offset, clamping, pan)
-│   ├── input.rs                   Action enum; crossterm Event → Action translation
+│   ├── input.rs                   Shared Action/UiEvent types; terminal + miniquad input translation
 │   ├── line_drag.rs               LineDrag state (road/rail/power line placement)
 │   ├── rect_drag.rs               RectDrag state (zone/bulldoze area placement)
 │   ├── save.rs                    Binary `.tc2` save/load helpers
@@ -368,14 +367,15 @@ src/
 │           ├── history.rs         HistorySystem
 │           └── disasters.rs       FireSpreadSystem, FloodSystem, TornadoSystem
 └── ui/
-    ├── mod.rs                     Renderer selection + `ScreenView` dispatch
+    ├── mod.rs                     Terminal `ratatui` renderer entry point
+    ├── pixel.rs                   Parked miniquad pixel runtime kept in-tree but not exposed in supported product flow
     ├── view.rs                    Frontend-neutral screen and in-game view models
     ├── painter.rs                 InGamePainter trait (15 methods), orchestrate_ingame(), FrameLayout, StatusBarAreas
     ├── frontends/
-    │   ├── mod.rs                 Terminal frontend entry points
+    │   ├── mod.rs                 Shared terminal helper exports
     │   └── terminal/
-    │       ├── mod.rs             Terminal frontend exports
-    │       └── ingame.rs          TerminalPainter — shared in-game painter for ASCII/VGA terminal modes
+    │       ├── mod.rs             Terminal rendering helpers
+    │       └── ingame.rs          TerminalPainter — ratatui in-game painter used by the terminal frontend
     ├── runtime.rs                 Shared UI runtime helpers (hit areas, window clamp/center, focus cycling)
     ├── theme.rs                   Colour palette; tile glyphs; multi-tile building art; overlay tinting
     ├── game/
@@ -414,7 +414,7 @@ src/
 | `DesktopState` | `ui/runtime.rs` | Managed in-game windows, focus order, dragging, centering, clamping |
 | `WindowState` | `ui/runtime.rs` | Position, size, visibility, modal/closable metadata for one window |
 | `Screen` | `app/screens/mod.rs` | Trait implemented by every game state |
-| `ScreenView` | `ui/view.rs` | Frontend-neutral view model returned by a screen |
+| Screen-specific view models | `ui/view.rs` | Typed view-model structs consumed by the supported terminal renderer and any parked/alternate presentation paths without a shared enum dispatch layer |
 | `ScreenTransition` | `app/screens/mod.rs` | Navigation result returned by `on_action` (Push, Replace, Pop) |
 
 ### Simulation Pipeline
@@ -439,13 +439,10 @@ src/
 
 ### Rendering Pipeline
 
-1. The frontend event loop (terminal or pixel) calls the active screen's `build_view()` to produce a frontend-neutral `ScreenView`.
-2. For non-ingame screens, the frontend dispatches to the matching renderer in `src/ui/screens/*`.
-3. For the in-game screen, the frontend creates its `InGamePainter` implementation and calls `orchestrate_ingame()` in `src/ui/painter.rs`. This shared orchestrator drives all 15 paint steps in a fixed order, collecting click areas for hit-testing.
-4. `DesktopState` computes the in-game window layout (menu bar, status bar, map, panel, budget, inspect, tool chooser, help, about), including centering, clamping, title bars, and close-button geometry.
-5. `MapView` iterates visible tiles (camera offset + viewport size), picks colours and 2-cell sprites from `theme.rs`, and writes them into the buffer. To better match terminal font aspect ratios, **the map is rendered using double-width tile sprites** (each map tile maps to two horizontal terminal cells), with roads, rails, and power lines using dedicated left/right sprite pairs so they do not appear double-thick. **Multi-tile buildings** (3×3 and 4×4 footprints) render per-position art from central art tables — each tile within the building gets unique characters (box-drawing frames, labels, interior detail) so buildings appear as coherent structures rather than uniform blocks. Surface road traffic is also animated directly on those sprites using the current traffic overlay values, burning tiles use a small ASCII flicker cycle to make fires easier to spot, and utility overlays/layers add restrained pulses for active power lines, underground pipes, and subway stations. Water service remains a surface-oriented coverage overlay, while underground mode composites pipes/tunnels with ghosted roads and landmarks for orientation. When the map is larger than the viewport, dedicated DOS-style horizontal and vertical scrollbars are rendered beside it.
-6. The panel window renders the toolbox, minimap, and tile-info section. Layout is computed from the managed panel window rect so it stays stable while dragging, and the toolbar itself is layout-driven rather than row-index driven. The minimap uses the same 2:1 horizontal sampling as the main map so its aspect ratio, viewport outline, and click-to-center behavior stay aligned with the primary map view.
-7. Popup windows such as the tool chooser, budget window, inspect window, statistics window, help window, about window, and **Map Legend** render through dedicated `ui/game/*` modules or shared terminal helpers. Text-heavy windows now feature internal padding for readability and **interactive mouse-driven scrollbars** with up/down arrows and drag support. The menu popup is rendered after the status bar so it always overlays correctly.
+1. The active screen remains shared application state, and the supported runtime renders through `ratatui` directly to `crossterm`, using screen-specific typed view models where needed.
+2. `DesktopState` still computes in-game window layout (menu bar, status bar, map, panel, budget, inspect, tool chooser, help, about), including centering, clamping, title bars, and close-button geometry.
+3. In the terminal frontend, `MapView` iterates visible tiles (camera offset + viewport size), picks colours and 2-cell sprites from `theme.rs`, and writes them into the buffer. To better match terminal font aspect ratios, **the terminal map is rendered using double-width tile sprites** (each map tile maps to two horizontal terminal cells), with roads, rails, and power lines using dedicated left/right sprite pairs so they do not appear double-thick. **Multi-tile buildings** (3×3 and 4×4 footprints) render per-position art from central art tables — each tile within the building gets unique characters (box-drawing frames, labels, interior detail) so buildings appear as coherent structures rather than uniform blocks. Surface road traffic is also animated directly on those sprites using the current traffic overlay values, burning tiles use a small ASCII flicker cycle to make fires easier to spot, and utility overlays/layers add restrained pulses for active power lines, underground pipes, and subway stations. Water service remains a surface-oriented coverage overlay, while underground mode composites pipes/tunnels with ghosted roads and landmarks for orientation. When the map is larger than the viewport, dedicated DOS-style horizontal and vertical scrollbars are rendered beside it.
+4. The old pixel runtime remains parked in `src/ui/pixel.rs` for possible future revisit, but it is not a supported frontend in normal product flow.
 
 ### Adding a New Tool
 

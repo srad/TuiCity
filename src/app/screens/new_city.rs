@@ -212,6 +212,23 @@ pub struct NewCityScreen {
     pub state: NewCityState,
 }
 
+impl NewCityScreen {
+    pub fn view_model(&self) -> crate::ui::view::NewCityViewModel {
+        crate::ui::view::NewCityViewModel {
+            preview_map: self.state.preview_map.clone(),
+            focused_field: self.state.focused_field,
+            city_name: self.state.city_name.clone(),
+            seed_text: self.state.seed_input.clone(),
+            water_pct: self.state.water_pct,
+            trees_pct: self.state.trees_pct,
+            terrain_brush: self.state.terrain_brush,
+            cursor: (self.state.cursor_x, self.state.cursor_y),
+            map_cursor_active: self.state.map_cursor_active,
+            llm_name_pending: self.state.llm_name_pending,
+        }
+    }
+}
+
 impl Screen for NewCityScreen {
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
         self
@@ -432,21 +449,6 @@ impl Screen for NewCityScreen {
             },
             _ => None,
         }
-    }
-
-    fn build_view(&self, _context: AppContext<'_>) -> crate::ui::view::ScreenView {
-        crate::ui::view::ScreenView::NewCity(crate::ui::view::NewCityViewModel {
-            preview_map: self.state.preview_map.clone(),
-            focused_field: self.state.focused_field,
-            city_name: self.state.city_name.clone(),
-            seed_text: self.state.seed_input.clone(),
-            water_pct: self.state.water_pct,
-            trees_pct: self.state.trees_pct,
-            terrain_brush: self.state.terrain_brush,
-            cursor: (self.state.cursor_x, self.state.cursor_y),
-            map_cursor_active: self.state.map_cursor_active,
-            llm_name_pending: self.state.llm_name_pending,
-        })
     }
 }
 

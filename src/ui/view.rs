@@ -54,7 +54,6 @@ pub struct SettingsViewModel {
     pub options: Vec<String>,
     pub selected: usize,
     pub current_theme_label: String,
-    pub current_frontend_label: String,
     pub llm_status: LlmStatus,
 }
 
@@ -284,13 +283,3 @@ pub struct InGameDesktopView {
     pub newspaper: Option<NewspaperViewModel>,
 }
 
-#[derive(Clone)]
-pub enum ScreenView {
-    Start(StartViewModel),
-    LoadCity(LoadCityViewModel),
-    NewCity(NewCityViewModel),
-    Settings(SettingsViewModel),
-    LlmSetup(LlmSetupViewModel),
-    InGame(InGameDesktopView),
-    ThemeSettings(ThemeSettingsViewModel),
-}

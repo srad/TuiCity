@@ -5,7 +5,7 @@ mod game_info;
 mod textgen;
 mod ui;
 
-use std::{fs::File, io, sync::mpsc, time::Duration};
+use std::{fs::File, io, time::Duration};
 
 use crossterm::{
     event::{self, DisableMouseCapture, EnableMouseCapture},
@@ -85,21 +85,7 @@ fn silence_stderr() {
 
 fn run_loop(renderer: &mut dyn Renderer) -> io::Result<()> {
     let mut app = app::AppState::new();
-    let (tx, rx) = mpsc::channel();
-    app.cmd_tx = Some(tx);
-
-    let engine_arc = app.engine.clone();
-
-    std::thread::spawn(move || {
-        while let Ok(cmd) = rx.recv() {
-            let mut engine = engine_arc.write().unwrap();
-            let _ = engine.execute_command(cmd);
-            // Drain any additional queued commands while we hold the lock
-            while let Ok(cmd) = rx.try_recv() {
-                let _ = engine.execute_command(cmd);
-            }
-        }
-    });
+    app.attach_engine_channel();
 
     loop {
         if let Err(e) = renderer.render(&mut app) {
@@ -109,11 +95,11 @@ fn run_loop(renderer: &mut dyn Renderer) -> io::Result<()> {
 
         // Block until at least one event arrives (or timeout for tick)
         if event::poll(Duration::from_millis(16))? {
-            // Drain ALL pending events before next render
             loop {
                 let event = event::read()?;
-                app.on_event(&event);
-                let action = app::input::translate_event(event);
+                let ui_event = app::input::terminal_ui_event(&event);
+                app.on_event(&ui_event);
+                let action = app::input::translate_terminal_event(event);
                 app.on_action(action);
                 if !app.running || !event::poll(Duration::from_millis(0))? {
                     break;

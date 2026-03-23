@@ -45,6 +45,14 @@ impl ThemeSettingsScreen {
         self.state.selected = selected.min(ALL_THEME_PRESETS.len().saturating_sub(1));
         self.apply_selected_theme();
     }
+
+    pub fn view_model(&self) -> crate::ui::view::ThemeSettingsViewModel {
+        crate::ui::view::ThemeSettingsViewModel {
+            themes: ALL_THEME_PRESETS.to_vec(),
+            selected: self.state.selected,
+            active: theme::current_theme(),
+        }
+    }
 }
 
 impl Screen for ThemeSettingsScreen {
@@ -104,13 +112,5 @@ impl Screen for ThemeSettingsScreen {
             }
             _ => None,
         }
-    }
-
-    fn build_view(&self, _context: AppContext<'_>) -> crate::ui::view::ScreenView {
-        crate::ui::view::ScreenView::ThemeSettings(crate::ui::view::ThemeSettingsViewModel {
-            themes: ALL_THEME_PRESETS.to_vec(),
-            selected: self.state.selected,
-            active: theme::current_theme(),
-        })
     }
 }

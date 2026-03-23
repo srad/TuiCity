@@ -21,7 +21,23 @@ pub enum Action {
     DeleteChar,
 }
 
-pub fn translate_event(event: Event) -> Action {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UiEvent {
+    Activity,
+    Resize { cols: u16, rows: u16 },
+}
+
+pub fn terminal_ui_event(event: &Event) -> UiEvent {
+    match event {
+        Event::Resize(cols, rows) => UiEvent::Resize {
+            cols: *cols,
+            rows: *rows,
+        },
+        _ => UiEvent::Activity,
+    }
+}
+
+pub fn translate_terminal_event(event: Event) -> Action {
     match event {
         Event::Key(key) => translate_key(key),
         Event::Mouse(mouse) => match mouse.kind {
@@ -60,6 +76,44 @@ pub fn translate_event(event: Event) -> Action {
     }
 }
 
+#[allow(dead_code)]
+pub fn translate_miniquad_key(key: miniquad::KeyCode, keymods: miniquad::KeyMods) -> Action {
+    use miniquad::KeyCode;
+
+    if key == KeyCode::F1 {
+        return Action::MenuActivate;
+    }
+
+    if keymods.ctrl {
+        return match key {
+            KeyCode::C | KeyCode::Q => Action::Quit,
+            KeyCode::S => Action::SaveGame,
+            _ => Action::None,
+        };
+    }
+
+    match key {
+        KeyCode::Up => Action::MoveCursor(0, -1),
+        KeyCode::Down => Action::MoveCursor(0, 1),
+        KeyCode::Left => Action::MoveCursor(-1, 0),
+        KeyCode::Right => Action::MoveCursor(1, 0),
+        KeyCode::Enter | KeyCode::KpEnter => Action::MenuSelect,
+        KeyCode::Escape => Action::MenuBack,
+        KeyCode::Backspace => Action::DeleteChar,
+        KeyCode::Tab => Action::CharInput('\t'),
+        _ => Action::None,
+    }
+}
+
+#[allow(dead_code)]
+pub fn translate_miniquad_char(character: char, keymods: miniquad::KeyMods) -> Action {
+    if keymods.ctrl || character.is_control() {
+        Action::None
+    } else {
+        Action::CharInput(character)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -74,7 +128,7 @@ mod tests {
             modifiers: KeyModifiers::empty(),
         });
         assert!(matches!(
-            translate_event(event),
+            translate_terminal_event(event),
             Action::MouseMiddleDrag { col: 12, row: 7 }
         ));
     }
@@ -87,7 +141,10 @@ mod tests {
             row: 0,
             modifiers: KeyModifiers::empty(),
         });
-        assert!(matches!(translate_event(event), Action::PanCamera(3, 0)));
+        assert!(matches!(
+            translate_terminal_event(event),
+            Action::PanCamera(3, 0)
+        ));
     }
 }
 

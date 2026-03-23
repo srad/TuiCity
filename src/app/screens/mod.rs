@@ -16,9 +16,8 @@ use std::sync::mpsc::Sender;
 use std::sync::{Arc, RwLock};
 
 use crate::{
-    app::input::Action,
+    app::input::{Action, UiEvent},
     core::engine::{EngineCommand, SimulationEngine},
-    ui::view::ScreenView,
 };
 
 pub use ingame::InGameScreen;
@@ -51,7 +50,7 @@ pub trait Screen {
 
     fn on_event(
         &mut self,
-        _event: &crossterm::event::Event,
+        _event: &UiEvent,
         _context: AppContext,
     ) -> Option<ScreenTransition> {
         None
@@ -62,6 +61,4 @@ pub trait Screen {
     fn on_tick(&mut self, _context: AppContext) -> Option<ScreenTransition> {
         None
     }
-
-    fn build_view(&self, context: AppContext<'_>) -> ScreenView;
 }

@@ -105,7 +105,7 @@ struct ScreenChrome {
 }
 
 fn screen_chrome() -> ScreenChrome {
-    if crate::ui::theme::is_terminal_vga() {
+    if crate::ui::theme::is_pixel_style() {
         ScreenChrome {
             author: Style::default()
                 .fg(Color::Rgb(255, 255, 85))
@@ -169,8 +169,8 @@ fn screen_chrome() -> ScreenChrome {
 }
 
 pub fn paint_synthwave(buf: &mut Buffer, area: Rect, opts: SynthwaveBackground) {
-    if crate::ui::theme::is_terminal_vga() {
-        paint_vga_backdrop(buf, area, opts);
+    if crate::ui::theme::is_pixel_style() {
+        paint_pixel_backdrop(buf, area, opts);
         return;
     }
 
@@ -223,7 +223,7 @@ pub fn paint_synthwave(buf: &mut Buffer, area: Rect, opts: SynthwaveBackground) 
     paint_scanlines(buf, area);
 }
 
-fn paint_vga_backdrop(buf: &mut Buffer, area: Rect, opts: SynthwaveBackground) {
+fn paint_pixel_backdrop(buf: &mut Buffer, area: Rect, opts: SynthwaveBackground) {
     if area.width == 0 || area.height == 0 {
         return;
     }
