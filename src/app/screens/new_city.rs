@@ -226,7 +226,9 @@ impl Screen for NewCityScreen {
                     let raw = resp.text.trim().lines().next().unwrap_or("").trim();
                     let before_comma = raw.split(',').next().unwrap_or(raw).trim();
                     let name: String = before_comma
-                        .trim_end_matches(|c: char| c == '.' || c == ',' || c == ';' || c == ':' || c == '"' || c == '\'')
+                        .trim_end_matches(|c: char| {
+                            c == '.' || c == ',' || c == ';' || c == ':' || c == '"' || c == '\''
+                        })
                         .trim()
                         .chars()
                         .take(30)

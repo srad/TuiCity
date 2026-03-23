@@ -1,8 +1,5 @@
 use super::common::{self, MenuConfig, MenuItem, PanelLayout, SynthwaveBackground};
-use crate::{
-    app::screens::SettingsState,
-    ui::view::SettingsViewModel,
-};
+use crate::{app::screens::SettingsState, ui::view::SettingsViewModel};
 use ratatui::{
     buffer::Buffer,
     layout::Rect,
@@ -52,9 +49,7 @@ fn render_title(buf: &mut Buffer, area: Rect, y: u16, view: &SettingsViewModel) 
         crate::ui::view::LlmStatus::Unavailable => {
             ("LLM: No Model".to_string(), Color::Rgb(255, 170, 80))
         }
-        crate::ui::view::LlmStatus::Disabled => {
-            ("LLM: Off".to_string(), Color::Rgb(140, 140, 140))
-        }
+        crate::ui::view::LlmStatus::Disabled => ("LLM: Off".to_string(), Color::Rgb(140, 140, 140)),
         crate::ui::view::LlmStatus::Downloading(_) => {
             ("LLM: Downloading...".to_string(), Color::Rgb(100, 180, 255))
         }

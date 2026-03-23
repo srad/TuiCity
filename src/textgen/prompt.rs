@@ -5,8 +5,7 @@ const TMPL_CITY_NAME: &str = include_str!("../../assets/prompts/city_name.txt");
 const TMPL_NEWSPAPER: &str = include_str!("../../assets/prompts/newspaper.txt");
 const TMPL_ADVISOR: &str = include_str!("../../assets/prompts/advisor.txt");
 const TMPL_ALERT: &str = include_str!("../../assets/prompts/alert.txt");
-const TMPL_NEWSPAPER_ARTICLE: &str =
-    include_str!("../../assets/prompts/newspaper_article.txt");
+const TMPL_NEWSPAPER_ARTICLE: &str = include_str!("../../assets/prompts/newspaper_article.txt");
 const RULES_SUMMARY: &str = include_str!("../../assets/prompts/rules_summary.txt");
 
 /// Replace all `{{key}}` occurrences in `template` with the corresponding value.
@@ -19,8 +18,8 @@ fn render(template: &str, vars: &[(&str, &str)]) -> String {
     out
 }
 
-fn format_context(ctx: &CityContext) -> String {
-    let month_name = match ctx.month {
+fn month_abbrev(month: u8) -> &'static str {
+    match month {
         1 => "Jan",
         2 => "Feb",
         3 => "Mar",
@@ -34,8 +33,28 @@ fn format_context(ctx: &CityContext) -> String {
         11 => "Nov",
         12 => "Dec",
         _ => "???",
-    };
+    }
+}
 
+fn month_name(month: u8) -> &'static str {
+    match month {
+        1 => "January",
+        2 => "February",
+        3 => "March",
+        4 => "April",
+        5 => "May",
+        6 => "June",
+        7 => "July",
+        8 => "August",
+        9 => "September",
+        10 => "October",
+        11 => "November",
+        12 => "December",
+        _ => "Unknown",
+    }
+}
+
+fn format_context(ctx: &CityContext) -> String {
     let power_status = if ctx.power_consumed_mw > ctx.power_produced_mw {
         "SHORTAGE"
     } else {
@@ -60,7 +79,7 @@ fn format_context(ctx: &CityContext) -> String {
          Active fires: {fires}, Trip success: {trips:.0}%\n\
          Services: {schools} schools, {hosp} hospitals, {police} police, {fire} fire stations, {parks} parks",
         name = ctx.city_name,
-        month = month_name,
+        month = month_abbrev(ctx.month),
         year = ctx.year,
         pop = ctx.population,
         delta = ctx.pop_delta,
@@ -92,45 +111,182 @@ fn format_context(ctx: &CityContext) -> String {
     )
 }
 
+fn strongest_demand(ctx: &CityContext) -> (&'static str, f32) {
+    [
+        ("residential", ctx.demand_res),
+        ("commercial", ctx.demand_comm),
+        ("industrial", ctx.demand_ind),
+    ]
+    .into_iter()
+    .max_by(|a, b| a.1.total_cmp(&b.1))
+    .unwrap_or(("residential", ctx.demand_res))
+}
+
+fn classify_city_lead(ctx: &CityContext) -> &'static str {
+    if ctx.active_fires > 0 {
+        "multiple fires are demanding an emergency response"
+    } else if ctx.power_consumed_mw > ctx.power_produced_mw {
+        "the power grid is falling short of demand"
+    } else if ctx.water_consumed > ctx.water_produced {
+        "water service is under strain"
+    } else if ctx.treasury < 0 || ctx.last_income < 0 {
+        "City Hall is wrestling with a budget problem"
+    } else if ctx.trip_success_rate < 0.60 {
+        "the commute is breaking down across town"
+    } else if ctx.avg_crime >= 140 {
+        "crime has become a major civic concern"
+    } else if ctx.avg_pollution >= 140 {
+        "pollution is hanging over the city"
+    } else if ctx.pop_delta > 0 {
+        "the city is growing and trying to keep up"
+    } else {
+        "the city is holding steady with mixed expectations"
+    }
+}
+
+fn format_newspaper_briefing(ctx: &CityContext) -> String {
+    let power_line = if ctx.power_consumed_mw > ctx.power_produced_mw {
+        format!(
+            "power supply falls short of demand by {} MW",
+            ctx.power_consumed_mw - ctx.power_produced_mw
+        )
+    } else {
+        format!(
+            "power supply is ahead of demand by {} MW",
+            ctx.power_produced_mw - ctx.power_consumed_mw
+        )
+    };
+
+    let water_line = if ctx.water_consumed > ctx.water_produced {
+        format!(
+            "water demand exceeds supply by {} units",
+            ctx.water_consumed - ctx.water_produced
+        )
+    } else {
+        format!(
+            "water supply is ahead by {} units",
+            ctx.water_produced - ctx.water_consumed
+        )
+    };
+
+    let (demand_kind, demand_value) = strongest_demand(ctx);
+
+    format!(
+        "Lead issue: {lead}\n\
+         Growth: population {population} ({delta:+} this month)\n\
+         Budget: treasury ${treasury}; monthly income ${income}\n\
+         Utilities: {power}; {water}\n\
+         Transit: trip success is {trips:.0}%\n\
+         Environment: pollution {pollution}/255, crime {crime}/255, fire risk {fire}/255, land value {land}/255\n\
+         Demand: strongest {demand_kind} demand at {demand_value:.2}\n\
+         Services: {schools} schools, {hospitals} hospitals, {police} police stations, {fire_stations} fire stations, {parks} parks",
+        lead = classify_city_lead(ctx),
+        population = ctx.population,
+        delta = ctx.pop_delta,
+        treasury = ctx.treasury,
+        income = ctx.last_income,
+        power = power_line,
+        water = water_line,
+        trips = ctx.trip_success_rate * 100.0,
+        pollution = ctx.avg_pollution,
+        crime = ctx.avg_crime,
+        fire = ctx.avg_fire_risk,
+        land = ctx.avg_land_value,
+        demand_kind = demand_kind,
+        demand_value = demand_value,
+        schools = ctx.num_schools,
+        hospitals = ctx.num_hospitals,
+        police = ctx.num_police,
+        fire_stations = ctx.num_fire_stations,
+        parks = ctx.num_parks,
+    )
+}
+
+fn format_newspaper_color(ctx: &CityContext) -> String {
+    let civic_brag = if ctx.pop_delta > 0 {
+        format!(
+            "moving vans keep arriving and citizens can feel the city stretching into its next chapter"
+        )
+    } else if ctx.treasury >= 0 && ctx.last_income >= 0 {
+        "the books look calm enough for City Hall to brag at dinner parties".to_string()
+    } else if ctx.trip_success_rate >= 0.75 {
+        "commuters still grumble, but most of them are getting where they meant to go".to_string()
+    } else {
+        "people still believe the city can get its act together if someone finally fixes the obvious problem"
+            .to_string()
+    };
+
+    let resident_gripe = classify_city_lead(ctx).to_string();
+    let sponsor_pitch = if ctx.power_consumed_mw > ctx.power_produced_mw {
+        "sell generators, extension cords, and brave promises about the power grid".to_string()
+    } else if ctx.water_consumed > ctx.water_produced {
+        "promote water tanks, neat lawns, and suspiciously optimistic plumbing".to_string()
+    } else if ctx.demand_res > ctx.demand_comm && ctx.demand_res > ctx.demand_ind {
+        "sell furniture, moving boxes, and dreams of the perfect starter neighborhood".to_string()
+    } else if ctx.demand_comm > ctx.demand_ind {
+        "sell storefront signs, coffee, and the idea that every avenue needs one more shop"
+            .to_string()
+    } else {
+        "sell work boots, used machinery, and confidence about the city's productive future"
+            .to_string()
+    };
+    let street_mood = if ctx.avg_crime >= 140 {
+        "residents sound alert, sarcastic, and eager for somebody competent to take charge"
+            .to_string()
+    } else if ctx.avg_pollution >= 140 {
+        "residents sound proud of the skyline and slightly offended by the air quality".to_string()
+    } else {
+        "residents sound like they have just enough hope to keep gossiping instead of packing"
+            .to_string()
+    };
+
+    format!(
+        "Civic brag: {civic_brag}\n\
+         Resident gripe: {resident_gripe}\n\
+         Sponsor angle: {sponsor_pitch}\n\
+         Street mood: {street_mood}"
+    )
+}
+
 pub fn city_name_prompt() -> String {
     TMPL_CITY_NAME.to_string()
 }
 
 pub fn newspaper_article_prompt(ctx: &CityContext) -> String {
-    let month_name = match ctx.month {
-        1 => "January",
-        2 => "February",
-        3 => "March",
-        4 => "April",
-        5 => "May",
-        6 => "June",
-        7 => "July",
-        8 => "August",
-        9 => "September",
-        10 => "October",
-        11 => "November",
-        12 => "December",
-        _ => "Unknown",
-    };
+    let month_name = month_name(ctx.month);
+    let year = ctx.year.to_string();
+    let city_status = format_context(ctx);
+    let city_briefing = format_newspaper_briefing(ctx);
+    let city_color = format_newspaper_color(ctx);
     render(
         TMPL_NEWSPAPER_ARTICLE,
         &[
             ("city_name", &ctx.city_name),
             ("month_name", month_name),
-            ("year", &ctx.year.to_string()),
-            ("city_status", &format_context(ctx)),
+            ("year", &year),
+            ("city_status", &city_status),
+            ("city_briefing", &city_briefing),
+            ("city_color", &city_color),
         ],
     )
 }
 
 pub fn newspaper_prompt(ctx: &CityContext) -> String {
+    let year = ctx.year.to_string();
+    let population = ctx.population.to_string();
+    let treasury = ctx.treasury.to_string();
+    let city_status = format_context(ctx);
+    let city_briefing = format_newspaper_briefing(ctx);
     render(
         TMPL_NEWSPAPER,
         &[
             ("city_name", &ctx.city_name),
-            ("population", &ctx.population.to_string()),
-            ("treasury", &ctx.treasury.to_string()),
-            ("city_status", &format_context(ctx)),
+            ("population", &population),
+            ("treasury", &treasury),
+            ("city_status", &city_status),
+            ("month_name", month_name(ctx.month)),
+            ("year", &year),
+            ("city_briefing", &city_briefing),
         ],
     )
 }
@@ -251,6 +407,7 @@ mod tests {
         let prompt = newspaper_prompt(&ctx);
         assert!(prompt.contains("Testville"));
         assert!(prompt.contains("5000"));
+        assert!(prompt.contains("Lead issue:"));
     }
 
     #[test]
@@ -268,6 +425,21 @@ mod tests {
             !prompt.contains("{{"),
             "unreplaced placeholder in newspaper prompt"
         );
+    }
+
+    #[test]
+    fn newspaper_article_prompt_includes_briefing_and_structure() {
+        let ctx = sample_context();
+        let prompt = newspaper_article_prompt(&ctx);
+        assert!(prompt.contains("Lead issue:"));
+        assert!(prompt.contains("PAGE 1: FRONT PAGE"));
+        assert!(prompt.contains("SECTION: LEAD STORY"));
+        assert!(prompt.contains("SECTION: LETTERS FROM READERS"));
+        assert!(prompt.contains("SECTION: CLASSIFIEDS"));
+        assert!(prompt.contains("SECTION: WEATHER DESK"));
+        assert!(prompt.contains("Dear Mayor,"));
+        assert!(prompt.contains("Entertainment hooks:"));
+        assert!(!prompt.contains("{{"));
     }
 
     #[test]

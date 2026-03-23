@@ -219,8 +219,10 @@ pub struct InGameScreen {
     pub advisor_domain: AdvisorDomain,
     pub advisor_text: Option<String>,
     pub advisor_pending: bool,
-    pub newspaper_sections: Vec<crate::ui::view::NewspaperSection>,
+    pub newspaper_pages: Vec<crate::ui::view::NewspaperPage>,
     pub newspaper_pending: bool,
+    pub newspaper_page_index: usize,
+    pub newspaper_selected_section_index: usize,
     pub newspaper_detail_index: Option<usize>,
     /// True if the game was already paused before opening the newspaper.
     newspaper_was_paused: bool,
@@ -267,8 +269,10 @@ impl InGameScreen {
             advisor_domain: AdvisorDomain::Economy,
             advisor_text: None,
             advisor_pending: false,
-            newspaper_sections: Vec::new(),
+            newspaper_pages: Vec::new(),
             newspaper_pending: false,
+            newspaper_page_index: 0,
+            newspaper_selected_section_index: 0,
             newspaper_detail_index: None,
             newspaper_was_paused: false,
         }
@@ -513,11 +517,12 @@ impl InGameScreen {
         self.paused = true;
         // Always request a fresh article on open.
         self.newspaper_pending = true;
-        self.newspaper_sections.clear();
+        self.newspaper_pages.clear();
+        self.newspaper_page_index = 0;
+        self.newspaper_selected_section_index = 0;
         self.newspaper_detail_index = None;
         let engine = context.engine.read().unwrap();
-        let ctx =
-            crate::textgen::types::CityContext::from_state(&engine.sim, &engine.map);
+        let ctx = crate::textgen::types::CityContext::from_state(&engine.sim, &engine.map);
         drop(engine);
         context
             .textgen
@@ -643,18 +648,85 @@ impl InGameScreen {
         })
     }
 
-    fn newspaper_view_model(
-        &self,
-        sim: &crate::core::sim::SimState,
-    ) -> Option<NewspaperViewModel> {
+    fn newspaper_view_model(&self, sim: &crate::core::sim::SimState) -> Option<NewspaperViewModel> {
+        let current_page = self
+            .newspaper_page_index
+            .min(self.newspaper_pages.len().saturating_sub(1));
+        let selected_section_index = self
+            .newspaper_pages
+            .get(current_page)
+            .map(|page| {
+                self.newspaper_selected_section_index
+                    .min(page.sections.len().saturating_sub(1))
+            })
+            .unwrap_or(0);
         self.is_newspaper_open().then(|| NewspaperViewModel {
-            sections: self.newspaper_sections.clone(),
+            pages: self.newspaper_pages.clone(),
             pending: self.newspaper_pending,
             city_name: sim.city_name.clone(),
             month: sim.month,
             year: sim.year,
-            detail_index: self.newspaper_detail_index,
+            current_page,
+            selected_section_index,
+            detail_section_index: self.newspaper_detail_index,
         })
+    }
+
+    fn current_newspaper_page(&self) -> Option<&crate::ui::view::NewspaperPage> {
+        self.newspaper_pages.get(
+            self.newspaper_page_index
+                .min(self.newspaper_pages.len().saturating_sub(1)),
+        )
+    }
+
+    fn cycle_newspaper_page(&mut self, delta: i32) {
+        if self.newspaper_pages.is_empty() {
+            self.newspaper_page_index = 0;
+            self.newspaper_selected_section_index = 0;
+            return;
+        }
+
+        let len = self.newspaper_pages.len();
+        let current = self.newspaper_page_index.min(len.saturating_sub(1));
+        self.newspaper_page_index = if delta < 0 {
+            (current + len - 1) % len
+        } else {
+            (current + 1) % len
+        };
+        self.newspaper_selected_section_index = 0;
+        self.newspaper_detail_index = None;
+    }
+
+    fn cycle_newspaper_section(&mut self, delta: i32) {
+        let Some(page) = self.current_newspaper_page() else {
+            self.newspaper_selected_section_index = 0;
+            return;
+        };
+        if page.sections.is_empty() {
+            self.newspaper_selected_section_index = 0;
+            return;
+        }
+
+        let len = page.sections.len();
+        let current = self
+            .newspaper_selected_section_index
+            .min(len.saturating_sub(1));
+        self.newspaper_selected_section_index = if delta < 0 {
+            (current + len - 1) % len
+        } else {
+            (current + 1) % len
+        };
+    }
+
+    fn open_selected_newspaper_section(&mut self) {
+        if let Some(page) = self.current_newspaper_page() {
+            if !page.sections.is_empty() {
+                self.newspaper_detail_index = Some(
+                    self.newspaper_selected_section_index
+                        .min(page.sections.len().saturating_sub(1)),
+                );
+            }
+        }
     }
 
     fn toolbar_view_model(&self) -> ToolbarPaletteViewModel {
@@ -883,7 +955,21 @@ impl Screen for InGameScreen {
                     }
                 }
                 LlmTaskTag::NewspaperArticle => {
-                    self.newspaper_sections = parse_newspaper_sections(&resp.text);
+                    let engine = context.engine.read().unwrap();
+                    let city_context =
+                        crate::textgen::types::CityContext::from_state(&engine.sim, &engine.map);
+                    drop(engine);
+                    let (pages, used_fallback) = resolve_newspaper_pages(&resp.text, &city_context);
+                    self.newspaper_pages = pages;
+                    self.newspaper_page_index = 0;
+                    self.newspaper_selected_section_index = 0;
+                    self.newspaper_detail_index = None;
+                    if used_fallback {
+                        self.push_message(
+                            "The presses tossed out a garbled edition and ran the backup copy."
+                                .to_string(),
+                        );
+                    }
                     self.newspaper_pending = false;
                 }
                 LlmTaskTag::CityName => {
@@ -1100,15 +1186,33 @@ impl Screen for InGameScreen {
             return match action {
                 Action::MenuBack => {
                     if self.newspaper_detail_index.is_some() {
-                        // Back from detail to front page.
                         self.newspaper_detail_index = None;
                     } else {
                         self.close_newspaper_window();
                     }
                     None
                 }
+                Action::MoveCursor(dx, dy) => {
+                    if self.newspaper_detail_index.is_none() {
+                        if dx < 0 {
+                            self.cycle_newspaper_page(-1);
+                        } else if dx > 0 {
+                            self.cycle_newspaper_page(1);
+                        } else if dy < 0 {
+                            self.cycle_newspaper_section(-1);
+                        } else if dy > 0 {
+                            self.cycle_newspaper_section(1);
+                        }
+                    }
+                    None
+                }
+                Action::MenuSelect => {
+                    if self.newspaper_detail_index.is_none() {
+                        self.open_selected_newspaper_section();
+                    }
+                    None
+                }
                 Action::MouseClick { col, row } => {
-                    // Check section headline clicks (only on front page).
                     if self.newspaper_detail_index.is_none() {
                         if let Some(idx) = self
                             .ui_areas
@@ -1116,7 +1220,13 @@ impl Screen for InGameScreen {
                             .iter()
                             .position(|a| a.contains(col, row))
                         {
-                            if idx < self.newspaper_sections.len() {
+                            if idx
+                                < self
+                                    .current_newspaper_page()
+                                    .map(|page| page.sections.len())
+                                    .unwrap_or(0)
+                            {
+                                self.newspaper_selected_section_index = idx;
                                 self.newspaper_detail_index = Some(idx);
                                 return None;
                             }
@@ -1447,68 +1557,171 @@ impl Screen for InGameScreen {
     }
 }
 
-/// Parse LLM newspaper output into sections.
-/// Looks for known section headers (LEAD STORY, CITY BEAT, EDITORIAL, CLASSIFIEDS, WEATHER)
-/// and splits the text accordingly. Each section has a title and body.
-fn parse_newspaper_sections(text: &str) -> Vec<crate::ui::view::NewspaperSection> {
-    use crate::ui::view::NewspaperSection;
+/// Parse LLM newspaper output into pages using explicit PAGE and SECTION markers.
+fn normalize_newspaper_marker(line: &str) -> String {
+    line.trim()
+        .trim_start_matches(|c: char| matches!(c, '#' | '*' | '-' | '>' | ' '))
+        .trim_end_matches(|c: char| matches!(c, '*' | ':' | '-' | '—' | '–' | ' ' | '\t'))
+        .to_string()
+}
 
-    let headers = ["LEAD STORY", "CITY BEAT", "EDITORIAL", "CLASSIFIEDS", "WEATHER"];
-    let mut sections = Vec::new();
-    let mut current_title: Option<&str> = None;
+fn parse_newspaper_page_header(line: &str) -> Option<String> {
+    let cleaned = normalize_newspaper_marker(line);
+    let upper = cleaned.to_ascii_uppercase();
+    if !upper.starts_with("PAGE ") {
+        return None;
+    }
+
+    let rest = cleaned.get(5..)?.trim_start();
+    let digit_count = rest.chars().take_while(|c| c.is_ascii_digit()).count();
+    if digit_count == 0 {
+        return None;
+    }
+    let title = rest
+        .get(digit_count..)
+        .unwrap_or("")
+        .trim_start_matches(|c: char| matches!(c, ':' | '-' | '—' | '–' | ' '))
+        .trim();
+    if title.is_empty() {
+        Some(format!("Page {}", &rest[..digit_count]))
+    } else {
+        Some(title.to_string())
+    }
+}
+
+fn parse_newspaper_section_header(line: &str) -> Option<String> {
+    let cleaned = normalize_newspaper_marker(line);
+    let upper = cleaned.to_ascii_uppercase();
+    if !upper.starts_with("SECTION") {
+        return None;
+    }
+    let title = cleaned
+        .get(7..)
+        .unwrap_or("")
+        .trim_start_matches(|c: char| matches!(c, ':' | '-' | '—' | '–' | ' '))
+        .trim();
+    if title.is_empty() {
+        None
+    } else {
+        Some(title.to_string())
+    }
+}
+
+fn parse_newspaper_pages(text: &str) -> Vec<crate::ui::view::NewspaperPage> {
+    use crate::ui::view::{NewspaperPage, NewspaperSection};
+
+    let mut pages = Vec::new();
+    let mut current_page_title: Option<String> = None;
+    let mut current_sections: Vec<NewspaperSection> = Vec::new();
+    let mut current_section_title: Option<String> = None;
     let mut current_body = String::new();
+
+    let flush_section = |sections: &mut Vec<NewspaperSection>,
+                         current_section_title: &mut Option<String>,
+                         current_body: &mut String| {
+        if let Some(title) = current_section_title.take() {
+            sections.push(NewspaperSection {
+                title,
+                body: current_body.trim().to_string(),
+            });
+            current_body.clear();
+        }
+    };
+
+    let flush_page = |pages: &mut Vec<NewspaperPage>,
+                      current_page_title: &mut Option<String>,
+                      current_sections: &mut Vec<NewspaperSection>| {
+        if let Some(title) = current_page_title.take() {
+            pages.push(NewspaperPage {
+                title,
+                sections: std::mem::take(current_sections),
+            });
+        }
+    };
 
     for line in text.lines() {
         let trimmed = line.trim();
-        // Check if this line is a section header.
-        if let Some(&header) = headers.iter().find(|&&h| {
-            trimmed == h || trimmed.starts_with(&format!("{h}:")) || trimmed.starts_with(&format!("{h}\n"))
-        }) {
-            // Flush previous section.
-            if let Some(title) = current_title {
-                sections.push(NewspaperSection {
-                    title: title.to_string(),
-                    body: current_body.trim().to_string(),
-                });
+
+        if let Some(page_title) = parse_newspaper_page_header(line) {
+            flush_section(
+                &mut current_sections,
+                &mut current_section_title,
+                &mut current_body,
+            );
+            flush_page(&mut pages, &mut current_page_title, &mut current_sections);
+            current_page_title = Some(page_title);
+            continue;
+        }
+
+        if let Some(section_title) = parse_newspaper_section_header(line) {
+            if current_page_title.is_none() {
+                current_page_title = Some("Late Edition".to_string());
             }
-            current_title = Some(header);
-            // If the header line has content after a colon, include it.
-            let after = trimmed.strip_prefix(header).unwrap_or("").trim_start_matches(':').trim();
-            current_body = if after.is_empty() {
-                String::new()
-            } else {
-                after.to_string()
-            };
-        } else if current_title.is_some() {
+            flush_section(
+                &mut current_sections,
+                &mut current_section_title,
+                &mut current_body,
+            );
+            current_section_title = Some(section_title);
+            continue;
+        }
+
+        if current_section_title.is_some() {
             if !current_body.is_empty() || !trimmed.is_empty() {
                 if !current_body.is_empty() {
                     current_body.push('\n');
                 }
                 current_body.push_str(line);
             }
-        } else if !trimmed.is_empty() {
-            // Text before any header — treat as a "BREAKING NEWS" section.
-            current_title = Some("BREAKING NEWS");
-            current_body = line.to_string();
         }
     }
-    // Flush last section.
-    if let Some(title) = current_title {
-        sections.push(NewspaperSection {
-            title: title.to_string(),
-            body: current_body.trim().to_string(),
+
+    flush_section(
+        &mut current_sections,
+        &mut current_section_title,
+        &mut current_body,
+    );
+    flush_page(&mut pages, &mut current_page_title, &mut current_sections);
+
+    if pages.is_empty() && !text.trim().is_empty() {
+        pages.push(NewspaperPage {
+            title: "Late Edition".to_string(),
+            sections: vec![NewspaperSection {
+                title: "NEWS".to_string(),
+                body: text.trim().to_string(),
+            }],
         });
     }
 
-    // If parsing found nothing, wrap the whole text as one section.
-    if sections.is_empty() && !text.trim().is_empty() {
-        sections.push(NewspaperSection {
-            title: "NEWS".to_string(),
-            body: text.trim().to_string(),
-        });
+    pages
+}
+
+fn newspaper_pages_are_usable(pages: &[crate::ui::view::NewspaperPage]) -> bool {
+    !pages.is_empty()
+        && pages.iter().all(|page| {
+            !page.title.trim().is_empty()
+                && !page.sections.is_empty()
+                && page.sections.iter().all(|section| {
+                    !section.title.trim().is_empty() && !section.body.trim().is_empty()
+                })
+        })
+}
+
+fn resolve_newspaper_pages(
+    text: &str,
+    context: &crate::textgen::types::CityContext,
+) -> (Vec<crate::ui::view::NewspaperPage>, bool) {
+    let sanitized = crate::textgen::sanitize_newspaper_article_text(text, context);
+    let mut used_fallback = sanitized.trim() != text.trim();
+    let mut pages = parse_newspaper_pages(&sanitized);
+
+    if !newspaper_pages_are_usable(&pages) {
+        let fallback = crate::textgen::sanitize_newspaper_article_text("", context);
+        pages = parse_newspaper_pages(&fallback);
+        used_fallback = true;
     }
 
-    sections
+    (pages, used_fallback)
 }
 
 #[cfg(test)]
@@ -2316,45 +2529,97 @@ mod tests {
     }
 
     #[test]
-    fn parse_newspaper_sections_basic() {
+    fn parse_newspaper_pages_basic() {
         let text = "\
-LEAD STORY
+PAGE 1: FRONT PAGE
+SECTION: LEAD STORY
 Mayor announces new park.
 Citizens rejoice.
 
-CITY BEAT
+SECTION: CITY BEAT
 Local cat wins award.
 
-EDITORIAL
+PAGE 2: READER FORUM
+SECTION: EDITORIAL
 Dear Mayor, build more roads.
 
-CLASSIFIEDS
-WANTED: A good plumber.
-FOR SALE: Used bulldozer.
+SECTION: COMMUNITY CALENDAR
+Saturday: band concert by the fountain.";
 
-WEATHER
-Sunny with a chance of zoning.";
-
-        let sections = super::parse_newspaper_sections(text);
-        assert_eq!(sections.len(), 5);
-        assert_eq!(sections[0].title, "LEAD STORY");
-        assert!(sections[0].body.contains("Mayor announces"));
-        assert_eq!(sections[1].title, "CITY BEAT");
-        assert_eq!(sections[2].title, "EDITORIAL");
-        assert_eq!(sections[3].title, "CLASSIFIEDS");
-        assert_eq!(sections[4].title, "WEATHER");
+        let pages = super::parse_newspaper_pages(text);
+        assert_eq!(pages.len(), 2);
+        assert_eq!(pages[0].title, "FRONT PAGE");
+        assert_eq!(pages[0].sections.len(), 2);
+        assert_eq!(pages[0].sections[0].title, "LEAD STORY");
+        assert!(pages[0].sections[0].body.contains("Mayor announces"));
+        assert_eq!(pages[0].sections[1].title, "CITY BEAT");
+        assert_eq!(pages[1].title, "READER FORUM");
+        assert_eq!(pages[1].sections[0].title, "EDITORIAL");
+        assert_eq!(pages[1].sections[1].title, "COMMUNITY CALENDAR");
     }
 
     #[test]
-    fn parse_newspaper_sections_empty() {
-        let sections = super::parse_newspaper_sections("");
-        assert!(sections.is_empty());
+    fn parse_newspaper_pages_empty() {
+        let pages = super::parse_newspaper_pages("");
+        assert!(pages.is_empty());
     }
 
     #[test]
-    fn parse_newspaper_sections_no_headers() {
-        let sections = super::parse_newspaper_sections("Just some random text.");
-        assert_eq!(sections.len(), 1);
-        assert_eq!(sections[0].title, "BREAKING NEWS");
+    fn parse_newspaper_pages_no_headers() {
+        let pages = super::parse_newspaper_pages("Just some random text.");
+        assert_eq!(pages.len(), 1);
+        assert_eq!(pages[0].title, "Late Edition");
+        assert_eq!(pages[0].sections.len(), 1);
+        assert_eq!(pages[0].sections[0].title, "NEWS");
+    }
+
+    #[test]
+    fn parse_newspaper_pages_accepts_markdownish_headers() {
+        let text = "\
+## PAGE 1: FRONT PAGE
+**SECTION: LEAD STORY**
+Power Woes Rattle Main Street
+
+### SECTION: CITY BEAT:
+School band plays through a brownout.
+
+## PAGE 2 — READER FORUM
+> SECTION: EDITORIAL —
+Dear Mayor, stop pretending extension cords are policy.
+
+SECTION: COMMUNITY CALENDAR
+Tuesday: transformer appreciation picnic.";
+
+        let pages = super::parse_newspaper_pages(text);
+        assert_eq!(pages.len(), 2);
+        assert_eq!(pages[0].title, "FRONT PAGE");
+        assert_eq!(pages[0].sections[0].title, "LEAD STORY");
+        assert!(pages[0].sections[0].body.contains("Power Woes"));
+        assert_eq!(pages[0].sections[1].title, "CITY BEAT");
+        assert_eq!(pages[1].sections[0].title, "EDITORIAL");
+        assert!(pages[1].sections[0]
+            .body
+            .contains("extension cords are policy"));
+        assert_eq!(pages[1].sections[1].title, "COMMUNITY CALENDAR");
+    }
+
+    #[test]
+    fn resolve_newspaper_pages_replaces_python_output() {
+        let text = "\
+import sys
+
+def main():
+    print('oops')
+
+if __name__ == '__main__':
+    main()
+";
+        let (pages, used_fallback) =
+            super::resolve_newspaper_pages(text, &crate::textgen::types::sample_context());
+        assert!(used_fallback);
+        assert_eq!(pages.len(), 4);
+        assert_eq!(pages[0].title, "FRONT PAGE");
+        assert_eq!(pages[0].sections[0].title, "LEAD STORY");
+        assert_eq!(pages[3].sections[2].title, "WEATHER DESK");
     }
 }

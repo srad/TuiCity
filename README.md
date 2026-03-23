@@ -12,6 +12,7 @@ A terminal-based city-building simulation written in Rust. Build layered cities 
 - [Playing the Game](#playing-the-game)
   - [Prerequisites & Building](#prerequisites--building)
   - [Main Menu](#main-menu)
+  - [Local AI Setup](#local-ai-setup)
   - [Music](#music)
   - [Creating a New City](#creating-a-new-city)
   - [Controls](#controls)
@@ -42,11 +43,27 @@ A terminal-based city-building simulation written in Rust. Build layered cities 
 git clone https://github.com/yourname/tuicity2
 cd tuicity2
 
-# Debug build
+# Default build (CUDA-backed local AI on supported NVIDIA/CUDA setups)
 cargo build
 
 # Release build (recommended for gameplay)
 cargo build --release
+
+# CPU/static-text build without local AI
+cargo build --release --no-default-features
+```
+
+The default feature set is currently `llm-cuda`, which builds the local `llama.cpp` backend with CUDA support. If you do not have a CUDA toolchain available, use `--no-default-features` for a no-local-AI build, or pick another backend explicitly:
+
+```bash
+# Vulkan
+cargo build --release --no-default-features --features llm-vulkan
+
+# ROCm
+cargo build --release --no-default-features --features llm-rocm
+
+# Metal
+cargo build --release --no-default-features --features llm-metal
 ```
 
 ### Main Menu
@@ -63,10 +80,20 @@ The main menu offers four options:
 |--------|-------------|
 | **Load Existing City** | Resume a previously saved city |
 | **Create New City** | Create a procedurally generated map and start building |
-| **Settings** | Open configuration screens such as theme selection |
+| **Settings** | Open configuration screens such as theme selection and local AI setup |
 | **Quit** | Exit the application |
 
 Navigate with the **arrow keys** and confirm with **Enter**, or click an item with the mouse.
+
+### Local AI Setup
+
+The **Settings → LLM Setup** screen manages all local text generation used by city names, advisors, alerts, and the in-game newspaper.
+
+- Choose from a small curated Gemma model catalog with plain-language descriptions
+- Download or delete models from inside the game
+- Watch byte progress while downloading, cancel an in-progress download, and safely clean up failed or canceled partial files
+- Pick an execution mode such as automatic, CPU-only, or GPU-assisted
+- If local AI is disabled, unavailable, or produces invalid output, the game falls back to deterministic built-in text so newspaper and advisor features still work
 
 ### Music
 
@@ -85,7 +112,7 @@ Selecting **New City** opens an interactive form with a live preview. You can us
 | Field | Description | Default |
 |-------|-------------|---------|
 | **City Name** | Used as the save file prefix | — |
-| **Generate Name** | Request an LLM-generated city name (requires `llm` feature) | — |
+| **Generate Name** | Request a locally generated city name; uses the selected local model when available and otherwise falls back to built-in names | — |
 | **Seed (hex)** | A 16-character hex code that perfectly encodes the Water %, Trees %, and the random map noise seed. Pasting a code here will automatically snap the sliders to the exact percentages used. | random |
 | **Water %** | Percentage of map tiles that are water | 20 |
 | **Trees %** | Percentage of map tiles that are forest | 30 |
@@ -132,11 +159,14 @@ Painting is free in the map generator — no cost is charged until you start the
 | `Tab` | Cycle map overlay modes (Normal → Power Grid → Water Service → Traffic → Pollution → Land Value → Crime → Fire Risk) |
 | `F1` | Open menu bar |
 | `a` / `A` | Open/close the Advisors window (LLM-powered city advice) |
+| `n` / `N` | Open/close the newspaper |
 | `b` / `B` / `$` | Open budget window |
 
 The **File** menu contains save/load/quit and settings actions, the **Windows** menu can toggle the **Toolbox**, **Inspect**, **Statistics**, **Advisors**, the **Map Legend**, the active **View Layer**, and overlay modes, and the right-aligned **Help** and **About** items open reference windows. The status bar also exposes a persistent clickable **Surface / Underground** switch so layer state is always visible.
 
 On the **Load City** screen, use **Arrow keys** to select a save, **Enter** to load it, and **d** to open the delete confirmation dialog for the selected city.
+
+While the newspaper is open, **Left/Right** turns pages, **Up/Down** selects a story on the current page, **Enter** or a mouse click opens the selected article, and **Esc** backs out of the article view or closes the paper. Opening the paper requests a fresh multi-page edition tied to the city's current state.
 
 ### Tools
 
@@ -264,7 +294,7 @@ The simulation runs in a dedicated OS thread managed by `core/engine.rs`. The ma
 
 **3. Frontend-Neutral Screen Views + Dual-Frontend Rendering**
 
-Shared geometry and window helpers now live in `src/ui/runtime.rs` (`ClickArea`, `MapUiAreas`, `UiAreas`, centered/clamped window helpers). This layer now also centralizes **window layout geometry** (padding, scrollbar placement) and provides a **generic hit-testing system**, allowing the game to identify interactions with buttons, title bars, and scrollbar components in a window-agnostic way. Each screen builds a frontend-neutral `ScreenView` in `src/ui/view.rs`. In-game rendering is driven by the `InGamePainter` trait (`src/ui/painter.rs`) with 15 methods covering every UI element; a shared `orchestrate_ingame()` function controls paint order and click-area collection. Both the terminal frontend (`TerminalPainter` in `src/ui/frontends/terminal/`) and the pixel frontend (`PixelPainter` in `src/ui/frontends/pixels_winit/`) implement this trait. In-game UI elements (map, tools panel, budget, inspect, statistics, tool chooser, help, about, legend, advisors) are movable windows managed by `DesktopState`.
+Shared geometry and window helpers now live in `src/ui/runtime.rs` (`ClickArea`, `MapUiAreas`, `UiAreas`, centered/clamped window helpers). This layer now also centralizes **window layout geometry** (padding, scrollbar placement) and provides a **generic hit-testing system**, allowing the game to identify interactions with buttons, title bars, and scrollbar components in a window-agnostic way. Each screen builds a frontend-neutral `ScreenView` in `src/ui/view.rs`. In-game rendering is driven by the `InGamePainter` trait (`src/ui/painter.rs`) with 15 methods covering every UI element; a shared `orchestrate_ingame()` function controls paint order and click-area collection. Both the terminal frontend (`TerminalPainter` in `src/ui/frontends/terminal/`) and the pixel frontend (`PixelPainter` in `src/ui/frontends/pixels_winit/`) implement this trait. In-game UI elements (map, tools panel, budget, inspect, statistics, tool chooser, help, about, legend, advisors, newspaper) are movable windows managed by `DesktopState`.
 
 `InGameScreen` is also split into focused feature modules rather than one large implementation file:
 - `ingame.rs` keeps the screen shell and top-level lifecycle
@@ -297,16 +327,17 @@ src/
 │       ├── ingame_interaction.rs  Map interaction, drag flows, scrollbars, panning
 │       ├── ingame_menu.rs         Menu model, actions, menu routing
 │       ├── ingame_budget.rs       Budget window state, focus model, tax input logic
-│       └── ingame_news.rs        News ticker state, LLM story integration
+│       └── ingame_news.rs         News ticker state, monthly story/newspaper request logic
 ├── textgen/                       Local text generation (llama.cpp or static fallback)
 │   ├── mod.rs                     TextGenService: background thread + mpsc poll API
-│   ├── types.rs                   TextGenTask, TaskTag, TextGenResponse, AdvisorDomain, CityContext
+│   ├── types.rs                   LlmTask, LlmTaskTag, LlmResponse, AdvisorDomain, CityContext
 │   ├── context.rs                 CityContext::from_state — extracts sim/map state for prompts
 │   ├── prompt.rs                  Prompt templates for city names, news, advice, alerts
 │   ├── generator.rs               Unified generator interface dispatching to backends
-│   ├── backend_llamacpp.rs        (feature = "llm") llama.cpp model loading and text generation
+│   ├── models.rs                  Curated model catalog, prompt styles, execution-mode metadata
+│   ├── backend_llamacpp.rs        (feature = "llm") llama.cpp model loading, GPU mode, and inference
 │   ├── backend_static.rs          Static/template-based text generation fallback
-│   └── download.rs                Model file download manager
+│   └── download.rs                Model download manager with progress, cancel, and cleanup
 ├── core/
 │   ├── mod.rs                     Re-exports
 │   ├── engine.rs                  SimulationEngine; monthly system order; EngineCommand dispatch
@@ -451,11 +482,8 @@ src/
 | `serde` | 1.0 | Serialisation traits |
 | `serde_json` | 1.0 | Compact sim metadata inside the binary `.tc2` save container |
 | `rand` | 0.8 | Map generation RNG, disaster probability rolls |
-| `candle-core` | 0.8 | *(feature = "llm")* Tensor operations for local LLM inference |
-| `candle-nn` | 0.8 | *(feature = "llm")* Neural-network layer primitives |
-| `candle-transformers` | 0.8 | *(feature = "llm")* Pre-built transformer model architectures |
-| `tokenizers` | 0.21 | *(feature = "llm")* HuggingFace tokeniser for text ↔ token conversion |
-| `hf-hub` | 0.3 | *(feature = "llm")* Download models from HuggingFace Hub |
+| `llama-cpp-2` | 0.1 | *(feature = "llm")* Local `llama.cpp` inference backend with optional CUDA / Vulkan / ROCm / Metal acceleration |
+| `hf-hub` | 0.5 | *(feature = "llm")* Download GGUF model files from Hugging Face Hub |
 
 ### Todos
 

@@ -1,12 +1,18 @@
-The {{city_name}} Daily Tribune — Headlines
+You are the city desk of The {{city_name}} Daily Tribune.
+Date: {{month_name}} {{year}}
 
-Population: {{population}}, Treasury: ${{treasury}}
-
-MAYOR PROMISES NEW GROWTH: Residents hopeful as city development continues.
-TRAFFIC WOES PLAGUE DOWNTOWN: Commuters face delays on major roads.
-PARK OPENS TO CHEERING CROWDS: New green space boosts neighborhood appeal.
-
-The {{city_name}} Daily Tribune — Today's Headlines
-
+City facts:
 {{city_status}}
 
+News briefing:
+{{city_briefing}}
+
+Return ONLY 4 front-page headlines for the news ticker.
+
+Rules:
+- Plain text only.
+- One headline per line.
+- No numbering, bullets, labels, markdown, or quotation marks.
+- Each headline must mention a concrete city issue, improvement, policy debate, neighborhood happening, or civic oddity from the facts above.
+- Vary the tone across the four lines: one urgent, one city hall, one neighborhood, one light/funny.
+- Keep each headline under 68 characters.

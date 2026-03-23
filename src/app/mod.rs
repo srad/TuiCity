@@ -141,8 +141,13 @@ impl AppState {
                 self.music.stop_all();
             }
             ScreenTransition::ReinitTextGen => {
-                self.textgen =
-                    crate::textgen::TextGenService::start(crate::textgen::default_model_dir());
+                let model_dir = crate::textgen::default_model_dir();
+                let old = std::mem::replace(
+                    &mut self.textgen,
+                    crate::textgen::TextGenService::reinitializing(),
+                );
+                drop(old);
+                self.textgen = crate::textgen::TextGenService::start(model_dir);
             }
         }
         self.sync_music();

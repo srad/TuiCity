@@ -152,12 +152,17 @@ fn render_compact_load_city(
                 .bg(Color::Rgb(35, 34, 55)),
         );
         {
-        let back_y = inner.y + inner.height.saturating_sub(4);
-        if back_y > inner.y {
-            let area = common::render_back_button(buf, inner, back_y, view.selected >= view.saves.len());
-            state.row_areas.push(area);
+            let back_y = inner.y + inner.height.saturating_sub(4);
+            if back_y > inner.y {
+                let area = common::render_back_button(
+                    buf,
+                    inner,
+                    back_y,
+                    view.selected >= view.saves.len(),
+                );
+                state.row_areas.push(area);
+            }
         }
-    }
         return;
     }
 
@@ -216,7 +221,8 @@ fn render_compact_load_city(
     {
         let back_y = inner.y + inner.height.saturating_sub(4);
         if back_y > inner.y {
-            let area = common::render_back_button(buf, inner, back_y, view.selected >= view.saves.len());
+            let area =
+                common::render_back_button(buf, inner, back_y, view.selected >= view.saves.len());
             state.row_areas.push(area);
         }
     }
@@ -331,12 +337,17 @@ fn render_archive_panel(
         );
         // Back button even when empty
         {
-        let back_y = inner.y + inner.height.saturating_sub(4);
-        if back_y > inner.y {
-            let area = common::render_back_button(buf, inner, back_y, view.selected >= view.saves.len());
-            state.row_areas.push(area);
+            let back_y = inner.y + inner.height.saturating_sub(4);
+            if back_y > inner.y {
+                let area = common::render_back_button(
+                    buf,
+                    inner,
+                    back_y,
+                    view.selected >= view.saves.len(),
+                );
+                state.row_areas.push(area);
+            }
         }
-    }
         return;
     }
 
@@ -395,7 +406,8 @@ fn render_archive_panel(
     {
         let back_y = inner.y + inner.height.saturating_sub(4);
         if back_y > inner.y {
-            let area = common::render_back_button(buf, inner, back_y, view.selected >= view.saves.len());
+            let area =
+                common::render_back_button(buf, inner, back_y, view.selected >= view.saves.len());
             state.row_areas.push(area);
         }
     }

@@ -13,8 +13,8 @@ use crate::{
         runtime::{ToolChooserKind, ToolbarHitArea, ToolbarHitTarget, UiRect, WindowId},
         theme::{self, OverlayMode},
         view::{
-            AdvisorViewModel, BudgetViewModel, ConfirmDialogViewModel, NewspaperViewModel,
-            NewsTickerViewModel, ScreenView, SettingsViewModel, StartViewModel,
+            AdvisorViewModel, BudgetViewModel, ConfirmDialogViewModel, NewsTickerViewModel,
+            NewspaperViewModel, ScreenView, SettingsViewModel, StartViewModel,
             StatisticsWindowViewModel, TextWindowViewModel, ToolChooserViewModel,
             ToolbarPaletteViewModel,
         },
@@ -63,6 +63,45 @@ fn anim_phase(step_ms: u128, period: u32) -> u32 {
         .as_millis()
         / step_ms
         % period as u128) as u32
+}
+
+fn wrap_newspaper_text(text: &str, cols: usize, max_lines: usize) -> Vec<String> {
+    let mut lines = Vec::new();
+    for paragraph in text.split('\n') {
+        let mut current = String::new();
+        for word in paragraph.split_whitespace() {
+            let next_len = if current.is_empty() {
+                word.len()
+            } else {
+                current.len() + 1 + word.len()
+            };
+            if next_len > cols && !current.is_empty() {
+                lines.push(current);
+                if lines.len() >= max_lines {
+                    return lines;
+                }
+                current = word.to_string();
+            } else {
+                if !current.is_empty() {
+                    current.push(' ');
+                }
+                current.push_str(word);
+            }
+        }
+        if !current.is_empty() {
+            lines.push(current);
+            if lines.len() >= max_lines {
+                return lines;
+            }
+        }
+        if !paragraph.trim().is_empty() && lines.len() < max_lines {
+            lines.push(String::new());
+        }
+    }
+    if matches!(lines.last(), Some(last) if last.is_empty()) {
+        lines.pop();
+    }
+    lines
 }
 
 // ── Top-level dispatch ─────────────────────────────────────────────────────────
@@ -1938,128 +1977,463 @@ impl<'a> InGamePainter for PixelPainter<'a> {
         let inner_w = ww.saturating_sub(self.cw * 2);
         let inner_h = wh.saturating_sub(self.ch * 2);
         let cols = (inner_w / self.cw).max(1) as usize;
-        let fg = 0xeee8e1u32;
-        let dim = 0x8888aau32;
-        let bg = 0x232237u32;
-        let hl_fg = 0x1c1c2au32;
-        let hl_bg = 0xffdd77u32;
-        let rule_fg = 0x555577u32;
+        let paper_bg = 0xf2e9d6u32;
+        let paper_fg = 0x342618u32;
+        let dim = 0x6d5840u32;
+        let accent = 0x693018u32;
+        let rule_fg = 0x957858u32;
+        let highlight_bg = 0xddcdadu32;
+        let feature_bg = 0xece2cbu32;
 
-        // ── Masthead ──
+        fill_rect(
+            self.buf, self.width, inner_x, inner_y, inner_w, inner_h, paper_bg,
+        );
+
         let month_name = match newspaper.month {
-            1 => "January", 2 => "February", 3 => "March", 4 => "April",
-            5 => "May", 6 => "June", 7 => "July", 8 => "August",
-            9 => "September", 10 => "October", 11 => "November", 12 => "December",
+            1 => "January",
+            2 => "February",
+            3 => "March",
+            4 => "April",
+            5 => "May",
+            6 => "June",
+            7 => "July",
+            8 => "August",
+            9 => "September",
+            10 => "October",
+            11 => "November",
+            12 => "December",
             _ => "???",
         };
 
-        // Top rule
         let rule: String = "═".repeat(cols);
-        draw_str(self.buf, self.width, inner_x, inner_y, &rule, rule_fg, bg, self.scale);
+        draw_str(
+            self.buf, self.width, inner_x, inner_y, &rule, rule_fg, paper_bg, self.scale,
+        );
 
-        // Title
         let masthead = format!("THE {} DAILY TRIBUNE", newspaper.city_name.to_uppercase());
         let mast_len = masthead.len().min(cols);
         let mast_row = inner_y + self.ch;
         let mast_px = inner_x + ((cols.saturating_sub(mast_len)) as u32 * self.cw) / 2;
-        draw_str(self.buf, self.width, mast_px, mast_row, &masthead[..mast_len], fg, bg, self.scale);
+        draw_str(
+            self.buf,
+            self.width,
+            mast_px,
+            mast_row,
+            &masthead[..mast_len],
+            paper_fg,
+            paper_bg,
+            self.scale,
+        );
 
-        // Date
-        let date_line = format!("{} {}", month_name, newspaper.year);
+        let date_line = format!(
+            "{} {}  •  Morning Edition  •  City Desk",
+            month_name, newspaper.year
+        );
         let date_len = date_line.len().min(cols);
         let date_row = inner_y + self.ch * 2;
         let date_px = inner_x + ((cols.saturating_sub(date_len)) as u32 * self.cw) / 2;
-        draw_str(self.buf, self.width, date_px, date_row, &date_line[..date_len], dim, bg, self.scale);
+        draw_str(
+            self.buf,
+            self.width,
+            date_px,
+            date_row,
+            &date_line[..date_len],
+            dim,
+            paper_bg,
+            self.scale,
+        );
 
-        // Bottom rule
-        let rule_row = inner_y + self.ch * 3;
-        draw_str(self.buf, self.width, inner_x, rule_row, &rule, rule_fg, bg, self.scale);
-
-        let body_y = inner_y + self.ch * 4;
-        let body_h = inner_h.saturating_sub(self.ch * 4);
+        draw_str(
+            self.buf,
+            self.width,
+            inner_x,
+            inner_y + self.ch * 3,
+            &rule,
+            rule_fg,
+            paper_bg,
+            self.scale,
+        );
 
         if newspaper.pending {
             let msg = "The presses are rolling...";
             let mx = inner_x + ((cols.saturating_sub(msg.len())) as u32 * self.cw) / 2;
-            draw_str(self.buf, self.width, mx, body_y + body_h / 2, msg, dim, bg, self.scale);
+            draw_str(
+                self.buf,
+                self.width,
+                mx,
+                inner_y + self.ch * 7,
+                msg,
+                dim,
+                paper_bg,
+                self.scale,
+            );
             return Vec::new();
         }
 
-        if newspaper.sections.is_empty() {
-            draw_str(self.buf, self.width, inner_x, body_y, "No edition available.", dim, bg, self.scale);
+        if newspaper.pages.is_empty() {
+            draw_str(
+                self.buf,
+                self.width,
+                inner_x,
+                inner_y + self.ch * 7,
+                "No edition available.",
+                dim,
+                paper_bg,
+                self.scale,
+            );
             return Vec::new();
         }
 
-        // ── Detail view ──
-        if let Some(idx) = newspaper.detail_index {
-            if let Some(section) = newspaper.sections.get(idx) {
-                let title: String = section.title.chars().take(cols).collect();
-                draw_str(self.buf, self.width, inner_x, body_y, &title, fg, bg, self.scale);
-                let thin: String = "─".repeat(cols);
-                draw_str(self.buf, self.width, inner_x, body_y + self.ch, &thin, rule_fg, bg, self.scale);
-                let text_y = body_y + self.ch * 2;
-                let text_h = body_h.saturating_sub(self.ch * 3);
-                for (i, line) in section.body.lines().enumerate() {
-                    let ly = text_y + i as u32 * self.ch;
-                    if ly + self.ch > text_y + text_h { break; }
-                    let truncated: String = line.chars().take(cols).collect();
-                    draw_str(self.buf, self.width, inner_x, ly, &truncated, fg, bg, self.scale);
-                }
-                let hint = "[Esc] Back";
-                let hy = inner_y + inner_h - self.ch;
-                let hx = inner_x + inner_w.saturating_sub(hint.len() as u32 * self.cw);
-                draw_str(self.buf, self.width, hx, hy, hint, dim, bg, self.scale);
+        let current_page_index = newspaper
+            .current_page
+            .min(newspaper.pages.len().saturating_sub(1));
+        let current_page = &newspaper.pages[current_page_index];
+        let page_info = format!(
+            "PAGE {}/{}  •  {}",
+            current_page_index + 1,
+            newspaper.pages.len(),
+            current_page.title
+        );
+        let info_len = page_info.len().min(cols);
+        let info_px = inner_x + ((cols.saturating_sub(info_len)) as u32 * self.cw) / 2;
+        draw_str(
+            self.buf,
+            self.width,
+            info_px,
+            inner_y + self.ch * 4,
+            &page_info[..info_len],
+            accent,
+            paper_bg,
+            self.scale,
+        );
+
+        let mut tab_x = inner_x;
+        for (idx, page) in newspaper.pages.iter().enumerate() {
+            if tab_x >= inner_x + inner_w {
+                break;
             }
-            return Vec::new();
-        }
-
-        // ── Front page: clickable headlines ──
-        let mut click_areas = Vec::new();
-        let mut y = body_y;
-        let max_y = body_y + body_h;
-
-        for (i, section) in newspaper.sections.iter().enumerate() {
-            if y + self.ch * 2 >= max_y { break; }
-
-            // Headline row (highlighted)
-            let icon = match section.title.as_str() {
-                "LEAD STORY" => "■",  "CITY BEAT" => "●",  "EDITORIAL" => "▸",
-                "CLASSIFIEDS" => "◆", "WEATHER" => "☀",   _ => "►",
+            let short_title = page.title.chars().take(12).collect::<String>();
+            let label = format!(" {}:{} ", idx + 1, short_title);
+            let draw_w = (label.len() as u32 * self.cw).min(inner_x + inner_w - tab_x);
+            let bg = if idx == current_page_index {
+                accent
+            } else {
+                paper_bg
             };
-            let headline = format!(" {} {} ", icon, section.title);
-            let hl_len = headline.len().min(cols);
-            fill_rect(self.buf, self.width, inner_x, y, inner_w, self.ch, hl_bg);
-            draw_str(self.buf, self.width, inner_x, y, &headline[..hl_len], hl_fg, hl_bg, self.scale);
+            let fg = if idx == current_page_index {
+                paper_bg
+            } else {
+                dim
+            };
+            fill_rect(
+                self.buf,
+                self.width,
+                tab_x,
+                inner_y + self.ch * 5,
+                draw_w,
+                self.ch,
+                bg,
+            );
+            draw_str(
+                self.buf,
+                self.width,
+                tab_x,
+                inner_y + self.ch * 5,
+                &label,
+                fg,
+                bg,
+                self.scale,
+            );
+            tab_x = tab_x.saturating_add(draw_w);
+        }
 
-            // Click area in terminal cell coordinates
-            let cell_x = win.x + 3; // padded_inner offset
-            let cell_y = (y / self.ch) as u16;
-            let cell_w = win.width.saturating_sub(6);
-            click_areas.push(ClickArea { x: cell_x, y: cell_y, width: cell_w, height: 1 });
+        draw_str(
+            self.buf,
+            self.width,
+            inner_x,
+            inner_y + self.ch * 6,
+            &rule,
+            rule_fg,
+            paper_bg,
+            self.scale,
+        );
 
-            y += self.ch;
+        let body_y = inner_y + self.ch * 7;
+        let footer_y = inner_y + inner_h.saturating_sub(self.ch);
+        let body_h = inner_h.saturating_sub(self.ch * 8);
 
-            // Preview line
-            if y + self.ch <= max_y {
-                let preview: String = section.body.lines().next().unwrap_or("")
-                    .chars().take(cols.saturating_sub(2)).collect();
-                draw_str(self.buf, self.width, inner_x + self.cw, y, &preview, dim, bg, self.scale);
+        if let Some(idx) = newspaper.detail_section_index {
+            if let Some(section) = current_page.sections.get(idx) {
+                draw_rect_outline(
+                    self.buf, self.width, inner_x, body_y, inner_w, body_h, rule_fg,
+                );
+                let title = format!("{} • {}", current_page.title, section.title)
+                    .chars()
+                    .take(cols.saturating_sub(4))
+                    .collect::<String>();
+                draw_str(
+                    self.buf,
+                    self.width,
+                    inner_x + self.cw,
+                    body_y,
+                    &title,
+                    accent,
+                    paper_bg,
+                    self.scale,
+                );
+                let wrapped = wrap_newspaper_text(
+                    &section.body,
+                    cols.saturating_sub(4),
+                    ((body_h / self.ch).saturating_sub(2)) as usize,
+                );
+                for (i, line) in wrapped.iter().enumerate() {
+                    let ly = body_y + self.ch + i as u32 * self.ch;
+                    if ly + self.ch > body_y + body_h {
+                        break;
+                    }
+                    draw_str(
+                        self.buf,
+                        self.width,
+                        inner_x + self.cw,
+                        ly,
+                        line,
+                        paper_fg,
+                        paper_bg,
+                        self.scale,
+                    );
+                }
+                let hint = "[Esc] Back • [<-][->] Page";
+                let hx = inner_x + inner_w.saturating_sub(hint.len() as u32 * self.cw);
+                draw_str(
+                    self.buf, self.width, hx, footer_y, hint, dim, paper_bg, self.scale,
+                );
             }
-            y += self.ch;
+            return Vec::new();
+        }
 
-            // Separator
-            if y + self.ch <= max_y && i + 1 < newspaper.sections.len() {
-                let sep: String = "─".repeat(cols);
-                draw_str(self.buf, self.width, inner_x, y, &sep, rule_fg, bg, self.scale);
-                y += self.ch;
+        let is_feature_panel = |title: &str| {
+            matches!(
+                title,
+                "CITY OWNER'S ADVERTISEMENT"
+                    | "CONTACT ADS"
+                    | "JOKE CORNER"
+                    | "WEATHER DESK"
+                    | "COMMUNITY CALENDAR"
+            )
+        };
+
+        let mut click_areas = Vec::new();
+
+        if current_page_index == 0 && !current_page.sections.is_empty() {
+            let lead_h = body_h.min(self.ch * 8);
+            if let Some(section) = current_page.sections.first() {
+                let selected = newspaper.selected_section_index == 0;
+                let bg = if selected { highlight_bg } else { paper_bg };
+                fill_rect(self.buf, self.width, inner_x, body_y, inner_w, lead_h, bg);
+                draw_rect_outline(
+                    self.buf, self.width, inner_x, body_y, inner_w, lead_h, rule_fg,
+                );
+                draw_str(
+                    self.buf,
+                    self.width,
+                    inner_x + self.cw,
+                    body_y,
+                    &section.title,
+                    accent,
+                    bg,
+                    self.scale,
+                );
+                let wrapped = wrap_newspaper_text(
+                    &section.body,
+                    cols.saturating_sub(4),
+                    ((lead_h / self.ch).saturating_sub(2)) as usize,
+                );
+                for (i, line) in wrapped.iter().enumerate() {
+                    let ly = body_y + self.ch + i as u32 * self.ch;
+                    if ly + self.ch > body_y + lead_h {
+                        break;
+                    }
+                    draw_str(
+                        self.buf,
+                        self.width,
+                        inner_x + self.cw,
+                        ly,
+                        line,
+                        if selected && i == 0 { accent } else { paper_fg },
+                        bg,
+                        self.scale,
+                    );
+                }
+                click_areas.push(ClickArea {
+                    x: (inner_x / self.cw) as u16,
+                    y: (body_y / self.ch) as u16,
+                    width: (inner_w / self.cw) as u16,
+                    height: (lead_h / self.ch) as u16,
+                });
+            }
+
+            let others = current_page
+                .sections
+                .iter()
+                .enumerate()
+                .skip(1)
+                .collect::<Vec<_>>();
+            let grid_y = body_y + lead_h + self.ch;
+            let grid_h = footer_y.saturating_sub(grid_y);
+            if !others.is_empty() && grid_h >= self.ch * 4 {
+                let rows = ((others.len() + 1) / 2).max(1) as u32;
+                let row_h = (grid_h / rows).max(self.ch * 4);
+                for (pos, (idx, section)) in others.into_iter().enumerate() {
+                    let row = pos as u32 / 2;
+                    let col = pos as u32 % 2;
+                    let x = if col == 0 {
+                        inner_x
+                    } else {
+                        inner_x + inner_w / 2
+                    };
+                    let y = grid_y + row * row_h;
+                    if y >= footer_y {
+                        break;
+                    }
+                    let w = if col == 0 {
+                        inner_w / 2 - self.cw
+                    } else {
+                        inner_w - inner_w / 2
+                    };
+                    let h = if row + 1 == rows {
+                        footer_y.saturating_sub(y)
+                    } else {
+                        row_h.saturating_sub(self.ch)
+                    }
+                    .max(self.ch * 4);
+                    let bg = if newspaper.selected_section_index == idx {
+                        highlight_bg
+                    } else if is_feature_panel(&section.title) {
+                        feature_bg
+                    } else {
+                        paper_bg
+                    };
+                    fill_rect(self.buf, self.width, x, y, w, h, bg);
+                    draw_rect_outline(self.buf, self.width, x, y, w, h, rule_fg);
+                    draw_str(
+                        self.buf,
+                        self.width,
+                        x + self.cw,
+                        y,
+                        &section.title,
+                        accent,
+                        bg,
+                        self.scale,
+                    );
+                    let wrapped = wrap_newspaper_text(
+                        &section.body,
+                        ((w / self.cw) as usize).saturating_sub(4),
+                        ((h / self.ch).saturating_sub(2)) as usize,
+                    );
+                    for (i, line) in wrapped.iter().enumerate() {
+                        let ly = y + self.ch + i as u32 * self.ch;
+                        if ly + self.ch > y + h {
+                            break;
+                        }
+                        draw_str(
+                            self.buf,
+                            self.width,
+                            x + self.cw,
+                            ly,
+                            line,
+                            paper_fg,
+                            bg,
+                            self.scale,
+                        );
+                    }
+                    click_areas.push(ClickArea {
+                        x: (x / self.cw) as u16,
+                        y: (y / self.ch) as u16,
+                        width: (w / self.cw) as u16,
+                        height: (h / self.ch) as u16,
+                    });
+                }
+            }
+        } else {
+            let rows = ((current_page.sections.len() + 1) / 2).max(1) as u32;
+            let row_h = (body_h / rows).max(self.ch * 5);
+            for (pos, section) in current_page.sections.iter().enumerate() {
+                let row = pos as u32 / 2;
+                let col = pos as u32 % 2;
+                let x = if col == 0 {
+                    inner_x
+                } else {
+                    inner_x + inner_w / 2
+                };
+                let y = body_y + row * row_h;
+                if y >= footer_y {
+                    break;
+                }
+                let w = if col == 0 {
+                    inner_w / 2 - self.cw
+                } else {
+                    inner_w - inner_w / 2
+                };
+                let h = if row + 1 == rows {
+                    footer_y.saturating_sub(y)
+                } else {
+                    row_h.saturating_sub(self.ch)
+                }
+                .max(self.ch * 4);
+                let bg = if newspaper.selected_section_index == pos {
+                    highlight_bg
+                } else if is_feature_panel(&section.title) {
+                    feature_bg
+                } else {
+                    paper_bg
+                };
+                fill_rect(self.buf, self.width, x, y, w, h, bg);
+                draw_rect_outline(self.buf, self.width, x, y, w, h, rule_fg);
+                draw_str(
+                    self.buf,
+                    self.width,
+                    x + self.cw,
+                    y,
+                    &section.title,
+                    accent,
+                    bg,
+                    self.scale,
+                );
+                let wrapped = wrap_newspaper_text(
+                    &section.body,
+                    ((w / self.cw) as usize).saturating_sub(4),
+                    ((h / self.ch).saturating_sub(2)) as usize,
+                );
+                for (i, line) in wrapped.iter().enumerate() {
+                    let ly = y + self.ch + i as u32 * self.ch;
+                    if ly + self.ch > y + h {
+                        break;
+                    }
+                    draw_str(
+                        self.buf,
+                        self.width,
+                        x + self.cw,
+                        ly,
+                        line,
+                        paper_fg,
+                        bg,
+                        self.scale,
+                    );
+                }
+                click_areas.push(ClickArea {
+                    x: (x / self.cw) as u16,
+                    y: (y / self.ch) as u16,
+                    width: (w / self.cw) as u16,
+                    height: (h / self.ch) as u16,
+                });
             }
         }
 
-        // Footer hint
-        let hint = "Click a headline to read more";
-        let hy = inner_y + inner_h - self.ch;
+        let hint = "[<-][->] Page  [^][v] Story  [Enter/Click] Read";
         let hx = inner_x + ((cols.saturating_sub(hint.len())) as u32 * self.cw) / 2;
-        draw_str(self.buf, self.width, hx, hy, hint, dim, bg, self.scale);
+        draw_str(
+            self.buf, self.width, hx, footer_y, hint, dim, paper_bg, self.scale,
+        );
 
         click_areas
     }

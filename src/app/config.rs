@@ -1,5 +1,6 @@
 use std::{fs, io, path::PathBuf};
 
+use crate::textgen::models::{LlmExecutionMode, LlmModelId};
 use crate::ui::theme::{self, ThemePreset};
 
 use super::save;
@@ -33,6 +34,10 @@ pub struct UserConfig {
     pub frontend: Option<FrontendKind>,
     #[serde(default)]
     pub llm_enabled: Option<bool>,
+    #[serde(default)]
+    pub llm_model: Option<LlmModelId>,
+    #[serde(default)]
+    pub llm_execution_mode: Option<LlmExecutionMode>,
 }
 
 pub fn apply_user_config() {
@@ -74,6 +79,26 @@ pub fn is_llm_enabled() -> bool {
 pub fn persist_llm_preference(enabled: bool) -> io::Result<()> {
     let mut config = load_user_config();
     config.llm_enabled = Some(enabled);
+    save_user_config(&config)
+}
+
+pub fn get_llm_model() -> LlmModelId {
+    load_user_config().llm_model.unwrap_or_default()
+}
+
+pub fn persist_llm_model_preference(model: LlmModelId) -> io::Result<()> {
+    let mut config = load_user_config();
+    config.llm_model = Some(model);
+    save_user_config(&config)
+}
+
+pub fn get_llm_execution_mode() -> LlmExecutionMode {
+    load_user_config().llm_execution_mode.unwrap_or_default()
+}
+
+pub fn persist_llm_execution_mode_preference(mode: LlmExecutionMode) -> io::Result<()> {
+    let mut config = load_user_config();
+    config.llm_execution_mode = Some(mode);
     save_user_config(&config)
 }
 

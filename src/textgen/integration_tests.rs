@@ -3,6 +3,7 @@ mod tests {
     use crate::textgen::{
         backend_static::StaticGenerator,
         generator::TextGenerator,
+        prompt,
         types::{AdvisorDomain, AlertKind, CityContext, LlmTask, LlmTaskTag},
         TextGenService,
     };
@@ -13,7 +14,33 @@ mod tests {
         crate::textgen::types::sample_context()
     }
 
-    fn poll_response(service: &TextGenService, timeout: Duration) -> Option<crate::textgen::types::LlmResponse> {
+    fn assert_multi_page_newspaper_article(text: &str) {
+        for marker in [
+            "PAGE 1: FRONT PAGE",
+            "PAGE 2: READER FORUM",
+            "PAGE 3: MARKET SQUARE",
+            "PAGE 4: FEATURES & FUN",
+            "SECTION: LEAD STORY",
+            "SECTION: CITY BEAT",
+            "SECTION: CITY OWNER'S ADVERTISEMENT",
+            "SECTION: LETTERS FROM READERS",
+            "SECTION: SIDEWALK QUOTE",
+            "SECTION: EDITORIAL",
+            "SECTION: SHOPKEEPER SPOTLIGHT",
+            "SECTION: CONTACT ADS",
+            "SECTION: CLASSIFIEDS",
+            "SECTION: JOKE CORNER",
+            "SECTION: COMMUNITY CALENDAR",
+            "SECTION: WEATHER DESK",
+        ] {
+            assert!(text.contains(marker), "missing marker {marker}");
+        }
+    }
+
+    fn poll_response(
+        service: &TextGenService,
+        timeout: Duration,
+    ) -> Option<crate::textgen::types::LlmResponse> {
         let start = Instant::now();
         loop {
             if let Some(resp) = service.poll() {
@@ -59,9 +86,29 @@ mod tests {
     #[test]
     fn static_newspaper() {
         let mut gen = StaticGenerator::new();
-        let result = gen.generate("The Testville Daily Tribune — Headlines", 300, 0.7).unwrap();
+        let result = gen
+            .generate(&prompt::newspaper_prompt(&sample_context()), 120, 0.75)
+            .unwrap();
         assert!(!result.is_empty());
-        assert!(result.contains('\n'), "newspaper should have multiple headlines");
+        assert!(
+            result.contains('\n'),
+            "newspaper should have multiple headlines"
+        );
+        assert!(result.contains("Testville"));
+    }
+
+    #[test]
+    fn static_newspaper_article_has_required_sections() {
+        let mut gen = StaticGenerator::new();
+        let result = gen
+            .generate(
+                &prompt::newspaper_article_prompt(&sample_context()),
+                720,
+                0.85,
+            )
+            .unwrap();
+        assert_multi_page_newspaper_article(&result);
+        assert!(result.contains("Testville"));
     }
 
     #[test]
@@ -83,7 +130,9 @@ mod tests {
     #[test]
     fn static_alert() {
         let mut gen = StaticGenerator::new();
-        let result = gen.generate("BREAKING NEWS — alert situation", 60, 0.8).unwrap();
+        let result = gen
+            .generate("BREAKING NEWS — alert situation", 60, 0.8)
+            .unwrap();
         assert!(!result.is_empty());
     }
 
@@ -119,6 +168,19 @@ mod tests {
         let resp = poll_response(&service, Duration::from_secs(2)).expect("timeout");
         assert_eq!(resp.task_tag, LlmTaskTag::Newspaper);
         assert!(!resp.text.is_empty());
+    }
+
+    #[test]
+    fn service_static_newspaper_article() {
+        let service = TextGenService::start(PathBuf::from("/nonexistent"));
+        wait_for_backend(&service);
+
+        service.request(LlmTask::WriteNewspaperArticle {
+            context: sample_context(),
+        });
+        let resp = poll_response(&service, Duration::from_secs(2)).expect("timeout");
+        assert_eq!(resp.task_tag, LlmTaskTag::NewspaperArticle);
+        assert_multi_page_newspaper_article(&resp.text);
     }
 
     #[test]
@@ -229,6 +291,25 @@ mod tests {
         assert_eq!(resp.task_tag, LlmTaskTag::Newspaper);
         assert!(!resp.text.is_empty());
         eprintln!("Newspaper:\n{}", resp.text);
+    }
+
+    #[cfg(feature = "llm")]
+    #[test]
+    fn llm_backend_newspaper_article_has_sections() {
+        let service = match start_llm_service() {
+            Some(s) => s,
+            None => {
+                eprintln!("Skipping: no llama.cpp model available");
+                return;
+            }
+        };
+
+        service.request(LlmTask::WriteNewspaperArticle {
+            context: sample_context(),
+        });
+        let resp = poll_response(&service, Duration::from_secs(60)).expect("timeout");
+        assert_eq!(resp.task_tag, LlmTaskTag::NewspaperArticle);
+        assert_multi_page_newspaper_article(&resp.text);
     }
 
     #[cfg(feature = "llm")]

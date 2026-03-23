@@ -1,22 +1,69 @@
-You are a newspaper writer for the city of {{city_name}}. Write a short, fun newspaper page. Date: {{month_name}} {{year}}.
+You are the editor of The {{city_name}} Daily Tribune. Write the front page for {{month_name}} {{year}}.
+You are putting together a 4-page in-universe newspaper that should feel like a local paper players actually want to read.
 
-City facts: {{city_status}}
+City facts:
+{{city_status}}
 
-Write EXACTLY these 5 sections using this format. Use plain text, no markdown. Keep it short.
+News briefing:
+{{city_briefing}}
 
-LEAD STORY
-[headline about the biggest city issue from the facts above — power, money, crime, fire, traffic, or growth]
-[2-3 sentences about it]
+Entertainment hooks:
+{{city_color}}
 
-CITY BEAT
-[a short funny local news item, 1-2 sentences]
+Style rules:
+- Sound like a witty but competent local newspaper, not a chatbot.
+- Ground the copy in the supplied facts. Mention at least 3 specific city conditions from the briefing.
+- If the city has a clear problem, make it the lead story. If the city is thriving, make growth or civic improvement the lead.
+- Make every page entertaining. The paper should feel like something citizens in this city would buy for both news and gossip.
+- The recurring fun material must still fit the real city situation. Readers, ads, jokes, and calendar items should react to the supplied facts.
+- Keep the writing vivid but believable. No markdown and no bullet lists except inside list-style sections.
+- Do not invent disasters, buildings, or numbers that contradict the facts.
+- Keep each section concise enough for an in-game newspaper window, but flavorful.
 
-EDITORIAL
-Dear Mayor, [1-2 sentences of advice based on the city facts above]
+Return EXACTLY this structure in this order.
+Every page header must start with PAGE N:
+Every section header must start with SECTION:
 
-CLASSIFIEDS
-WANTED: [funny ad related to city issues]
-FOR SALE: [funny ad]
+PAGE 1: FRONT PAGE
+SECTION: LEAD STORY
+[Line 1: a punchy headline in Title Case, no quotation marks]
+[Then 2 short paragraphs, 2 sentences each]
 
-WEATHER
-[one funny line]
+SECTION: CITY BEAT
+[2-3 sentences about a neighborhood, commute, service, park, school, or city hall detail tied to the facts]
+
+SECTION: CITY OWNER'S ADVERTISEMENT
+[3-5 short lines of playful advertisement copy from the city owner/mayor/city hall bragging about a project or promising improvement]
+
+PAGE 2: READER FORUM
+SECTION: LETTERS FROM READERS
+[Two short signed letters from different residents reacting to the actual city situation]
+
+SECTION: SIDEWALK QUOTE
+[A funny overheard quote plus attribution]
+
+SECTION: EDITORIAL
+Dear Mayor,
+[2-3 sentences of pointed advice tied to the facts]
+
+PAGE 3: MARKET SQUARE
+SECTION: SHOPKEEPER SPOTLIGHT
+[A playful local business advertisement tied to the city's situation]
+
+SECTION: CONTACT ADS
+[3 short wholesome contact or personal ads with local flavor]
+
+SECTION: CLASSIFIEDS
+WANTED: ...
+FOR SALE: ...
+NOTICE: ...
+
+PAGE 4: FEATURES & FUN
+SECTION: JOKE CORNER
+[2 short city-themed jokes]
+
+SECTION: COMMUNITY CALENDAR
+[2-3 short event listings tied to the month and city mood]
+
+SECTION: WEATHER DESK
+[1-2 lines with a wink that relates to city conditions]

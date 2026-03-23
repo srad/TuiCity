@@ -1,6 +1,7 @@
 #[cfg(feature = "llm")]
 mod inner {
     use super::super::generator::TextGenerator;
+    use crate::textgen::models::{LlmExecutionMode, PromptStyle};
     use llama_cpp_2::context::params::LlamaContextParams;
     use llama_cpp_2::llama_backend::LlamaBackend;
     use llama_cpp_2::llama_batch::LlamaBatch;
@@ -9,13 +10,49 @@ mod inner {
     use llama_cpp_2::sampling::LlamaSampler;
     use std::path::Path;
 
+    const SYSTEM_PROMPT: &str = "You write in-universe text for a city simulation game. Follow the user's requested format exactly and return only the requested content.";
+
+    pub struct LlamaLoadReport {
+        pub generator: LlamaCppGenerator,
+        pub gpu_available: bool,
+        pub gpu_active: bool,
+        pub acceleration_summary: String,
+    }
+
     pub struct LlamaCppGenerator {
         model: LlamaModel,
         backend: LlamaBackend,
+        prompt_style: PromptStyle,
+        ctx_template: LlamaContextParams,
     }
 
     impl LlamaCppGenerator {
-        pub fn load(model_dir: &Path) -> Result<Self, String> {
+        fn wrap_prompt(prompt_style: PromptStyle, prompt: &str) -> String {
+            match prompt_style {
+                PromptStyle::Gemma => format!(
+                    "<start_of_turn>user\n{SYSTEM_PROMPT}\n\n{prompt}<end_of_turn>\n<start_of_turn>model\n"
+                ),
+            }
+        }
+
+        fn cleanup_output(prompt_style: PromptStyle, text: &str) -> String {
+            match prompt_style {
+                PromptStyle::Gemma => text
+                    .replace("<bos>", "")
+                    .replace("<start_of_turn>model", "")
+                    .replace("<end_of_turn>", "")
+                    .replace("<eos>", "")
+                    .replace("<|endoftext|>", "")
+                    .trim()
+                    .to_string(),
+            }
+        }
+
+        pub fn load(
+            model_dir: &Path,
+            prompt_style: PromptStyle,
+            execution_mode: LlmExecutionMode,
+        ) -> Result<LlamaLoadReport, String> {
             let model_path = model_dir.join("model.gguf");
             if !model_path.exists() {
                 return Err(format!("model not found: {}", model_path.display()));
@@ -26,14 +63,36 @@ mod inner {
                 llama_cpp_2::LogOptions::default().with_logs_enabled(false),
             );
 
-            let backend =
-                LlamaBackend::init().map_err(|e| format!("llama backend init: {e}"))?;
+            let backend = LlamaBackend::init().map_err(|e| format!("llama backend init: {e}"))?;
+            let gpu_available = backend.supports_gpu_offload();
+            let gpu_active = match execution_mode {
+                LlmExecutionMode::CpuOnly => false,
+                LlmExecutionMode::Auto | LlmExecutionMode::GpuAccelerated => gpu_available,
+            };
 
-            let model_params = LlamaModelParams::default();
+            let model_params = if gpu_active {
+                LlamaModelParams::default()
+            } else {
+                LlamaModelParams::default().with_n_gpu_layers(0)
+            };
             let model = LlamaModel::load_from_file(&backend, &model_path, &model_params)
                 .map_err(|e| format!("model load: {e}"))?;
 
-            Ok(Self { model, backend })
+            let ctx_template = LlamaContextParams::default()
+                .with_n_ctx(Some(std::num::NonZeroU32::new(2048).unwrap()))
+                .with_offload_kqv(gpu_active);
+
+            Ok(LlamaLoadReport {
+                generator: Self {
+                    model,
+                    backend,
+                    prompt_style,
+                    ctx_template,
+                },
+                gpu_available,
+                gpu_active,
+                acceleration_summary: execution_mode.runtime_status(gpu_available, gpu_active),
+            })
         }
     }
 
@@ -44,8 +103,8 @@ mod inner {
             max_tokens: usize,
             temperature: f32,
         ) -> Result<String, String> {
-            let ctx_params = LlamaContextParams::default()
-                .with_n_ctx(Some(std::num::NonZeroU32::new(2048).unwrap()));
+            let wrapped_prompt = Self::wrap_prompt(self.prompt_style, prompt);
+            let ctx_params = self.ctx_template.clone();
             let mut ctx = self
                 .model
                 .new_context(&self.backend, ctx_params)
@@ -53,7 +112,7 @@ mod inner {
 
             let tokens = self
                 .model
-                .str_to_token(prompt, llama_cpp_2::model::AddBos::Always)
+                .str_to_token(&wrapped_prompt, llama_cpp_2::model::AddBos::Always)
                 .map_err(|e| format!("tokenize: {e}"))?;
 
             // Feed prompt tokens
@@ -106,11 +165,40 @@ mod inner {
             }
 
             let text = String::from_utf8_lossy(&generated_tokens).into_owned();
-            Ok(text.trim().to_string())
+            Ok(Self::cleanup_output(self.prompt_style, &text))
         }
 
         fn backend_name(&self) -> &str {
             "llama.cpp"
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::LlamaCppGenerator;
+        use crate::textgen::models::PromptStyle;
+
+        #[test]
+        fn wrap_prompt_uses_gemma_turn_format() {
+            let wrapped = LlamaCppGenerator::wrap_prompt(PromptStyle::Gemma, "Write a headline.");
+            assert!(wrapped.starts_with("<start_of_turn>user\n"));
+            assert!(wrapped.contains("Write a headline.<end_of_turn>\n<start_of_turn>model\n"));
+        }
+
+        #[test]
+        fn cleanup_output_strips_gemma_tokens() {
+            let cleaned = LlamaCppGenerator::cleanup_output(
+                PromptStyle::Gemma,
+                "<start_of_turn>model\nHeadline<end_of_turn>\n",
+            );
+            assert_eq!(cleaned, "Headline");
+        }
+
+        #[test]
+        fn cleanup_output_strips_bos_and_eos_tokens() {
+            let cleaned =
+                LlamaCppGenerator::cleanup_output(PromptStyle::Gemma, "<bos>Headline<eos>");
+            assert_eq!(cleaned, "Headline");
         }
     }
 }

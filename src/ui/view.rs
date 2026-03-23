@@ -63,10 +63,27 @@ pub struct SettingsViewModel {
 }
 
 #[derive(Clone, Debug)]
+pub struct DownloadProgressViewModel {
+    pub label: String,
+    pub downloaded_bytes: u64,
+    pub total_bytes: Option<u64>,
+    pub percent: Option<u8>,
+    pub cancelling: bool,
+}
+
+#[derive(Clone, Debug)]
 pub struct LlmSetupViewModel {
     pub llm_enabled: bool,
     pub model_installed: bool,
-    pub download_progress: Option<String>,
+    pub selected_model_label: String,
+    pub selected_model_description: String,
+    pub selected_model_size_label: String,
+    pub gpu_mode_label: String,
+    pub gpu_mode_description: String,
+    pub backend_status: String,
+    pub gpu_status: String,
+    pub download_progress: Option<DownloadProgressViewModel>,
+    pub download_notice: Option<String>,
     pub download_failed: Option<String>,
     pub selected: usize,
     pub confirm_dialog: Option<ConfirmDialogViewModel>,
@@ -224,14 +241,22 @@ pub struct NewspaperSection {
 }
 
 #[derive(Clone, Debug)]
-pub struct NewspaperViewModel {
+pub struct NewspaperPage {
+    pub title: String,
     pub sections: Vec<NewspaperSection>,
+}
+
+#[derive(Clone, Debug)]
+pub struct NewspaperViewModel {
+    pub pages: Vec<NewspaperPage>,
     pub pending: bool,
     pub city_name: String,
     pub month: u8,
     pub year: i32,
-    /// Which section is expanded in the detail popup (None = front page).
-    pub detail_index: Option<usize>,
+    pub current_page: usize,
+    pub selected_section_index: usize,
+    /// Which section on the current page is expanded in the detail popup.
+    pub detail_section_index: Option<usize>,
 }
 
 #[derive(Clone)]

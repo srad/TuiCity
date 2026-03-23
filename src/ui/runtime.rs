@@ -530,8 +530,8 @@ impl DesktopState {
         advisor.modal = true;
         advisor.center_on_open = true;
 
-        let mut newspaper = WindowState::new(0, 0, 72, 22);
-        newspaper.title = " The Daily Tribune ";
+        let mut newspaper = WindowState::new(0, 0, 92, 30);
+        newspaper.title = " Morning Edition ";
         newspaper.visible = false;
         newspaper.closable = true;
         newspaper.modal = true;

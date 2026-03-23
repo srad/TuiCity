@@ -12,37 +12,24 @@ All notable changes to TuiCity 2000 are documented here.
 - **Per-screen reduction:** settings.rs 364→107 lines, llm_setup.rs 440→145, theme_settings.rs 391→170, start.rs 554→290, load_city.rs 695→410
 - All submenu screens (settings, llm_setup, theme_settings, load_city) now have a consistent back button at the bottom
 
-### LLM Integration (feature = "llm")
+### Local Text Generation & Model Setup
 
-Local LLM inference via the `candle` crate, running entirely on-device in a background thread. All LLM features are behind the `llm` cargo feature flag; the game compiles and runs identically without it.
+- **Backend refresh:** local text generation now runs through `src/textgen/` using `llama.cpp` via `llama-cpp-2`, with a deterministic static fallback when local AI is disabled, unavailable, or returns invalid output
+- **Selectable model catalog:** the LLM setup screen now offers a curated Gemma model list with plain-language descriptions so players can pick faster or better-writing options
+- **Download UX:** model downloads now show byte progress, can be canceled mid-transfer, and clean up failed or canceled partial files
+- **Execution modes:** the setup UI now lets players choose automatic, CPU-only, or GPU-assisted execution in plain language
+- **Cross-platform GPU backends:** Cargo feature groups now expose CUDA, Vulkan, ROCm, and Metal-backed `llama.cpp` builds (`llm-cuda`, `llm-vulkan`, `llm-rocm`, `llm-metal`)
+- **Startup diagnostics:** text generation now logs the compiled GPU backend plus whether GPU acceleration is available and actively in use at runtime
+- **Unified textgen worker:** city names, advisors, alert flavor text, ticker headlines, and full newspaper editions all flow through the same `TextGenService` worker and `LlmTask`/`LlmTaskTag` dispatch path
 
-#### City Name Generation
-- **Generate Name** button on the New City screen requests an LLM-generated city name
-- Polling-based: the UI shows "Generating..." while the background thread runs inference
-- Without the `llm` feature the button is a no-op
+### Newspaper Redesign
 
-#### Newspaper Stories
-- On each in-game month change, the LLM is asked to write a newspaper article using current city context (population, treasury, year, demand, recent events)
-- Generated stories are mixed into the news ticker alongside hardcoded stories
-- Deduplicates requests per game month to avoid redundant inference
-
-#### Advisor Panel
-- New **Advisors** window (`A` shortcut, or Windows → Advisors) with 5 domain tabs: Economy, City Planning, Education, Safety, Transport
-- Left/Right arrows cycle tabs; Enter requests advice for the selected domain
-- Shows "Thinking..." while inference runs, then displays the LLM response
-- Modal window (closes other modals when opened), closable, centered on open
-
-#### Alert Messages
-- Critical events (deficit warnings, brownouts, fires) now also submit an LLM request for a richer alert message
-- The hardcoded alert fires immediately; the LLM-enhanced version appears asynchronously in the news ticker
-
-#### Architecture
-- New `src/llm/` module: `types.rs` (task/response enums, `AdvisorDomain`, `CityContext`), `context.rs` (state extraction), `prompt.rs` (prompt templates), `backend.rs` (candle model loading and generation), `mod.rs` (`LlmService` with background thread + mpsc channels)
-- `LlmService` wired into `AppContext` — screens access it via `context.llm`
-- Single dispatch loop in `InGameScreen::on_tick` routes `LlmResponse` by `LlmTaskTag`
-- `WindowId::Advisor` added (10th managed window); `InGamePainter` trait expanded to 15 methods with `paint_advisor_window`
-- Settings screen shows LLM availability status
-- 6 new tests covering name generation, newspaper dedup/digest, and advisor state
+- **Full newspaper window:** opening the newspaper now requests a fresh edition grounded in the current city state and pauses gameplay while the player reads it
+- **Terminal multi-page paper:** the terminal newspaper is now a real four-page edition with page tabs, story selection, article detail view, and a larger reading layout
+- **Recurring entertaining sections:** new fixed sections include city-owner advertisements, letters from readers, sidewalk quote, shopkeeper spotlight, contact ads, joke corner, community calendar, and weather desk
+- **Safer generation contract:** full newspaper generation now requires explicit `PAGE N:` and `SECTION:` markers so parsing and validation are deterministic
+- **Failure hardening:** empty, malformed, or code-like newspaper output is rejected and replaced with deterministic fallback copy instead of leaking broken text into the UI
+- **Test coverage:** added page-aware parsing, prompt-structure, fallback, and regression coverage for the newspaper pipeline
 
 ### Terraforming Tools
 

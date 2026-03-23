@@ -54,14 +54,7 @@ pub fn hash_point(x: u16, y: u16) -> u32 {
 
 // ── Text utilities ───────────────────────────────────────────────────────────
 
-pub fn set_centered_string(
-    buf: &mut Buffer,
-    x: u16,
-    y: u16,
-    width: u16,
-    text: &str,
-    style: Style,
-) {
+pub fn set_centered_string(buf: &mut Buffer, x: u16, y: u16, width: u16, text: &str, style: Style) {
     if width == 0 {
         return;
     }
@@ -121,8 +114,7 @@ pub fn paint_synthwave(buf: &mut Buffer, area: Rect, opts: SynthwaveBackground) 
             let dx = x as i32 - sun_x as i32;
             let dy = y as i32 - sun_y as i32;
             let dist = ((dx * dx + dy * dy) as f32).sqrt();
-            let glow =
-                (1.0 - dist / (area.width.max(area.height) as f32 * 0.45)).clamp(0.0, 1.0);
+            let glow = (1.0 - dist / (area.width.max(area.height) as f32 * 0.45)).clamp(0.0, 1.0);
             let color = blend_color(base, Color::Rgb(255, 224, 138), glow * 0.45);
             if let Some(cell) = buf.cell_mut((x, y)) {
                 cell.set_symbol(" ").set_fg(color).set_bg(color);
@@ -444,12 +436,7 @@ pub struct MenuConfig<'a> {
 
 /// Renders a standalone "Back" button at a given y position.
 /// Used by screens with custom item rendering that still want a standard back button.
-pub fn render_back_button(
-    buf: &mut Buffer,
-    inner: Rect,
-    y: u16,
-    selected: bool,
-) -> ClickArea {
+pub fn render_back_button(buf: &mut Buffer, inner: Rect, y: u16, selected: bool) -> ClickArea {
     let row_style = if selected {
         Style::default()
             .fg(Color::Rgb(28, 28, 42))
@@ -542,21 +529,40 @@ pub fn render_menu_items(buf: &mut Buffer, inner: Rect, config: MenuConfig) -> V
         // Up indicator
         let top_y = inner.y + config.start_y_offset;
         if has_above {
-            set_centered_string(buf, inner.x, top_y, inner.width, "▲ more ▲", indicator_style);
+            set_centered_string(
+                buf,
+                inner.x,
+                top_y,
+                inner.width,
+                "▲ more ▲",
+                indicator_style,
+            );
         }
 
         // Render visible items
         let items_y = top_y + 1; // 1 row reserved for up indicator
         for (vis_idx, item_idx) in (scroll_start..scroll_end).enumerate() {
             let row_y = items_y + vis_idx as u16 * 4;
-            areas[item_idx] =
-                render_single_item(buf, inner, row_y, &total[item_idx], item_idx == config.selected);
+            areas[item_idx] = render_single_item(
+                buf,
+                inner,
+                row_y,
+                &total[item_idx],
+                item_idx == config.selected,
+            );
         }
 
         // Down indicator
         if has_below {
             let bottom_y = inner.y + inner.height - 1;
-            set_centered_string(buf, inner.x, bottom_y, inner.width, "▼ more ▼", indicator_style);
+            set_centered_string(
+                buf,
+                inner.x,
+                bottom_y,
+                inner.width,
+                "▼ more ▼",
+                indicator_style,
+            );
         }
     }
 

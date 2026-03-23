@@ -27,6 +27,20 @@ See [CHANGELOG.md](CHANGELOG.md) for the history of changes.
 
 ---
 
+## Flavor & Local AI Systems
+
+These systems are presentation-facing and city-context-aware, but they do **not** directly modify simulation values.
+
+| Behavior | Rule |
+|----------|------|
+| Monthly news ticker refresh | On each month advance, the game may request fresh newspaper-style ticker headlines using the current city state |
+| Full newspaper edition | Opening the newspaper requests a fresh edition grounded in the current city state and pauses the simulation while the paper is open |
+| Newspaper structure | The full edition is a four-page paper with fixed recurring sections such as lead story, city beat, letters, ads, classifieds, jokes, calendar, and weather desk |
+| Invalid newspaper output | Empty, malformed, or code-like generated newspaper output is discarded and replaced with deterministic fallback copy |
+| Advisors / alerts / generated names | These use the same city-context text-generation pipeline, but only affect presentation and player information, not the underlying simulation state |
+
+---
+
 ## Simulation Pipeline
 
 Systems execute in this order every month tick:

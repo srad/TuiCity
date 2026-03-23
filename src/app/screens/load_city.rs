@@ -312,7 +312,9 @@ impl Screen for LoadCityScreen {
                     None
                 }
             }
-            Action::CharInput('d') | Action::CharInput('D') if saves_count > 0 && self.state.selected < saves_count => {
+            Action::CharInput('d') | Action::CharInput('D')
+                if saves_count > 0 && self.state.selected < saves_count =>
+            {
                 self.open_delete_prompt();
                 None
             }
