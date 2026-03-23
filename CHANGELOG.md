@@ -4,6 +4,13 @@ All notable changes to TuiCity 2000 are documented here.
 
 ## [Unreleased]
 
+### Terminal Frontends
+
+- **Pixels frontend removed:** the old `pixels_winit` renderer and its `winit` / `softbuffer` / `font8x8` dependency surface are gone
+- **Two terminal-native frontends remain:** frontend selection now switches between **Terminal ASCII** and **Terminal VGA**
+- **VGA mode styling:** the new VGA terminal mode uses a stronger DOS-style palette, heavier chrome, and a dedicated retro background treatment while preserving the current ASCII mode as the readable default
+- **Config migration:** legacy saved frontend preferences are mapped forward so old `terminal` and `pixels_gui` config values still load cleanly
+
 ### Screen Architecture — Shared Common Module
 
 - **`src/ui/screens/common.rs`** — new shared module extracting ~500 lines of duplicated rendering code from 5 screen renderers (start, load_city, settings, llm_setup, theme_settings)
@@ -17,6 +24,7 @@ All notable changes to TuiCity 2000 are documented here.
 - **Backend refresh:** local text generation now runs through `src/textgen/` using `llama.cpp` via `llama-cpp-2`, with a deterministic static fallback when local AI is disabled, unavailable, or returns invalid output
 - **Selectable model catalog:** the LLM setup screen now offers a curated Gemma model list with plain-language descriptions so players can pick faster or better-writing options
 - **Download UX:** model downloads now show byte progress, can be canceled mid-transfer, and clean up failed or canceled partial files
+- **Persistent default enablement:** when a compatible model is already installed and the player has not explicitly chosen otherwise, local AI now defaults to enabled and persists that choice in config
 - **Execution modes:** the setup UI now lets players choose automatic, CPU-only, or GPU-assisted execution in plain language
 - **Cross-platform GPU backends:** Cargo feature groups now expose CUDA, Vulkan, ROCm, and Metal-backed `llama.cpp` builds (`llm-cuda`, `llm-vulkan`, `llm-rocm`, `llm-metal`)
 - **Startup diagnostics:** text generation now logs the compiled GPU backend plus whether GPU acceleration is available and actively in use at runtime
@@ -27,6 +35,7 @@ All notable changes to TuiCity 2000 are documented here.
 - **Full newspaper window:** opening the newspaper now requests a fresh edition grounded in the current city state and pauses gameplay while the player reads it
 - **Terminal multi-page paper:** the terminal newspaper is now a real four-page edition with page tabs, story selection, article detail view, and a larger reading layout
 - **Recurring entertaining sections:** new fixed sections include city-owner advertisements, letters from readers, sidewalk quote, shopkeeper spotlight, contact ads, joke corner, community calendar, and weather desk
+- **Richer edition length:** prompt guidance, token budget, and deterministic fallback copy were expanded so the paper reads a little longer without turning into a wall of text
 - **Safer generation contract:** full newspaper generation now requires explicit `PAGE N:` and `SECTION:` markers so parsing and validation are deterministic
 - **Failure hardening:** empty, malformed, or code-like newspaper output is rejected and replaced with deterministic fallback copy instead of leaking broken text into the UI
 - **Test coverage:** added page-aware parsing, prompt-structure, fallback, and regression coverage for the newspaper pipeline
@@ -84,13 +93,13 @@ All notable changes to TuiCity 2000 are documented here.
 
 ### Event Loop Architecture — Responsiveness
 
-- **Blocking engine thread** — replaced the `try_recv()` + `sleep(10ms)` polling loop with blocking `recv()`. The engine command thread now wakes instantly when a command arrives (zero latency, down from up to 10ms). After processing the first command, remaining queued commands are drained while still holding the write lock to avoid lock churn during bursts. Applied to both terminal and pixel frontends.
+- **Blocking engine thread** — replaced the `try_recv()` + `sleep(10ms)` polling loop with blocking `recv()`. The engine command thread now wakes instantly when a command arrives (zero latency, down from up to 10ms). After processing the first command, remaining queued commands are drained while still holding the write lock to avoid lock churn during bursts. Applied across the supported UI frontends.
 - **Event drain loop** — the terminal event loop now drains all pending crossterm events before rendering the next frame, preventing a one-event-per-frame backlog during fast mouse movement or rapid keypresses.
 - **Always-tick guarantee** — `on_tick()` now fires every frame regardless of whether input events arrived. Previously it only ran when `event::poll` timed out, causing animations (fire flicker, power pulse, news ticker) and the simulation clock to freeze during active mouse interaction.
 
 ### UI Architecture — InGamePainter Trait
 
-- **Dual-frontend rendering trait** — extracted `InGamePainter` trait in `src/ui/painter.rs` with 14 methods covering every in-game UI element (map, minimap, toolbar, menu bar, menu popup, status bar, budget, inspect, statistics, tool chooser, help, about, legend, news ticker). Both the terminal (`TerminalPainter`) and pixel (`PixelPainter`) frontends implement the same trait, sharing a single `orchestrate_ingame()` orchestrator that drives paint order and click-area bookkeeping.
+- **Shared in-game rendering trait** — extracted `InGamePainter` trait in `src/ui/painter.rs` with 14 methods covering every in-game UI element (map, minimap, toolbar, menu bar, menu popup, status bar, budget, inspect, statistics, tool chooser, help, about, legend, news ticker). The terminal frontends share a single `orchestrate_ingame()` flow that keeps paint order and click-area bookkeeping aligned.
 - **Menu popup z-order fix** — the status bar was rendering after the menu popup, overwriting its border. Reordered the orchestrator so `paint_status_bar` runs before `paint_menu_popup`, ensuring the popup always draws on top.
 - **Menu toggle on header click** — clicking an already-open menu header (e.g. "File" while the File menu is visible) now closes the menu instead of re-opening it.
 

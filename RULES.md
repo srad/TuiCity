@@ -36,7 +36,9 @@ These systems are presentation-facing and city-context-aware, but they do **not*
 | Monthly news ticker refresh | On each month advance, the game may request fresh newspaper-style ticker headlines using the current city state |
 | Full newspaper edition | Opening the newspaper requests a fresh edition grounded in the current city state and pauses the simulation while the paper is open |
 | Newspaper structure | The full edition is a four-page paper with fixed recurring sections such as lead story, city beat, letters, ads, classifieds, jokes, calendar, and weather desk |
+| Newspaper copy length | The full edition favors short readable articles, but sections are intentionally allowed to run a little longer than single-blurb flavor text so the paper feels like a proper issue |
 | Invalid newspaper output | Empty, malformed, or code-like generated newspaper output is discarded and replaced with deterministic fallback copy |
+| Local AI default enablement | If a supported local model is already present and the player has never explicitly chosen on/off, local AI defaults to enabled and that preference is written to config |
 | Advisors / alerts / generated names | These use the same city-context text-generation pipeline, but only affect presentation and player information, not the underlying simulation state |
 
 ---

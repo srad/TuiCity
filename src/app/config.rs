@@ -7,20 +7,33 @@ use super::save;
 
 const CONFIG_FILE_NAME: &str = "config.json";
 
-#[derive(Default, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FrontendKind {
     #[default]
-    Terminal,
-    PixelsGui,
+    #[serde(alias = "terminal")]
+    TerminalAscii,
+    #[serde(alias = "pixels_gui")]
+    TerminalVga,
 }
 
 impl FrontendKind {
     pub fn label(self) -> &'static str {
         match self {
-            FrontendKind::Terminal => "Terminal",
-            FrontendKind::PixelsGui => "Pixel GUI",
+            FrontendKind::TerminalAscii => "Terminal ASCII",
+            FrontendKind::TerminalVga => "Terminal VGA",
         }
+    }
+
+    pub fn next(self) -> Self {
+        match self {
+            FrontendKind::TerminalAscii => FrontendKind::TerminalVga,
+            FrontendKind::TerminalVga => FrontendKind::TerminalAscii,
+        }
+    }
+
+    pub fn is_vga(self) -> bool {
+        matches!(self, FrontendKind::TerminalVga)
     }
 }
 
@@ -76,6 +89,14 @@ pub fn is_llm_enabled() -> bool {
     load_user_config().llm_enabled.unwrap_or(true)
 }
 
+pub fn persist_default_llm_preference_if_model_present(model_present: bool) -> io::Result<()> {
+    let mut config = load_user_config();
+    if apply_default_llm_preference(&mut config, model_present) {
+        save_user_config(&config)?;
+    }
+    Ok(())
+}
+
 pub fn persist_llm_preference(enabled: bool) -> io::Result<()> {
     let mut config = load_user_config();
     config.llm_enabled = Some(enabled);
@@ -118,4 +139,55 @@ fn save_user_config(config: &UserConfig) -> io::Result<()> {
 
 fn config_path() -> PathBuf {
     save::app_data_dir().join(CONFIG_FILE_NAME)
+}
+
+fn apply_default_llm_preference(config: &mut UserConfig, model_present: bool) -> bool {
+    if model_present && config.llm_enabled.is_none() {
+        config.llm_enabled = Some(true);
+        true
+    } else {
+        false
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{apply_default_llm_preference, FrontendKind, UserConfig};
+
+    #[test]
+    fn frontend_kind_labels_match_terminal_modes() {
+        assert_eq!(FrontendKind::TerminalAscii.label(), "Terminal ASCII");
+        assert_eq!(FrontendKind::TerminalVga.label(), "Terminal VGA");
+    }
+
+    #[test]
+    fn frontend_kind_deserializes_legacy_values() {
+        let ascii: FrontendKind = serde_json::from_str("\"terminal\"").expect("legacy terminal");
+        let vga: FrontendKind = serde_json::from_str("\"pixels_gui\"").expect("legacy pixels");
+        assert_eq!(ascii, FrontendKind::TerminalAscii);
+        assert_eq!(vga, FrontendKind::TerminalVga);
+    }
+
+    #[test]
+    fn model_presence_persists_default_llm_enablement_when_unset() {
+        let mut config = UserConfig::default();
+
+        let changed = apply_default_llm_preference(&mut config, true);
+
+        assert!(changed);
+        assert_eq!(config.llm_enabled, Some(true));
+    }
+
+    #[test]
+    fn explicit_llm_disable_is_preserved_even_if_model_exists() {
+        let mut config = UserConfig {
+            llm_enabled: Some(false),
+            ..UserConfig::default()
+        };
+
+        let changed = apply_default_llm_preference(&mut config, true);
+
+        assert!(!changed);
+        assert_eq!(config.llm_enabled, Some(false));
+    }
 }

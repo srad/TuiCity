@@ -1,8 +1,8 @@
 //! # InGamePainter trait
 //!
-//! This module defines the rendering contract that every frontend must implement.
+//! This module defines the rendering contract that every in-game frontend style must implement.
 //! The shared orchestrator (`orchestrate_ingame`) drives the painter methods in the
-//! correct order, ensuring both frontends render the same set of UI elements.
+//! correct order, ensuring every supported presentation mode renders the same UI elements.
 //!
 //! ## Architecture
 //!
@@ -22,7 +22,7 @@
 //! ```
 //!
 //! Adding a new UI element:
-//! 1. Add a method to `InGamePainter` — compiler error in both frontends
+//! 1. Add a method to `InGamePainter` — compiler error in each painter implementation
 //! 2. Add orchestration call in `orchestrate_ingame` — compiles only when both impls exist
 //! 3. Wire up any returned click areas to `UiAreas`
 
@@ -93,7 +93,7 @@ pub struct FrameLayout {
     pub view_w: usize,
     /// Tiles visible vertically in the map viewport.
     pub view_h: usize,
-    /// Column scale factor: 2 for terminal (chars are 2× wide), 1 for pixel.
+    /// Column scale factor in screen cells per map tile.
     pub col_scale: u8,
 }
 
@@ -101,7 +101,7 @@ pub struct FrameLayout {
 
 /// Rendering contract for the in-game screen.
 ///
-/// Every frontend (terminal, pixel/winit, etc.) must implement all methods.
+/// Every in-game frontend style must implement all methods.
 /// The shared `orchestrate_ingame()` function calls these methods in order.
 ///
 /// Each method receives only the data it needs (not the entire view model),
@@ -209,7 +209,7 @@ pub trait InGamePainter {
 /// Drive any `InGamePainter` from a view model snapshot.
 ///
 /// This is the single source of truth for "what gets rendered and in what order."
-/// Both frontends call this instead of implementing their own orchestration.
+/// All in-game frontends call this instead of implementing their own orchestration.
 pub fn orchestrate_ingame(
     painter: &mut impl InGamePainter,
     view: &InGameDesktopView,
@@ -515,7 +515,7 @@ pub mod tests {
 
     /// Compile-time exhaustiveness check.
     /// If a field is added to `InGameDesktopView`, this destructure fails,
-    /// forcing you to update `orchestrate_ingame()` and both frontend painters.
+    /// forcing you to update `orchestrate_ingame()` and all painter implementations.
     #[test]
     fn view_model_fields_are_all_consumed_by_orchestrator() {
         let _check = |v: &InGameDesktopView| {
@@ -547,5 +547,87 @@ pub mod tests {
                 newspaper: _,
             } = v;
         };
+    }
+
+    #[test]
+    fn orchestrate_ingame_calls_core_painter_methods_in_order() {
+        use crate::{
+            app::screens::BudgetFocus,
+            core::{map::Map, sim::TaxRates},
+            ui::{
+                runtime::DesktopLayout,
+                theme::OverlayMode,
+                view::{BudgetViewModel, NewsTickerViewModel, ToolbarPaletteViewModel},
+            },
+        };
+
+        let mut painter = MockPainter::default();
+        let mut ingame = InGameScreen::new();
+        let sim = crate::core::sim::SimState::default();
+        let view = InGameDesktopView {
+            map: Map::new(8, 8),
+            sim: sim.clone(),
+            camera: Camera::default(),
+            current_tool: Tool::Inspect,
+            toolbar: ToolbarPaletteViewModel {
+                current_tool: Tool::Inspect,
+                zone_tool: Tool::ZoneResLight,
+                transport_tool: Tool::Road,
+                utility_tool: Tool::PowerLine,
+                power_plant_tool: Tool::PowerPlantCoal,
+                building_tool: Tool::Police,
+                terrain_tool: Tool::TerrainWater,
+                chooser: None,
+                view_layer: ViewLayer::Surface,
+            },
+            tool_chooser: None,
+            confirm_dialog: None,
+            paused: false,
+            overlay_mode: OverlayMode::None,
+            view_layer: ViewLayer::Surface,
+            menu_active: false,
+            menu_selected: 0,
+            menu_item_selected: 0,
+            status_message: Some("Ready".to_string()),
+            news_ticker: NewsTickerViewModel::default(),
+            line_preview: Vec::new(),
+            rect_preview: Vec::new(),
+            inspect_pos: None,
+            budget: BudgetViewModel::from_sim(
+                &sim,
+                BudgetFocus::Residential,
+                TaxRates::default(),
+                "9".to_string(),
+                "9".to_string(),
+                "9".to_string(),
+            ),
+            statistics: None,
+            help: None,
+            about: None,
+            legend: None,
+            advisor: None,
+            newspaper: None,
+        };
+        let layout = FrameLayout {
+            desktop_layout: DesktopLayout::default(),
+            view_w: 20,
+            view_h: 15,
+            col_scale: 2,
+        };
+
+        orchestrate_ingame(&mut painter, &view, &mut ingame, layout);
+
+        assert_eq!(
+            painter.calls,
+            vec![
+                "begin_frame",
+                "paint_map",
+                "paint_menu_bar",
+                "paint_status_bar",
+                "paint_panel_window",
+                "paint_news_ticker",
+                "end_frame",
+            ]
+        );
     }
 }

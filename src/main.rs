@@ -25,17 +25,13 @@ fn main() -> io::Result<()> {
     )])
     .unwrap();
 
-    match app::config::get_frontend_kind() {
-        FrontendKind::PixelsGui => ui::frontends::pixels_winit::run(),
-        FrontendKind::Terminal => {
-            log::info!("[main] Calling run_terminal");
-            run_terminal()
-        }
-    }?;
+    let frontend = app::config::get_frontend_kind();
+    log::info!("[main] starting {}", frontend.label());
+    run_terminal(frontend)?;
     Ok(())
 }
 
-fn run_terminal() -> io::Result<()> {
+fn run_terminal(frontend: FrontendKind) -> io::Result<()> {
     // Redirect stderr to NUL before entering the alternate screen.
     // All app logging goes to the file logger; this silences C libraries
     // (e.g. llama.cpp) that write directly to stderr via fprintf.
@@ -45,7 +41,7 @@ fn run_terminal() -> io::Result<()> {
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
 
-    let mut renderer = TerminalRenderer::new()?;
+    let mut renderer = TerminalRenderer::new(frontend)?;
     log::info!("[main] Starting run_loop");
     let result = run_loop(&mut renderer);
     log::info!("[main] run_loop finished");

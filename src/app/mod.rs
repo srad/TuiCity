@@ -31,7 +31,12 @@ pub struct AppState {
 impl AppState {
     pub fn new() -> Self {
         config::apply_user_config();
-        let textgen = crate::textgen::TextGenService::start(crate::textgen::default_model_dir());
+        let model_dir = crate::textgen::default_model_dir();
+        let model_present = crate::textgen::download::model_files_present(&model_dir);
+        if let Err(error) = config::persist_default_llm_preference_if_model_present(model_present) {
+            log::error!("[config] failed to persist default LLM preference: {error}");
+        }
+        let textgen = crate::textgen::TextGenService::start(model_dir);
         let mut app = Self {
             screens: vec![Box::new(StartScreen::new())],
             engine: Arc::new(RwLock::new(crate::core::engine::SimulationEngine::new(

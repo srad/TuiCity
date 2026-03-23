@@ -6,6 +6,7 @@ const TMPL_NEWSPAPER: &str = include_str!("../../assets/prompts/newspaper.txt");
 const TMPL_ADVISOR: &str = include_str!("../../assets/prompts/advisor.txt");
 const TMPL_ALERT: &str = include_str!("../../assets/prompts/alert.txt");
 const TMPL_NEWSPAPER_ARTICLE: &str = include_str!("../../assets/prompts/newspaper_article.txt");
+#[cfg(test)]
 const RULES_SUMMARY: &str = include_str!("../../assets/prompts/rules_summary.txt");
 
 /// Replace all `{{key}}` occurrences in `template` with the corresponding value.

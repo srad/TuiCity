@@ -30,6 +30,7 @@ pub fn render_settings(
 }
 
 fn render_title(buf: &mut Buffer, area: Rect, y: u16, view: &SettingsViewModel) {
+    let ui = crate::ui::theme::ui_palette();
     common::set_centered_string(
         buf,
         area.x,
@@ -37,7 +38,7 @@ fn render_title(buf: &mut Buffer, area: Rect, y: u16, view: &SettingsViewModel) 
         area.width,
         "Settings",
         Style::default()
-            .fg(Color::Rgb(255, 221, 119))
+            .fg(ui.title)
             .bg(Color::Reset)
             .add_modifier(Modifier::BOLD),
     );
@@ -50,24 +51,18 @@ fn render_title(buf: &mut Buffer, area: Rect, y: u16, view: &SettingsViewModel) 
             ("LLM: No Model".to_string(), Color::Rgb(255, 170, 80))
         }
         crate::ui::view::LlmStatus::Disabled => ("LLM: Off".to_string(), Color::Rgb(140, 140, 140)),
-        crate::ui::view::LlmStatus::Downloading(_) => {
-            ("LLM: Downloading...".to_string(), Color::Rgb(100, 180, 255))
-        }
-        crate::ui::view::LlmStatus::DownloadFailed(_) => (
-            "LLM: Download Failed".to_string(),
-            Color::Rgb(255, 100, 100),
-        ),
     };
-    let full_text = format!("Theme: {}  |  {}", view.current_theme_label, llm_label);
+    let full_text = format!(
+        "Theme: {}  |  Frontend: {}  |  {}",
+        view.current_theme_label, view.current_frontend_label, llm_label
+    );
     common::set_centered_string(
         buf,
         area.x,
         y + 1,
         area.width,
         &full_text,
-        Style::default()
-            .fg(Color::Rgb(170, 223, 219))
-            .bg(Color::Reset),
+        Style::default().fg(ui.subtitle).bg(Color::Reset),
     );
     // Overlay just the LLM portion with its status color
     if let Some(llm_offset) = full_text.find(&*llm_label) {
@@ -88,6 +83,7 @@ fn render_panel_content(
     view: &SettingsViewModel,
     state: &mut SettingsState,
 ) {
+    let ui = crate::ui::theme::ui_palette();
     let inner = layout.inner;
     if inner.width == 0 || inner.height == 0 {
         return;
@@ -103,9 +99,7 @@ fn render_panel_content(
             common::truncate(hint, inner.width as usize),
             width = inner.width as usize
         ),
-        Style::default()
-            .fg(Color::Rgb(170, 223, 219))
-            .bg(Color::Rgb(35, 34, 55)),
+        Style::default().fg(ui.subtitle).bg(ui.window_bg),
     );
 
     let items: Vec<MenuItem> = view

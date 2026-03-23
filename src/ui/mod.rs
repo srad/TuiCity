@@ -11,6 +11,7 @@ use std::io;
 
 use crate::{
     app::{
+        config::FrontendKind,
         screens::{
             AppContext, InGameScreen, LlmSetupScreen, LoadCityScreen, NewCityScreen,
             SettingsScreen, StartScreen,
@@ -26,23 +27,27 @@ pub trait Renderer {
 
 pub struct TerminalRenderer {
     pub terminal: Terminal<CrosstermBackend<io::Stdout>>,
+    frontend: FrontendKind,
 }
 
 impl TerminalRenderer {
-    pub fn new() -> io::Result<Self> {
-        log::info!("[ui] Initializing TerminalRenderer");
+    pub fn new(frontend: FrontendKind) -> io::Result<Self> {
+        log::info!("[ui] Initializing TerminalRenderer ({})", frontend.label());
+        crate::ui::theme::set_terminal_vga(frontend.is_vga());
         let backend = CrosstermBackend::new(io::stdout());
         let terminal = Terminal::new(backend).map_err(|e| {
             log::error!("[ui] Terminal init failed: {e}");
             e
         })?;
-        Ok(Self { terminal })
+        Ok(Self { terminal, frontend })
     }
 }
 
 impl Renderer for TerminalRenderer {
     fn render(&mut self, app: &mut AppState) -> io::Result<()> {
         log::trace!("[ui] Rendering frame");
+        let frontend_is_vga = self.frontend.is_vga();
+        crate::ui::theme::set_terminal_vga(frontend_is_vga);
         self.terminal.draw(|frame| {
             let context = AppContext {
                 engine: &app.engine,
@@ -119,7 +124,7 @@ impl Renderer for TerminalRenderer {
                         let desktop_layout = screen.desktop.layout(
                             crate::ui::runtime::UiRect::new(area.x, area.y, total_cols, total_rows),
                         );
-                        // Compute view dimensions for terminal (col_scale=2 because chars are double-wide)
+                        // Compute view dimensions for terminal frontends (chars are double-wide).
                         let map_inner = desktop_layout.window(crate::app::WindowId::Map).inner;
                         let panel_outer_x =
                             desktop_layout.window(crate::app::WindowId::Panel).outer.x;
@@ -148,8 +153,11 @@ impl Renderer for TerminalRenderer {
                             view_h: map_layout.view_tiles_h.max(1),
                             col_scale: 2,
                         };
-                        let mut painter =
-                            frontends::terminal::ingame::TerminalPainter::new(frame, area);
+                        let mut painter = frontends::terminal::ingame::TerminalPainter::new(
+                            frame,
+                            area,
+                            frontend_is_vga,
+                        );
                         crate::ui::painter::orchestrate_ingame(&mut painter, &view, screen, layout);
                     }
                     ScreenView::ThemeSettings(view) => {
@@ -173,7 +181,6 @@ impl Renderer for TerminalRenderer {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::app::screens::StartScreen;
     use crate::app::AppState;
     use crate::ui::screens::start::render_start;
@@ -215,7 +222,8 @@ mod tests {
         let mut text_found = false;
         for y in 0..24 {
             for x in 0..80 {
-                if !buffer.get(x, y).symbol().is_empty() && buffer.get(x, y).symbol() != " " {
+                let cell = &buffer[(x, y)];
+                if !cell.symbol().is_empty() && cell.symbol() != " " {
                     text_found = true;
                 }
             }

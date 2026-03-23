@@ -275,16 +275,18 @@ fn truncate(s: &str, max: usize) -> String {
 pub struct TerminalPainter<'a, 'f> {
     frame: &'a mut Frame<'f>,
     area: Rect,
+    vga_mode: bool,
     // Computed in begin_frame
     desktop_layout: Option<DesktopLayout>,
     map_layout: Option<game::map_view::MapChromeLayout>,
 }
 
 impl<'a, 'f> TerminalPainter<'a, 'f> {
-    pub fn new(frame: &'a mut Frame<'f>, area: Rect) -> Self {
+    pub fn new(frame: &'a mut Frame<'f>, area: Rect, vga_mode: bool) -> Self {
         Self {
             frame,
             area,
+            vga_mode,
             desktop_layout: None,
             map_layout: None,
         }
@@ -294,6 +296,38 @@ impl<'a, 'f> TerminalPainter<'a, 'f> {
         self.desktop_layout
             .as_ref()
             .expect("begin_frame must be called first")
+    }
+
+    fn window_border_type(&self) -> BorderType {
+        if self.vga_mode {
+            BorderType::Double
+        } else {
+            BorderType::Plain
+        }
+    }
+
+    fn newspaper_palette(&self) -> (Color, Color, Color, Color, Color, Color, Color) {
+        if self.vga_mode {
+            (
+                Color::Rgb(224, 220, 182),
+                Color::Rgb(28, 22, 16),
+                Color::Rgb(94, 84, 58),
+                Color::Rgb(96, 32, 16),
+                Color::Rgb(128, 116, 80),
+                Color::Rgb(204, 194, 152),
+                Color::Rgb(214, 204, 174),
+            )
+        } else {
+            (
+                Color::Rgb(242, 233, 214),
+                Color::Rgb(52, 38, 24),
+                Color::Rgb(109, 88, 64),
+                Color::Rgb(105, 46, 24),
+                Color::Rgb(149, 120, 88),
+                Color::Rgb(221, 205, 173),
+                Color::Rgb(236, 226, 203),
+            )
+        }
     }
 }
 
@@ -334,6 +368,7 @@ impl<'a, 'f> InGamePainter for TerminalPainter<'a, 'f> {
         self.frame.render_widget(
             Block::default()
                 .borders(Borders::ALL)
+                .border_type(self.window_border_type())
                 .title("Map")
                 .title_style(Style::default().fg(ui.window_title))
                 .border_style(Style::default().fg(ui.window_border))
@@ -583,6 +618,7 @@ impl<'a, 'f> InGamePainter for TerminalPainter<'a, 'f> {
         self.frame.render_widget(
             Block::default()
                 .borders(Borders::ALL)
+                .border_type(self.window_border_type())
                 .border_style(Style::default().fg(ui.menu_fg).bg(ui.menu_bg))
                 .style(Style::default().bg(ui.menu_bg)),
             popup,
@@ -675,6 +711,7 @@ impl<'a, 'f> InGamePainter for TerminalPainter<'a, 'f> {
         self.frame.render_widget(
             Block::default()
                 .borders(Borders::ALL)
+                .border_type(self.window_border_type())
                 .title(ingame.desktop.window(WindowId::Panel).title)
                 .title_style(Style::default().fg(ui.window_title))
                 .border_style(Style::default().fg(ui.window_border))
@@ -800,6 +837,7 @@ impl<'a, 'f> InGamePainter for TerminalPainter<'a, 'f> {
         self.frame.render_widget(
             Block::default()
                 .borders(Borders::ALL)
+                .border_type(self.window_border_type())
                 .title("Tool Selection")
                 .title_style(Style::default().fg(ui.window_title))
                 .border_style(Style::default().fg(ui.window_border))
@@ -831,6 +869,7 @@ impl<'a, 'f> InGamePainter for TerminalPainter<'a, 'f> {
         self.frame.render_widget(
             Block::default()
                 .borders(Borders::ALL)
+                .border_type(self.window_border_type())
                 .title(ingame.desktop.window(WindowId::Budget).title)
                 .title_style(Style::default().fg(ui.window_title))
                 .border_style(Style::default().fg(ui.window_border))
@@ -858,6 +897,7 @@ impl<'a, 'f> InGamePainter for TerminalPainter<'a, 'f> {
         self.frame.render_widget(
             Block::default()
                 .borders(Borders::ALL)
+                .border_type(self.window_border_type())
                 .title(ingame.desktop.window(WindowId::Statistics).title)
                 .title_style(Style::default().fg(ui.window_title))
                 .border_style(Style::default().fg(ui.window_border))
@@ -890,6 +930,7 @@ impl<'a, 'f> InGamePainter for TerminalPainter<'a, 'f> {
                 self.frame.render_widget(
                     Block::default()
                         .borders(Borders::ALL)
+                        .border_type(self.window_border_type())
                         .title(title.as_str())
                         .title_style(Style::default().fg(ui.window_title))
                         .border_style(Style::default().fg(ui.window_border))
@@ -941,6 +982,7 @@ impl<'a, 'f> InGamePainter for TerminalPainter<'a, 'f> {
         self.frame.render_widget(
             Block::default()
                 .borders(Borders::ALL)
+                .border_type(self.window_border_type())
                 .title(ingame.desktop.window(window_id).title)
                 .title_style(Style::default().fg(ui.window_title))
                 .border_style(Style::default().fg(ui.window_border))
@@ -968,6 +1010,7 @@ impl<'a, 'f> InGamePainter for TerminalPainter<'a, 'f> {
         self.frame.render_widget(
             Block::default()
                 .borders(Borders::ALL)
+                .border_type(self.window_border_type())
                 .title(ingame.desktop.window(WindowId::Advisor).title)
                 .title_style(Style::default().fg(ui.window_title))
                 .border_style(Style::default().fg(ui.window_border))
@@ -1039,12 +1082,8 @@ impl<'a, 'f> InGamePainter for TerminalPainter<'a, 'f> {
         let dl = self.dl();
         let layout = dl.window(WindowId::Newspaper);
         let outer = to_rect(layout.outer);
-        let paper_bg = Color::Rgb(242, 233, 214);
-        let paper_fg = Color::Rgb(52, 38, 24);
-        let ink_dim = Color::Rgb(109, 88, 64);
-        let ink_accent = Color::Rgb(105, 46, 24);
-        let rule_fg = Color::Rgb(149, 120, 88);
-        let highlight_bg = Color::Rgb(221, 205, 173);
+        let (paper_bg, paper_fg, ink_dim, ink_accent, rule_fg, highlight_bg, feature_bg) =
+            self.newspaper_palette();
 
         if ingame.desktop.window(WindowId::Newspaper).shadowed {
             render_window_shadow(self.frame, outer);
@@ -1294,7 +1333,7 @@ impl<'a, 'f> InGamePainter for TerminalPainter<'a, 'f> {
                     let card_bg = if selected {
                         highlight_bg
                     } else if is_feature_panel(&section.title) {
-                        Color::Rgb(236, 226, 203)
+                        feature_bg
                     } else {
                         paper_bg
                     };
@@ -1355,7 +1394,7 @@ impl<'a, 'f> InGamePainter for TerminalPainter<'a, 'f> {
                 let card_bg = if selected {
                     highlight_bg
                 } else if is_feature_panel(&section.title) {
-                    Color::Rgb(236, 226, 203)
+                    feature_bg
                 } else {
                     paper_bg
                 };

@@ -129,6 +129,7 @@ impl TextGenService {
     }
 
     /// Returns the name of the active backend (e.g. "llama.cpp", "static").
+    #[cfg(test)]
     pub fn backend_name(&self) -> String {
         self.runtime_info.read().unwrap().backend_name.clone()
     }
@@ -282,7 +283,7 @@ fn build_inference_params(task: &LlmTask) -> (String, usize, f32) {
             alert_kind,
         } => (prompt::alert_prompt(context, alert_kind), 60, 0.8),
         LlmTask::WriteNewspaperArticle { context } => {
-            (prompt::newspaper_article_prompt(context), 720, 0.85)
+            (prompt::newspaper_article_prompt(context), 860, 0.85)
         }
     }
 }

@@ -227,48 +227,55 @@ impl StaticGenerator {
         format!(
             "PAGE 1: FRONT PAGE\n\
              SECTION: LEAD STORY\n\
-             {headline}\n\
-             {city_name} enters the month with one big question hanging over City Hall: {lead_issue}. {growth}.\n\n\
-             At the same time, {budget}. Department chiefs say {utilities}, while the traffic desk notes that {transit}.\n\n\
-             SECTION: CITY BEAT\n\
-             Around town, the city beat keeps circling the same civic rumor: {services}. Neighbors add that {demand}, which is either a sign of confidence or proof that nobody can stop talking at zoning meetings.\n\n\
-             SECTION: CITY OWNER'S ADVERTISEMENT\n\
-             Paid for by the Office of Extremely Confident Civic Promotion.\n\
-             Come see the future of {city_name}, now with extra speeches and fewer apologies.\n\
-             {civic_brag}.\n\
-             City Hall promises that tomorrow's progress will arrive shortly after the next committee meeting.\n\n\
-             PAGE 2: READER FORUM\n\
-             SECTION: LETTERS FROM READERS\n\
-             Dear Tribune,\n\
-             If the city can survive {lead_issue}, surely it can survive one more complaint from me. Signed, A Taxpayer Who Keeps The Receipts.\n\n\
-             Dear Tribune,\n\
-             {street_mood}, and I would simply like the buses, the lights, and my patience to arrive in the same week. Signed, Someone Waiting By The Curb.\n\n\
-             SECTION: SIDEWALK QUOTE\n\
-             \"I knew the city was growing when even the pigeons started acting like property speculators.\" — A resident near the busiest corner in town.\n\n\
-             SECTION: EDITORIAL\n\
-             Dear Mayor,\n\
-             Pick one promise and finish it before the next parade of complaints arrives. {environment}, and citizens can tell when City Hall is solving problems versus merely naming them.\n\n\
-             PAGE 3: MARKET SQUARE\n\
-             SECTION: SHOPKEEPER SPOTLIGHT\n\
-             Visit Main Street Mercantile, where we proudly {sponsor_angle}. Management insists that a thriving city begins with sturdy shelves and perfectly timed optimism.\n\n\
-             SECTION: CONTACT ADS\n\
-             SEEKING: Charming lunch companion who understands municipal drama and still believes in clean sidewalks.\n\
-             LONELY HEART: Ambitious commuter seeks fellow dreamer with strong opinions about buses and pastry.\n\
-             NEW IN TOWN: Recent arrival hopes to meet someone who can explain zoning with compassion and maybe dessert.\n\n\
-             SECTION: CLASSIFIEDS\n\
-             WANTED: One practical planner who can read {lead_issue} without fainting.\n\
-             FOR SALE: Slightly used ribbon-cutting scissors, ideal for the next municipal triumph.\n\
-             NOTICE: Residents are reminded that arguing about roads still counts as a local pastime.\n\n\
-             PAGE 4: FEATURES & FUN\n\
-             SECTION: JOKE CORNER\n\
-             Why did the mayor bring a ladder to City Hall? Because everyone kept saying the city needed higher standards.\n\
-             What do you call a perfectly timed bus in {city_name}? A rumor with headlights.\n\n\
-             SECTION: COMMUNITY CALENDAR\n\
-             MONDAY: Neighborhood association meets to discuss {resident_gripe} and the urgent shortage of patience.\n\
-             WEDNESDAY: Chamber of commerce luncheon on how {civic_brag} can somehow be monetized.\n\
-             SATURDAY: Free park concert, weather and paperwork permitting.\n\n\
-             SECTION: WEATHER DESK\n\
-             Expect a bright civic morning followed by scattered paperwork. The forecast improves noticeably whenever the utilities and the treasury stop glaring at each other."
+              {headline}\n\
+              {city_name} enters the month with one big question hanging over City Hall: {lead_issue}. {growth}.\n\n\
+              At the same time, {budget}. Department chiefs say {utilities}, while the traffic desk notes that {transit}.\n\n\
+              Block captains insist the mood on their streets is still manageable, even when every meeting turns into a dramatic reading of public works complaints. Editors quietly note that a city willing to argue this hard about itself is at least still paying attention.\n\n\
+              SECTION: CITY BEAT\n\
+              Around town, the city beat keeps circling the same civic rumor: {services}. Neighbors add that {demand}, which is either a sign of confidence or proof that nobody can stop talking at zoning meetings. On stoops and at corner counters, residents are comparing notes on which block feels looked after and which one still sounds like a budget memo with sidewalks. Even the usual optimists admit the city now has enough momentum to deserve better follow-through.\n\n\
+              SECTION: CITY OWNER'S ADVERTISEMENT\n\
+              Paid for by the Office of Extremely Confident Civic Promotion.\n\
+              Come see the future of {city_name}, now with extra speeches and fewer apologies.\n\
+              {civic_brag}.\n\
+              City Hall promises that tomorrow's progress will arrive shortly after the next committee meeting.\n\
+              Reserve your applause now for the next ribbon cutting, groundbreaking, or unusually theatrical budget explanation.\n\
+              Families, shopkeepers, and skeptical commuters are all invited to witness municipal confidence in its natural habitat.\n\n\
+              PAGE 2: READER FORUM\n\
+              SECTION: LETTERS FROM READERS\n\
+              Dear Tribune,\n\
+              If the city can survive {lead_issue}, surely it can survive one more complaint from me. I am not asking for miracles, merely the small civic luxury of seeing one promise finished before three new slogans are painted over it. Signed, A Taxpayer Who Keeps The Receipts.\n\n\
+              Dear Tribune,\n\
+              {street_mood}, and I would simply like the buses, the lights, and my patience to arrive in the same week. If City Hall cannot schedule all three at once, I will settle for two and a believable explanation for the third. Signed, Someone Waiting By The Curb.\n\n\
+              SECTION: SIDEWALK QUOTE\n\
+              \"I knew the city was growing when even the pigeons started acting like property speculators.\" — A resident near the busiest corner in town.\n\
+              Bystanders report that three other pedestrians nodded solemnly before returning to their coffee and municipal gossip.\n\n\
+              SECTION: EDITORIAL\n\
+              Dear Mayor,\n\
+              Pick one promise and finish it before the next parade of complaints arrives. {environment}, and citizens can tell when City Hall is solving problems versus merely naming them. A city can forgive setbacks faster than it forgives drift, especially when every department keeps claiming the urgent thing is someone else's clipboard. Governing would look more impressive if it sounded a little less like rehearsal.\n\n\
+              PAGE 3: MARKET SQUARE\n\
+              SECTION: SHOPKEEPER SPOTLIGHT\n\
+              Visit Main Street Mercantile, where we proudly {sponsor_angle}. Management insists that a thriving city begins with sturdy shelves and perfectly timed optimism. The proprietor says local customers now arrive ready to debate transit, zoning, and pastry in roughly equal measure, which is excellent for business and terrible for closing on time. Supplies remain plentiful, opinions remain louder, and the front window has never looked more civically engaged.\n\n\
+              SECTION: CONTACT ADS\n\
+              SEEKING: Charming lunch companion who understands municipal drama and still believes in clean sidewalks.\n\
+              LONELY HEART: Ambitious commuter seeks fellow dreamer with strong opinions about buses and pastry.\n\
+              NEW IN TOWN: Recent arrival hopes to meet someone who can explain zoning with compassion and maybe dessert.\n\
+              PEN PAL WANTED: Cheerful resident seeks correspondence about parks, gossip, and where City Hall hid the last good idea.\n\n\
+              SECTION: CLASSIFIEDS\n\
+              WANTED: One practical planner who can read {lead_issue} without fainting and still make room for lunch.\n\
+              FOR SALE: Slightly used ribbon-cutting scissors, ideal for the next municipal triumph or controlled public relations emergency.\n\
+              NOTICE: Residents are reminded that arguing about roads still counts as a local pastime, but the clerk's office requests inside voices after dusk.\n\n\
+              PAGE 4: FEATURES & FUN\n\
+              SECTION: JOKE CORNER\n\
+              Why did the mayor bring a ladder to City Hall? Because everyone kept saying the city needed higher standards.\n\
+              What do you call a perfectly timed bus in {city_name}? A rumor with headlights.\n\
+              Why are local pigeons so informed? Because they attend every budget meeting from the windowsill.\n\n\
+              SECTION: COMMUNITY CALENDAR\n\
+              MONDAY: Neighborhood association meets to discuss {resident_gripe} and the urgent shortage of patience.\n\
+              WEDNESDAY: Chamber of commerce luncheon on how {civic_brag} can somehow be monetized.\n\
+              FRIDAY: Sidewalk social for residents eager to compare notes on buses, lighting, and who still trusts the five-year plan.\n\
+              SATURDAY: Free park concert, weather and paperwork permitting.\n\n\
+              SECTION: WEATHER DESK\n\
+              Expect a bright civic morning followed by scattered paperwork. The forecast improves noticeably whenever the utilities and the treasury stop glaring at each other. Evening winds will carry a 60 percent chance of opinions from every direction."
         )
     }
 }
@@ -376,6 +383,7 @@ mod tests {
         }
         assert!(text.contains("Testville"));
         assert!(text.contains("power"));
+        assert!(text.len() > 2400, "expected a fuller fallback edition");
     }
 
     #[test]

@@ -15,9 +15,6 @@ serde      = { version = "1", features = ["derive"] }
 serde_json = "1"
 tui-big-text = "0.8.2"
 rodio = { version = "0.17.3", default-features = false, features = ["symphonia-mp3"] }
-winit       = "0.29"
-softbuffer  = "0.4"
-font8x8     = "0.3"
 log         = "0.4"
 simplelog   = "0.12"
 

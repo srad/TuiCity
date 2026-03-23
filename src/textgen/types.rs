@@ -48,6 +48,7 @@ impl AdvisorDomain {
 }
 
 #[derive(Debug, Clone)]
+#[cfg_attr(not(test), allow(dead_code))]
 pub enum AlertKind {
     Fire {
         count: usize,

@@ -48,10 +48,7 @@ impl SettingsScreen {
                 None
             }
             3 => {
-                let next = match config::get_frontend_kind() {
-                    config::FrontendKind::Terminal => config::FrontendKind::PixelsGui,
-                    config::FrontendKind::PixelsGui => config::FrontendKind::Terminal,
-                };
+                let next = config::get_frontend_kind().next();
                 let _ = config::persist_frontend_preference(next);
                 None
             }
@@ -113,7 +110,7 @@ impl Screen for SettingsScreen {
             "Enable Music"
         };
         let frontend_kind = config::get_frontend_kind();
-        let frontend_label = format!("Renderer: {} (restart required)", frontend_kind.label());
+        let frontend_label = format!("Frontend: {} (restart required)", frontend_kind.label());
 
         let llm_status = if context.textgen.has_model() {
             crate::ui::view::LlmStatus::Active

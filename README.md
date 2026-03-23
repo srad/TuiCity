@@ -92,6 +92,7 @@ The **Settings → LLM Setup** screen manages all local text generation used by 
 - Choose from a small curated Gemma model catalog with plain-language descriptions
 - Download or delete models from inside the game
 - Watch byte progress while downloading, cancel an in-progress download, and safely clean up failed or canceled partial files
+- If a compatible model is already installed, local text generation defaults to **enabled** automatically and that preference is persisted until the player changes it
 - Pick an execution mode such as automatic, CPU-only, or GPU-assisted
 - If local AI is disabled, unavailable, or produces invalid output, the game falls back to deterministic built-in text so newspaper and advisor features still work
 
@@ -166,7 +167,7 @@ The **File** menu contains save/load/quit and settings actions, the **Windows** 
 
 On the **Load City** screen, use **Arrow keys** to select a save, **Enter** to load it, and **d** to open the delete confirmation dialog for the selected city.
 
-While the newspaper is open, **Left/Right** turns pages, **Up/Down** selects a story on the current page, **Enter** or a mouse click opens the selected article, and **Esc** backs out of the article view or closes the paper. Opening the paper requests a fresh multi-page edition tied to the city's current state.
+While the newspaper is open, **Left/Right** turns pages, **Up/Down** selects a story on the current page, **Enter** or a mouse click opens the selected article, and **Esc** backs out of the article view or closes the paper. Opening the paper requests a fresh multi-page edition tied to the city's current state, with slightly fuller section copy so the paper feels more like an actual read than a set of one-line blurbs.
 
 ### Tools
 
@@ -292,9 +293,9 @@ pub trait Screen {
 
 The simulation runs in a dedicated OS thread managed by `core/engine.rs`. The main UI thread sends `EngineCommand` messages over a `std::sync::mpsc` channel. The sim thread processes commands (step, pause, save, load, place tile, replace state) and writes results back into a shared engine instance that the UI reads for rendering.
 
-**3. Frontend-Neutral Screen Views + Dual-Frontend Rendering**
+**3. Frontend-Neutral Screen Views + Multi-Terminal Rendering**
 
-Shared geometry and window helpers now live in `src/ui/runtime.rs` (`ClickArea`, `MapUiAreas`, `UiAreas`, centered/clamped window helpers). This layer now also centralizes **window layout geometry** (padding, scrollbar placement) and provides a **generic hit-testing system**, allowing the game to identify interactions with buttons, title bars, and scrollbar components in a window-agnostic way. Each screen builds a frontend-neutral `ScreenView` in `src/ui/view.rs`. In-game rendering is driven by the `InGamePainter` trait (`src/ui/painter.rs`) with 15 methods covering every UI element; a shared `orchestrate_ingame()` function controls paint order and click-area collection. Both the terminal frontend (`TerminalPainter` in `src/ui/frontends/terminal/`) and the pixel frontend (`PixelPainter` in `src/ui/frontends/pixels_winit/`) implement this trait. In-game UI elements (map, tools panel, budget, inspect, statistics, tool chooser, help, about, legend, advisors, newspaper) are movable windows managed by `DesktopState`.
+Shared geometry and window helpers now live in `src/ui/runtime.rs` (`ClickArea`, `MapUiAreas`, `UiAreas`, centered/clamped window helpers). This layer now also centralizes **window layout geometry** (padding, scrollbar placement) and provides a **generic hit-testing system**, allowing the game to identify interactions with buttons, title bars, and scrollbar components in a window-agnostic way. Each screen builds a frontend-neutral `ScreenView` in `src/ui/view.rs`. The game now ships two terminal-native frontends: **Terminal ASCII** for the current clean readable presentation, and **Terminal VGA** for a denser retro-DOS look. In-game rendering is driven by the `InGamePainter` trait (`src/ui/painter.rs`) with 15 methods covering every UI element; a shared `orchestrate_ingame()` function controls paint order and click-area collection while the active terminal frontend selects the palette and chrome style. In-game UI elements (map, tools panel, budget, inspect, statistics, tool chooser, help, about, legend, advisors, newspaper) are movable windows managed by `DesktopState`.
 
 `InGameScreen` is also split into focused feature modules rather than one large implementation file:
 - `ingame.rs` keeps the screen shell and top-level lifecycle
@@ -371,13 +372,10 @@ src/
     ├── view.rs                    Frontend-neutral screen and in-game view models
     ├── painter.rs                 InGamePainter trait (15 methods), orchestrate_ingame(), FrameLayout, StatusBarAreas
     ├── frontends/
-    │   ├── mod.rs                 Frontend entry points
-    │   ├── terminal/
-    │   │   ├── mod.rs             Terminal frontend exports
-    │   │   └── ingame.rs          TerminalPainter — InGamePainter impl for ratatui
-    │   └── pixels_winit/
-    │       ├── mod.rs             Pixel frontend event loop (softbuffer + winit)
-    │       └── paint.rs           PixelPainter — InGamePainter impl for pixel buffer
+    │   ├── mod.rs                 Terminal frontend entry points
+    │   └── terminal/
+    │       ├── mod.rs             Terminal frontend exports
+    │       └── ingame.rs          TerminalPainter — shared in-game painter for ASCII/VGA terminal modes
     ├── runtime.rs                 Shared UI runtime helpers (hit areas, window clamp/center, focus cycling)
     ├── theme.rs                   Colour palette; tile glyphs; multi-tile building art; overlay tinting
     ├── game/

@@ -47,10 +47,6 @@ pub enum LlmStatus {
     Unavailable,
     /// Model loaded and worker thread running
     Active,
-    /// Model download in progress
-    Downloading(String),
-    /// Download failed
-    DownloadFailed(String),
 }
 
 #[derive(Clone, Debug)]

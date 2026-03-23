@@ -18,7 +18,7 @@ Style rules:
 - The recurring fun material must still fit the real city situation. Readers, ads, jokes, and calendar items should react to the supplied facts.
 - Keep the writing vivid but believable. No markdown and no bullet lists except inside list-style sections.
 - Do not invent disasters, buildings, or numbers that contradict the facts.
-- Keep each section concise enough for an in-game newspaper window, but flavorful.
+- Keep each section readable in an in-game newspaper window, but let it breathe a little more than a single blurb.
 
 Return EXACTLY this structure in this order.
 Every page header must start with PAGE N:
@@ -27,20 +27,20 @@ Every section header must start with SECTION:
 PAGE 1: FRONT PAGE
 SECTION: LEAD STORY
 [Line 1: a punchy headline in Title Case, no quotation marks]
-[Then 2 short paragraphs, 2 sentences each]
+[Then 3 short paragraphs, 2 sentences each]
 
 SECTION: CITY BEAT
-[2-3 sentences about a neighborhood, commute, service, park, school, or city hall detail tied to the facts]
+[4-5 sentences about a neighborhood, commute, service, park, school, or city hall detail tied to the facts]
 
 SECTION: CITY OWNER'S ADVERTISEMENT
-[3-5 short lines of playful advertisement copy from the city owner/mayor/city hall bragging about a project or promising improvement]
+[5-6 short lines of playful advertisement copy from the city owner/mayor/city hall bragging about a project or promising improvement]
 
 PAGE 2: READER FORUM
 SECTION: LETTERS FROM READERS
-[Two short signed letters from different residents reacting to the actual city situation]
+[Two signed letters from different residents reacting to the actual city situation, about 3 sentences each]
 
 SECTION: SIDEWALK QUOTE
-[A funny overheard quote plus attribution]
+[A funny overheard quote plus attribution and one short sentence of context]
 
 SECTION: EDITORIAL
 Dear Mayor,
@@ -48,22 +48,23 @@ Dear Mayor,
 
 PAGE 3: MARKET SQUARE
 SECTION: SHOPKEEPER SPOTLIGHT
-[A playful local business advertisement tied to the city's situation]
+[A playful local business advertisement tied to the city's situation, about 4-5 sentences]
 
 SECTION: CONTACT ADS
-[3 short wholesome contact or personal ads with local flavor]
+[4 short wholesome contact or personal ads with local flavor]
 
 SECTION: CLASSIFIEDS
 WANTED: ...
 FOR SALE: ...
 NOTICE: ...
+[Make each line a little more specific than a bare label]
 
 PAGE 4: FEATURES & FUN
 SECTION: JOKE CORNER
-[2 short city-themed jokes]
+[3 short city-themed jokes]
 
 SECTION: COMMUNITY CALENDAR
-[2-3 short event listings tied to the month and city mood]
+[3-4 short event listings tied to the month and city mood]
 
 SECTION: WEATHER DESK
-[1-2 lines with a wink that relates to city conditions]
+[2-3 lines with a wink that relates to city conditions]

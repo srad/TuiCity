@@ -201,6 +201,11 @@ fn active_theme_lock() -> &'static RwLock<ThemePreset> {
     ACTIVE_THEME.get_or_init(|| RwLock::new(ThemePreset::Copper))
 }
 
+fn terminal_vga_lock() -> &'static RwLock<bool> {
+    static TERMINAL_VGA: OnceLock<RwLock<bool>> = OnceLock::new();
+    TERMINAL_VGA.get_or_init(|| RwLock::new(false))
+}
+
 pub fn current_theme() -> ThemePreset {
     *active_theme_lock()
         .read()
@@ -221,8 +226,104 @@ pub fn cycle_theme() -> ThemePreset {
     *guard
 }
 
+pub fn set_terminal_vga(enabled: bool) {
+    *terminal_vga_lock()
+        .write()
+        .expect("terminal frontend lock should not be poisoned") = enabled;
+}
+
+pub fn is_terminal_vga() -> bool {
+    *terminal_vga_lock()
+        .read()
+        .expect("terminal frontend lock should not be poisoned")
+}
+
 pub fn ui_palette() -> UiPalette {
-    palette_for(current_theme())
+    let palette = palette_for(current_theme());
+    if is_terminal_vga() {
+        vga_palette(palette)
+    } else {
+        palette
+    }
+}
+
+fn vga_palette(mut ui: UiPalette) -> UiPalette {
+    ui.desktop_bg = Color::Rgb(0, 0, 40);
+    ui.title = Color::Rgb(255, 255, 85);
+    ui.subtitle = Color::Rgb(170, 255, 255);
+    ui.window_bg = Color::Rgb(0, 0, 96);
+    ui.window_border = Color::Rgb(85, 255, 255);
+    ui.window_title = Color::Rgb(255, 255, 170);
+    ui.window_shadow = Color::Rgb(0, 0, 20);
+    ui.map_window_bg = Color::Rgb(0, 0, 32);
+    ui.panel_window_bg = Color::Rgb(0, 0, 96);
+    ui.budget_window_bg = Color::Rgb(0, 0, 96);
+    ui.inspect_window_bg = Color::Rgb(0, 0, 72);
+    ui.popup_bg = Color::Rgb(0, 0, 112);
+    ui.popup_border = Color::Rgb(170, 170, 170);
+    ui.popup_title = Color::Rgb(255, 255, 85);
+    ui.text_primary = Color::Rgb(170, 170, 170);
+    ui.text_secondary = Color::Rgb(170, 255, 255);
+    ui.text_muted = Color::Rgb(120, 180, 180);
+    ui.text_dim = Color::Rgb(90, 110, 140);
+    ui.accent = Color::Rgb(85, 255, 255);
+    ui.accent_soft = Color::Rgb(85, 85, 255);
+    ui.selection_bg = Color::Rgb(170, 170, 170);
+    ui.selection_fg = Color::Rgb(0, 0, 96);
+    ui.success = Color::Rgb(85, 255, 85);
+    ui.danger = Color::Rgb(255, 85, 85);
+    ui.warning = Color::Rgb(255, 255, 85);
+    ui.info = Color::Rgb(85, 255, 255);
+    ui.menu_bg = Color::Rgb(0, 0, 96);
+    ui.menu_fg = Color::Rgb(170, 170, 170);
+    ui.menu_focus_bg = Color::Rgb(170, 170, 170);
+    ui.menu_focus_fg = Color::Rgb(0, 0, 96);
+    ui.menu_hotkey = Color::Rgb(255, 255, 85);
+    ui.menu_right = Color::Rgb(170, 255, 255);
+    ui.menu_title = Color::Rgb(255, 255, 170);
+    ui.toolbar_bg = Color::Rgb(0, 0, 96);
+    ui.toolbar_header = Color::Rgb(255, 255, 85);
+    ui.toolbar_rule = Color::Rgb(85, 255, 255);
+    ui.toolbar_button_bg = Color::Rgb(0, 0, 128);
+    ui.toolbar_button_fg = Color::Rgb(170, 170, 170);
+    ui.toolbar_active_bg = Color::Rgb(170, 170, 170);
+    ui.toolbar_active_fg = Color::Rgb(0, 0, 96);
+    ui.toolbar_armed_bg = Color::Rgb(255, 255, 85);
+    ui.status_bg = Color::Rgb(0, 0, 96);
+    ui.status_sep = Color::Rgb(85, 255, 255);
+    ui.status_city = Color::Rgb(255, 255, 170);
+    ui.status_population = Color::Rgb(170, 170, 170);
+    ui.status_date = Color::Rgb(170, 255, 255);
+    ui.status_message = Color::Rgb(255, 255, 85);
+    ui.status_button_run_bg = Color::Rgb(85, 255, 85);
+    ui.status_button_run_fg = Color::Rgb(0, 0, 32);
+    ui.status_button_pause_bg = Color::Rgb(170, 170, 170);
+    ui.status_button_pause_fg = Color::Rgb(0, 0, 96);
+    ui.news_ticker_bg = Color::Rgb(0, 0, 48);
+    ui.news_ticker_label_bg = Color::Rgb(170, 170, 170);
+    ui.news_ticker_label_fg = Color::Rgb(0, 0, 96);
+    ui.news_ticker_text = Color::Rgb(170, 255, 255);
+    ui.news_ticker_alert = Color::Rgb(255, 255, 85);
+    ui.input_bg = Color::Rgb(0, 0, 128);
+    ui.input_fg = Color::Rgb(170, 170, 170);
+    ui.input_focus_bg = Color::Rgb(170, 170, 170);
+    ui.input_focus_fg = Color::Rgb(0, 0, 96);
+    ui.button_bg = Color::Rgb(0, 0, 128);
+    ui.button_fg = Color::Rgb(170, 170, 170);
+    ui.button_focus_bg = Color::Rgb(170, 170, 170);
+    ui.button_focus_fg = Color::Rgb(0, 0, 96);
+    ui.button_armed_bg = Color::Rgb(255, 255, 85);
+    ui.scrollbar_button_fg = Color::Rgb(255, 255, 85);
+    ui.scrollbar_button_bg = Color::Rgb(0, 0, 96);
+    ui.scrollbar_track_fg = Color::Rgb(85, 255, 255);
+    ui.scrollbar_track_bg = Color::Rgb(0, 0, 96);
+    ui.scrollbar_thumb_fg = Color::Rgb(170, 170, 170);
+    ui.scrollbar_thumb_bg = Color::Rgb(0, 0, 32);
+    ui.viewport_outline = Color::Rgb(170, 255, 255);
+    ui.disaster_bg = Color::Rgb(96, 0, 0);
+    ui.disaster_border = Color::Rgb(255, 255, 85);
+    ui.disaster_select_bg = Color::Rgb(170, 170, 170);
+    ui
 }
 
 pub fn palette_for(theme: ThemePreset) -> UiPalette {

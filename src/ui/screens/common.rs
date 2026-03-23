@@ -3,7 +3,7 @@ use ratatui::{
     buffer::Buffer,
     layout::Rect,
     style::{Color, Modifier, Style},
-    widgets::{Block, Borders, Clear},
+    widgets::{Block, BorderType, Borders, Clear},
     Frame,
 };
 
@@ -90,7 +90,90 @@ impl Default for SynthwaveBackground {
     }
 }
 
+#[derive(Clone, Copy)]
+struct ScreenChrome {
+    author: Style,
+    hint: Style,
+    panel_title: Style,
+    panel_border: Style,
+    panel_fill: Style,
+    menu_selected: Style,
+    menu_normal: Style,
+    menu_muted: Style,
+    indicator: Style,
+    border_type: BorderType,
+}
+
+fn screen_chrome() -> ScreenChrome {
+    if crate::ui::theme::is_terminal_vga() {
+        ScreenChrome {
+            author: Style::default()
+                .fg(Color::Rgb(255, 255, 85))
+                .bg(Color::Reset)
+                .add_modifier(Modifier::BOLD),
+            hint: Style::default()
+                .fg(Color::Rgb(170, 255, 255))
+                .bg(Color::Reset),
+            panel_title: Style::default()
+                .fg(Color::Rgb(255, 255, 85))
+                .bg(Color::Rgb(0, 0, 96))
+                .add_modifier(Modifier::BOLD),
+            panel_border: Style::default().fg(Color::Rgb(170, 170, 170)),
+            panel_fill: Style::default().bg(Color::Rgb(0, 0, 96)),
+            menu_selected: Style::default()
+                .fg(Color::Rgb(0, 0, 96))
+                .bg(Color::Rgb(170, 170, 170))
+                .add_modifier(Modifier::BOLD),
+            menu_normal: Style::default()
+                .fg(Color::Rgb(170, 170, 170))
+                .bg(Color::Rgb(0, 0, 128)),
+            menu_muted: Style::default()
+                .fg(Color::Rgb(98, 118, 152))
+                .bg(Color::Rgb(0, 0, 80)),
+            indicator: Style::default()
+                .fg(Color::Rgb(85, 255, 255))
+                .bg(Color::Rgb(0, 0, 96)),
+            border_type: BorderType::Double,
+        }
+    } else {
+        ScreenChrome {
+            author: Style::default()
+                .fg(Color::Rgb(255, 205, 127))
+                .bg(Color::Reset)
+                .add_modifier(Modifier::BOLD),
+            hint: Style::default()
+                .fg(Color::Rgb(170, 223, 219))
+                .bg(Color::Reset),
+            panel_title: Style::default()
+                .fg(Color::Rgb(255, 221, 119))
+                .bg(Color::Rgb(35, 34, 55))
+                .add_modifier(Modifier::BOLD),
+            panel_border: Style::default().fg(Color::Rgb(106, 226, 225)),
+            panel_fill: Style::default().bg(Color::Rgb(35, 34, 55)),
+            menu_selected: Style::default()
+                .fg(Color::Rgb(28, 28, 42))
+                .bg(Color::Rgb(255, 221, 119))
+                .add_modifier(Modifier::BOLD),
+            menu_normal: Style::default()
+                .fg(Color::Rgb(238, 232, 225))
+                .bg(Color::Rgb(56, 42, 78)),
+            menu_muted: Style::default()
+                .fg(Color::Rgb(100, 100, 110))
+                .bg(Color::Rgb(40, 36, 58)),
+            indicator: Style::default()
+                .fg(Color::Rgb(170, 223, 219))
+                .bg(Color::Rgb(35, 34, 55)),
+            border_type: BorderType::Plain,
+        }
+    }
+}
+
 pub fn paint_synthwave(buf: &mut Buffer, area: Rect, opts: SynthwaveBackground) {
+    if crate::ui::theme::is_terminal_vga() {
+        paint_vga_backdrop(buf, area, opts);
+        return;
+    }
+
     if area.width == 0 || area.height == 0 {
         return;
     }
@@ -138,6 +221,91 @@ pub fn paint_synthwave(buf: &mut Buffer, area: Rect, opts: SynthwaveBackground) 
     }
 
     paint_scanlines(buf, area);
+}
+
+fn paint_vga_backdrop(buf: &mut Buffer, area: Rect, opts: SynthwaveBackground) {
+    if area.width == 0 || area.height == 0 {
+        return;
+    }
+
+    for y in area.y..area.y + area.height {
+        let t = (y - area.y) as f32 / area.height.max(1) as f32;
+        let row = if t < 0.45 {
+            lerp_color((0, 0, 32), (0, 0, 96), t / 0.45)
+        } else {
+            lerp_color((0, 0, 96), (0, 0, 48), (t - 0.45) / 0.55)
+        };
+        for x in area.x..area.x + area.width {
+            if let Some(cell) = buf.cell_mut((x, y)) {
+                cell.set_symbol(" ").set_fg(row).set_bg(row);
+            }
+        }
+    }
+
+    let horizon = area.y + area.height.saturating_mul(3) / 5;
+    for x in area.x..area.x + area.width {
+        if let Some(cell) = buf.cell_mut((x, horizon)) {
+            cell.set_symbol("═").set_fg(Color::Rgb(85, 255, 255));
+        }
+    }
+
+    for y in area.y + 1..horizon.saturating_sub(1) {
+        for x in area.x + 1..area.x + area.width.saturating_sub(1) {
+            let seed = hash_point(x, y);
+            if seed.is_multiple_of(151) || (opts.clouds && seed.is_multiple_of(197)) {
+                if let Some(cell) = buf.cell_mut((x, y)) {
+                    let symbol = if seed.is_multiple_of(2) { "•" } else { "·" };
+                    let color = if seed.is_multiple_of(3) {
+                        Color::Rgb(255, 255, 85)
+                    } else {
+                        Color::Rgb(170, 170, 170)
+                    };
+                    cell.set_symbol(symbol).set_fg(color);
+                }
+            }
+        }
+    }
+
+    let mut x = area.x;
+    while x < area.x + area.width {
+        let seed = hash_point(x, horizon);
+        let width = 5 + (seed % 7) as u16;
+        let height = 4 + ((seed / 17) % 6) as u16;
+        let top = horizon.saturating_sub(height);
+        let right = (x + width).min(area.x + area.width);
+        for bx in x..right {
+            for by in top..horizon {
+                if let Some(cell) = buf.cell_mut((bx, by)) {
+                    cell.set_symbol(" ")
+                        .set_fg(Color::Rgb(0, 0, 64))
+                        .set_bg(Color::Rgb(0, 0, 64));
+                }
+                let lit = opts.lit_windows
+                    && bx > x
+                    && bx + 1 < right
+                    && by > top
+                    && (bx - x) % 2 == 1
+                    && (horizon - by).is_multiple_of(2)
+                    && hash_point(bx, by).is_multiple_of(3);
+                if lit {
+                    if let Some(cell) = buf.cell_mut((bx, by)) {
+                        cell.set_symbol("■").set_fg(Color::Rgb(255, 255, 85));
+                    }
+                }
+            }
+        }
+        x = right.saturating_add(1);
+    }
+
+    for y in horizon + 1..area.y + area.height {
+        if (y - horizon).is_multiple_of(2) {
+            for x in area.x..area.x + area.width {
+                if let Some(cell) = buf.cell_mut((x, y)) {
+                    cell.set_symbol("░").set_fg(Color::Rgb(0, 32, 96));
+                }
+            }
+        }
+    }
 }
 
 fn paint_sun(buf: &mut Buffer, area: Rect, center_x: u16, center_y: u16, horizon_y: u16) {
@@ -347,16 +515,14 @@ pub fn render_footer(buf: &mut Buffer, area: Rect, hint: &str) {
         return;
     }
 
+    let chrome = screen_chrome();
     set_centered_string(
         buf,
         area.x,
         area.y + area.height.saturating_sub(3),
         area.width,
         AUTHOR_LINE,
-        Style::default()
-            .fg(Color::Rgb(255, 205, 127))
-            .bg(Color::Reset)
-            .add_modifier(Modifier::BOLD),
+        chrome.author,
     );
     set_centered_string(
         buf,
@@ -364,9 +530,7 @@ pub fn render_footer(buf: &mut Buffer, area: Rect, hint: &str) {
         area.y + area.height.saturating_sub(2),
         area.width,
         hint,
-        Style::default()
-            .fg(Color::Rgb(170, 223, 219))
-            .bg(Color::Reset),
+        chrome.hint,
     );
 }
 
@@ -402,19 +566,16 @@ pub fn centered_panel(
 }
 
 pub fn render_bordered_panel(frame: &mut Frame, layout: &PanelLayout, title: &str) {
+    let chrome = screen_chrome();
     frame.render_widget(Clear, layout.panel);
     frame.render_widget(
         Block::default()
             .borders(Borders::ALL)
+            .border_type(chrome.border_type)
             .title(format!(" {} ", title))
-            .title_style(
-                Style::default()
-                    .fg(Color::Rgb(255, 221, 119))
-                    .bg(Color::Rgb(35, 34, 55))
-                    .add_modifier(Modifier::BOLD),
-            )
-            .border_style(Style::default().fg(Color::Rgb(106, 226, 225)))
-            .style(Style::default().bg(Color::Rgb(35, 34, 55))),
+            .title_style(chrome.panel_title)
+            .border_style(chrome.panel_border)
+            .style(chrome.panel_fill),
         layout.panel,
     );
 }
@@ -437,15 +598,11 @@ pub struct MenuConfig<'a> {
 /// Renders a standalone "Back" button at a given y position.
 /// Used by screens with custom item rendering that still want a standard back button.
 pub fn render_back_button(buf: &mut Buffer, inner: Rect, y: u16, selected: bool) -> ClickArea {
+    let chrome = screen_chrome();
     let row_style = if selected {
-        Style::default()
-            .fg(Color::Rgb(28, 28, 42))
-            .bg(Color::Rgb(255, 221, 119))
-            .add_modifier(Modifier::BOLD)
+        chrome.menu_selected
     } else {
-        Style::default()
-            .fg(Color::Rgb(238, 232, 225))
-            .bg(Color::Rgb(56, 42, 78))
+        chrome.menu_normal
     };
 
     let blank = format!("{:^width$}", " ", width = inner.width as usize);
@@ -476,6 +633,7 @@ fn items_that_fit(avail: usize) -> usize {
 }
 
 pub fn render_menu_items(buf: &mut Buffer, inner: Rect, config: MenuConfig) -> Vec<ClickArea> {
+    let chrome = screen_chrome();
     let back_item = MenuItem {
         label: "Back",
         greyed: false,
@@ -522,10 +680,6 @@ pub fn render_menu_items(buf: &mut Buffer, inner: Rect, config: MenuConfig) -> V
         let has_above = scroll_start > 0;
         let has_below = scroll_end < n;
 
-        let indicator_style = Style::default()
-            .fg(Color::Rgb(170, 223, 219))
-            .bg(Color::Rgb(35, 34, 55));
-
         // Up indicator
         let top_y = inner.y + config.start_y_offset;
         if has_above {
@@ -535,7 +689,7 @@ pub fn render_menu_items(buf: &mut Buffer, inner: Rect, config: MenuConfig) -> V
                 top_y,
                 inner.width,
                 "▲ more ▲",
-                indicator_style,
+                chrome.indicator,
             );
         }
 
@@ -561,7 +715,7 @@ pub fn render_menu_items(buf: &mut Buffer, inner: Rect, config: MenuConfig) -> V
                 bottom_y,
                 inner.width,
                 "▼ more ▼",
-                indicator_style,
+                chrome.indicator,
             );
         }
     }
@@ -576,19 +730,13 @@ fn render_single_item(
     item: &MenuItem,
     selected: bool,
 ) -> ClickArea {
+    let chrome = screen_chrome();
     let row_style = if selected {
-        Style::default()
-            .fg(Color::Rgb(28, 28, 42))
-            .bg(Color::Rgb(255, 221, 119))
-            .add_modifier(Modifier::BOLD)
+        chrome.menu_selected
     } else if item.greyed {
-        Style::default()
-            .fg(Color::Rgb(100, 100, 110))
-            .bg(Color::Rgb(40, 36, 58))
+        chrome.menu_muted
     } else {
-        Style::default()
-            .fg(Color::Rgb(238, 232, 225))
-            .bg(Color::Rgb(56, 42, 78))
+        chrome.menu_normal
     };
 
     let blank = format!("{:^width$}", " ", width = inner.width as usize);

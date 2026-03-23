@@ -168,15 +168,17 @@ mod tests {
     }
 
     #[test]
-    fn land_value_never_exceeds_255() {
+    fn land_value_stack_increases_nearby_tiles_without_wrapping() {
         // Stack water + park + hospital on adjacent tiles.
         let mut map = Map::new(5, 5);
         map.set(1, 2, Tile::Water);
         map.set(3, 2, Tile::Park);
         map.set(2, 1, Tile::Hospital);
         run_land_value(&mut map);
-        for ov in &map.overlays {
-            assert!(ov.land_value <= 255);
-        }
+        let center = map.get_overlay(2, 2).land_value;
+        assert!(
+            center > LV_BASELINE.min(255) as u8,
+            "stacked bonuses should raise the center tile above baseline, got {center}"
+        );
     }
 }

@@ -6,8 +6,8 @@ pub struct Camera {
     pub cursor_y: usize,
     pub view_w: usize,
     pub view_h: usize,
-    /// Columns per map tile in the active frontend's screen coordinate system.
-    /// 2 for the terminal (2 chars per tile), 1 for the pixel frontend (1 cell per tile).
+    /// Columns per map tile in the active terminal frontend's screen coordinate system.
+    /// Both terminal modes currently use 2 columns per map tile.
     pub col_scale: u8,
 }
 

@@ -348,7 +348,11 @@ impl Screen for LlmSetupScreen {
                         log::info!("[llm-setup] model download completed successfully");
                         self.download_status = DownloadStatus::Idle;
                         self.download_handle = None;
-                        let _ = config::persist_llm_preference(true);
+                        if let Err(error) = config::persist_llm_preference(true) {
+                            log::error!(
+                                "[llm-setup] failed to persist LLM enablement after download: {error}"
+                            );
+                        }
                         return Some(ScreenTransition::ReinitTextGen);
                     }
                     DownloadProgress::Cancelled => {
