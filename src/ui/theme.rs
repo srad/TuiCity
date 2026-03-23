@@ -1084,6 +1084,7 @@ pub fn sector_bg(sector: TaxSector) -> Color {
 }
 
 /// Linearly interpolates between two RGB colors based on a u8 value (0-255).
+#[allow(dead_code)]
 pub fn lerp_color(val: u8, low: (u8, u8, u8), high: (u8, u8, u8)) -> Color {
     let f = val as f32 / 255.0;
     let r = (low.0 as f32 + (high.0 as f32 - low.0 as f32) * f) as u8;
@@ -1092,25 +1093,158 @@ pub fn lerp_color(val: u8, low: (u8, u8, u8), high: (u8, u8, u8)) -> Color {
     Color::Rgb(r, g, b)
 }
 
+/// Interpolates through three RGB stops: low (0) → mid (128) → high (255).
+pub fn lerp_color3(val: u8, low: (u8, u8, u8), mid: (u8, u8, u8), high: (u8, u8, u8)) -> Color {
+    if val < 128 {
+        let f = val as f32 / 127.0;
+        let r = (low.0 as f32 + (mid.0 as f32 - low.0 as f32) * f) as u8;
+        let g = (low.1 as f32 + (mid.1 as f32 - low.1 as f32) * f) as u8;
+        let b = (low.2 as f32 + (mid.2 as f32 - low.2 as f32) * f) as u8;
+        Color::Rgb(r, g, b)
+    } else {
+        let f = (val - 128) as f32 / 127.0;
+        let r = (mid.0 as f32 + (high.0 as f32 - mid.0 as f32) * f) as u8;
+        let g = (mid.1 as f32 + (high.1 as f32 - mid.1 as f32) * f) as u8;
+        let b = (mid.2 as f32 + (high.2 as f32 - mid.2 as f32) * f) as u8;
+        Color::Rgb(r, g, b)
+    }
+}
+
+/// Legend metadata for an overlay: gradient stops and edge labels.
+pub struct OverlayLegendInfo {
+    pub title: &'static str,
+    pub low: (u8, u8, u8),
+    pub mid: (u8, u8, u8),
+    pub high: (u8, u8, u8),
+    pub low_label: &'static str,
+    pub high_label: &'static str,
+}
+
+/// Returns the legend info for a given overlay mode, or `None` for `OverlayMode::None`.
+pub fn overlay_legend_info(mode: OverlayMode) -> Option<OverlayLegendInfo> {
+    match mode {
+        OverlayMode::None => None,
+        OverlayMode::Power => Some(OverlayLegendInfo {
+            title: "Power Grid",
+            low: (90, 20, 10),
+            mid: (160, 130, 20),
+            high: (20, 160, 40),
+            low_label: "0%",
+            high_label: "100%",
+        }),
+        OverlayMode::Water => Some(OverlayLegendInfo {
+            title: "Water Service",
+            low: (80, 40, 10),
+            mid: (20, 110, 130),
+            high: (20, 100, 210),
+            low_label: "Dry",
+            high_label: "Full",
+        }),
+        OverlayMode::Traffic => Some(OverlayLegendInfo {
+            title: "Traffic",
+            low: (20, 120, 20),
+            mid: (170, 140, 10),
+            high: (180, 20, 10),
+            low_label: "Clear",
+            high_label: "Gridlock",
+        }),
+        OverlayMode::Pollution => Some(OverlayLegendInfo {
+            title: "Pollution",
+            low: (20, 120, 20),
+            mid: (170, 140, 10),
+            high: (160, 30, 10),
+            low_label: "Clean",
+            high_label: "Severe",
+        }),
+        OverlayMode::LandValue => Some(OverlayLegendInfo {
+            title: "Land Value",
+            low: (60, 30, 20),
+            mid: (130, 110, 20),
+            high: (20, 150, 50),
+            low_label: "Low",
+            high_label: "High",
+        }),
+        OverlayMode::Crime => Some(OverlayLegendInfo {
+            title: "Crime Rate",
+            low: (20, 120, 20),
+            mid: (160, 110, 10),
+            high: (160, 10, 10),
+            low_label: "Safe",
+            high_label: "High",
+        }),
+        OverlayMode::FireRisk => Some(OverlayLegendInfo {
+            title: "Fire Risk",
+            low: (20, 120, 40),
+            mid: (170, 110, 10),
+            high: (190, 30, 0),
+            low_label: "Safe",
+            high_label: "High",
+        }),
+    }
+}
+
+/// Rescale a raw value from `[data_min, data_max]` to the full `[0, 255]` gradient
+/// range so that heatmap colors span visibly even when sim values cluster in a
+/// narrow band.  Values outside the range are clamped.
+fn rescale(raw: u8, data_min: u8, data_max: u8) -> u8 {
+    if data_max <= data_min {
+        return 0;
+    }
+    let clamped = raw.clamp(data_min, data_max);
+    let ratio = (clamped - data_min) as f32 / (data_max - data_min) as f32;
+    (ratio * 255.0).round() as u8
+}
+
 /// Returns a background color tint for the given overlay mode and tile overlay.
 /// Returns `None` when overlay is `None` (no tinting).
+///
+/// Each overlay rescales its raw simulation value to the full gradient range so
+/// that colour differences are visible even when sim values cluster narrowly.
 pub fn overlay_tint(mode: OverlayMode, o: TileOverlay) -> Option<Color> {
     match mode {
         OverlayMode::None => None,
-        OverlayMode::Power => {
-            if o.power_level == 0 {
-                Some(Color::Rgb(50, 0, 0))
-            } else {
-                // Gradient from Red (weak) to Green (strong)
-                Some(lerp_color(o.power_level, (100, 40, 0), (0, 150, 40)))
-            }
-        }
-        OverlayMode::Water => Some(lerp_color(o.water_service, (35, 25, 10), (40, 140, 200))),
-        OverlayMode::Traffic => Some(lerp_color(o.traffic, (20, 40, 20), (160, 30, 0))),
-        OverlayMode::Pollution => Some(lerp_color(o.pollution, (20, 50, 20), (120, 40, 0))),
-        OverlayMode::LandValue => Some(lerp_color(o.land_value, (10, 20, 10), (0, 120, 60))),
-        OverlayMode::Crime => Some(lerp_color(o.crime, (20, 20, 20), (100, 0, 0))),
-        OverlayMode::FireRisk => Some(lerp_color(o.fire_risk, (20, 10, 10), (140, 40, 0))),
+        OverlayMode::Power => Some(lerp_color3(
+            o.power_level,
+            (90, 20, 10),
+            (160, 130, 20),
+            (20, 160, 40),
+        )),
+        OverlayMode::Water => Some(lerp_color3(
+            o.water_service,
+            (80, 40, 10),
+            (20, 110, 130),
+            (20, 100, 210),
+        )),
+        OverlayMode::Traffic => Some(lerp_color3(
+            rescale(o.traffic, 0, 120),
+            (20, 120, 20),
+            (170, 140, 10),
+            (180, 20, 10),
+        )),
+        OverlayMode::Pollution => Some(lerp_color3(
+            rescale(o.pollution, 0, 180),
+            (20, 120, 20),
+            (170, 140, 10),
+            (160, 30, 10),
+        )),
+        OverlayMode::LandValue => Some(lerp_color3(
+            rescale(o.land_value, 0, 200),
+            (60, 30, 20),
+            (130, 110, 20),
+            (20, 150, 50),
+        )),
+        OverlayMode::Crime => Some(lerp_color3(
+            rescale(o.crime, 0, 100),
+            (20, 120, 20),
+            (160, 110, 10),
+            (160, 10, 10),
+        )),
+        OverlayMode::FireRisk => Some(lerp_color3(
+            rescale(o.fire_risk, 0, 120),
+            (20, 120, 40),
+            (170, 110, 10),
+            (190, 30, 0),
+        )),
     }
 }
 
@@ -1789,7 +1923,7 @@ mod tests {
         };
         assert_eq!(
             overlay_tint(OverlayMode::Power, overlay),
-            Some(Color::Rgb(50, 0, 0))
+            Some(Color::Rgb(90, 20, 10))
         );
     }
 
@@ -1801,7 +1935,7 @@ mod tests {
         };
         assert_eq!(
             overlay_tint(OverlayMode::Power, overlay),
-            Some(Color::Rgb(0, 150, 40))
+            Some(Color::Rgb(20, 160, 40))
         );
     }
 

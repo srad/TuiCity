@@ -698,6 +698,7 @@ fn orientation_network_fallback(tile: Tile) -> Option<char> {
     }
 }
 
+#[allow(dead_code)]
 fn water_overlay_mass_marker(tile: Tile) -> char {
     match tile {
         Tile::ZoneRes | Tile::ResLow | Tile::ResMed | Tile::ResHigh => '•',
@@ -706,6 +707,120 @@ fn water_overlay_mass_marker(tile: Tile) -> char {
         Tile::Rubble => '░',
         _ => '·',
     }
+}
+
+#[allow(dead_code)]
+fn power_overlay_marker(tile: Tile) -> char {
+    match tile {
+        Tile::ZoneRes | Tile::ResLow | Tile::ResMed | Tile::ResHigh => '•',
+        Tile::ZoneComm | Tile::CommLow | Tile::CommHigh => '▪',
+        Tile::ZoneInd | Tile::IndLight | Tile::IndHeavy => '■',
+        Tile::Rubble => '░',
+        _ => '·',
+    }
+}
+
+/// Generic heatmap overlay: replaces tile art with a simple zone marker so the
+/// heatmap background color is fully visible instead of being hidden by building art.
+fn heatmap_overlay_sprite(
+    map: &Map,
+    layer: ViewLayer,
+    overlay_mode: OverlayMode,
+    tile: Tile,
+    overlay: TileOverlay,
+    x: usize,
+    y: usize,
+) -> theme::TileSprite {
+    let glyph = theme::tile_glyph(tile, overlay);
+
+    // For Traffic the metric only applies to road network tiles; non-road tiles
+    // should show as neutral dark instead of the "low" end of the gradient.
+    let neutral = Color::Rgb(30, 30, 30);
+    let is_relevant = match overlay_mode {
+        OverlayMode::Traffic => tile.is_transport(),
+        OverlayMode::Power => tile.receives_power(),
+        _ => true,
+    };
+    let bg = if is_relevant {
+        theme::overlay_tint(overlay_mode, overlay).unwrap_or(glyph.bg)
+    } else {
+        neutral
+    };
+
+    // Keep road/rail/transport/service landmarks recognisable but tint their bg
+    if overlay.on_fire || orientation_landmark_tile(tile) {
+        let mut sprite = committed_tile_sprite(map, layer, tile, overlay, x, y).with_bg(bg);
+        // If the sprite is blank, add a small orientation marker
+        if sprite.left.ch == ' ' && sprite.right.ch == ' ' {
+            if let Some(marker) = orientation_network_fallback(tile) {
+                sprite = theme::TileSprite::uniform(marker, glyph.fg, bg);
+            }
+        }
+        return sprite;
+    }
+
+    // Zones and buildings: solid color block so the heatmap bg matches the legend exactly
+    theme::TileSprite::uniform(' ', bg, bg)
+}
+
+/// Renders a tile for the power-grid overlay.
+///
+/// Semantics:
+/// - Power lines / road+powerline → golden background (live) or dark (dead)
+/// - Power plants → bright gold source
+/// - Buildings / zones that need power → green (powered) or red (unpowered)
+/// - Everything else (roads, grass, water, rail…) → neutral dark; no power implication
+#[allow(dead_code)]
+fn power_overlay_sprite(
+    map: &Map,
+    lot_tile: Tile,
+    tile: Tile,
+    overlay: TileOverlay,
+    x: usize,
+    y: usize,
+) -> theme::TileSprite {
+    let glyph = theme::tile_glyph(tile, overlay);
+    const NEUTRAL_BG: Color = Color::Rgb(14, 16, 20);
+    const LIVE_LINE_BG: Color = Color::Rgb(55, 48, 5);
+    const DEAD_LINE_BG: Color = Color::Rgb(30, 25, 8);
+    const POWERED_BG: Color = Color::Rgb(10, 65, 15);
+    const UNPOWERED_BG: Color = Color::Rgb(75, 10, 8);
+    const PLANT_BG: Color = Color::Rgb(80, 65, 5);
+
+    // Power grid wires: PowerLine and RoadPowerLine
+    if tile.power_connects() {
+        let bg = if overlay.power_level > 0 { LIVE_LINE_BG } else { DEAD_LINE_BG };
+        return committed_tile_sprite(map, ViewLayer::Surface, tile, overlay, x, y).with_bg(bg);
+    }
+
+    // Power plants: bright gold source background
+    let is_plant = matches!(
+        lot_tile,
+        Tile::PowerPlantCoal
+            | Tile::PowerPlantGas
+            | Tile::PowerPlantNuclear
+            | Tile::PowerPlantWind
+            | Tile::PowerPlantSolar
+    );
+    if is_plant {
+        return committed_tile_sprite(map, ViewLayer::Surface, tile, overlay, x, y).with_bg(PLANT_BG);
+    }
+
+    // Buildings and zones that need power: green = powered, red = no power
+    if lot_tile.receives_power() {
+        let bg = if overlay.power_level > 0 { POWERED_BG } else { UNPOWERED_BG };
+        if overlay.on_fire || orientation_landmark_tile(lot_tile) {
+            return committed_tile_sprite(map, ViewLayer::Surface, tile, overlay, x, y).with_bg(bg);
+        }
+        let marker = power_overlay_marker(lot_tile);
+        return theme::TileSprite::uniform(marker, glyph.fg, bg);
+    }
+
+    // Roads, terrain, water, rail etc. — neutral background, no power implication
+    if orientation_landmark_tile(tile) {
+        return committed_tile_sprite(map, ViewLayer::Surface, tile, overlay, x, y).with_bg(NEUTRAL_BG);
+    }
+    theme::TileSprite::uniform(' ', glyph.fg, NEUTRAL_BG)
 }
 
 fn water_overlay_sprite(
@@ -729,7 +844,7 @@ fn water_overlay_sprite(
         return sprite;
     }
 
-    theme::TileSprite::uniform(water_overlay_mass_marker(tile), glyph.fg, bg)
+    theme::TileSprite::uniform(' ', bg, bg)
 }
 
 fn underground_context_tile(tile: Tile) -> bool {
@@ -1077,6 +1192,18 @@ impl<'a> Widget for MapView<'a> {
                                 self.map,
                                 ViewLayer::Surface,
                                 surface_tile,
+                                overlay,
+                                map_x,
+                                map_y,
+                            )
+                        } else if self.view_layer == ViewLayer::Surface
+                            && self.overlay_mode != OverlayMode::None
+                        {
+                            heatmap_overlay_sprite(
+                                self.map,
+                                self.view_layer,
+                                self.overlay_mode,
+                                tile,
                                 overlay,
                                 map_x,
                                 map_y,
@@ -1640,8 +1767,8 @@ mod tests {
         }
         .render(area, &mut buf);
 
-        assert_eq!(buf.cell((0, 0)).unwrap().symbol(), "•");
-        assert_eq!(buf.cell((1, 0)).unwrap().symbol(), "•");
+        assert_eq!(buf.cell((0, 0)).unwrap().symbol(), " ");
+        assert_eq!(buf.cell((1, 0)).unwrap().symbol(), " ");
     }
 
     #[test]

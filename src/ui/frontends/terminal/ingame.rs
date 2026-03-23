@@ -801,6 +801,28 @@ impl<'a, 'f> InGamePainter for TerminalPainter<'a, 'f> {
         };
 
         if info_area.width > 0 && info_area.height > 0 {
+            let overlay_mode = ingame.overlay_mode;
+            const LEGEND_ROWS: u16 = 3;
+            let (legend_area, panel_area) = if overlay_mode != OverlayMode::None
+                && info_area.height > LEGEND_ROWS + 2
+            {
+                let split = Layout::vertical([
+                    Constraint::Length(LEGEND_ROWS),
+                    Constraint::Min(0),
+                ])
+                .split(info_area);
+                (Some(split[0]), split[1])
+            } else {
+                (None, info_area)
+            };
+
+            if let Some(la) = legend_area {
+                self.frame.render_widget(
+                    game::overlay_legend::OverlayLegend { mode: overlay_mode },
+                    la,
+                );
+            }
+
             self.frame.render_widget(
                 game::infopanel::InfoPanel {
                     tile,
@@ -818,7 +840,7 @@ impl<'a, 'f> InGamePainter for TerminalPainter<'a, 'f> {
                     power_produced: sim.utilities.power_produced_mw,
                     power_consumed: sim.utilities.power_consumed_mw,
                 },
-                info_area,
+                panel_area,
             );
         }
 
