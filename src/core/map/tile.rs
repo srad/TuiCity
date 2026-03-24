@@ -7,6 +7,22 @@ pub enum TerrainTile {
     Dirt,
 }
 
+/// A tile's relationship to a propagated resource (power, water).
+///
+/// The BFS propagation loop and post-BFS shortage scaling use this to decide:
+/// - **Producer** — seeds the BFS at level 255; immune to shortage scaling.
+/// - **Conductor** — relays the resource to neighbours with a per-type falloff;
+///   scaled during shortage. Also receives the resource.
+/// - **Consumer** — receives but does NOT relay; scaled during shortage.
+/// - **None** — does not participate at all.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum ResourceRole {
+    None,
+    Producer,
+    Conductor { falloff: u8 },
+    Consumer,
+}
+
 impl TerrainTile {
     pub fn to_tile(self) -> Tile {
         match self {
@@ -329,46 +345,139 @@ impl Tile {
         )
     }
 
-    pub fn receives_power(self) -> bool {
-        self.is_building()
-            || self.is_zone()
-            || matches!(
-                self,
-                Tile::Police
-                    | Tile::Fire
-                    | Tile::Hospital
-                    | Tile::BusDepot
-                    | Tile::RailDepot
-                    | Tile::SubwayStation
-                    | Tile::WaterPump
-                    | Tile::WaterTower
-                    | Tile::WaterTreatment
-                    | Tile::Desalination
-                    | Tile::School
-                    | Tile::Stadium
-                    | Tile::Library
-            )
+    /// This tile's role in the power resource network.
+    pub fn power_role(self) -> ResourceRole {
+        use crate::core::sim::constants::*;
+        match self {
+            Tile::PowerPlantCoal
+            | Tile::PowerPlantGas
+            | Tile::PowerPlantNuclear
+            | Tile::PowerPlantWind
+            | Tile::PowerPlantSolar => ResourceRole::Producer,
+
+            Tile::PowerLine | Tile::RoadPowerLine => {
+                ResourceRole::Conductor { falloff: POWER_FALLOFF_LINE }
+            }
+
+            Tile::ResLow
+            | Tile::ResMed
+            | Tile::ResHigh
+            | Tile::CommLow
+            | Tile::CommHigh
+            | Tile::IndLight
+            | Tile::IndHeavy
+            | Tile::Police
+            | Tile::Fire
+            | Tile::Hospital
+            | Tile::BusDepot
+            | Tile::RailDepot
+            | Tile::SubwayStation
+            | Tile::WaterPump
+            | Tile::WaterTower
+            | Tile::WaterTreatment
+            | Tile::Desalination
+            | Tile::School
+            | Tile::Stadium
+            | Tile::Library => ResourceRole::Conductor { falloff: POWER_FALLOFF_BUILDING },
+
+            Tile::ZoneRes | Tile::ZoneComm | Tile::ZoneInd => {
+                ResourceRole::Conductor { falloff: POWER_FALLOFF_ZONE }
+            }
+
+            _ => ResourceRole::None,
+        }
     }
 
-    pub fn is_conductive_structure(self) -> bool {
-        self.is_building()
-            || self.is_zone()
-            || matches!(
-                self,
-                Tile::Police
-                    | Tile::Fire
-                    | Tile::Hospital
-                    | Tile::BusDepot
-                    | Tile::RailDepot
-                    | Tile::SubwayStation
-                    | Tile::WaterPump
-                    | Tile::WaterTower
-                    | Tile::WaterTreatment
-                    | Tile::Desalination
-                    | Tile::School
-                    | Tile::Stadium
-                    | Tile::Library
-            )
+    /// This tile's role in the water resource network (visible-tile side).
+    ///
+    /// The BFS also checks the underground pipe layer independently — if a
+    /// tile has an underground pipe it conducts water regardless of the
+    /// visible tile's role.
+    pub fn water_role(self) -> ResourceRole {
+        use crate::core::sim::constants::*;
+        match self {
+            Tile::WaterPump | Tile::WaterTower | Tile::WaterTreatment | Tile::Desalination => {
+                ResourceRole::Producer
+            }
+
+            Tile::WaterPipe => ResourceRole::Conductor { falloff: WATER_FALLOFF_PIPE },
+
+            Tile::ResLow
+            | Tile::ResMed
+            | Tile::ResHigh
+            | Tile::CommLow
+            | Tile::CommHigh
+            | Tile::IndLight
+            | Tile::IndHeavy
+            | Tile::Police
+            | Tile::Fire
+            | Tile::Hospital
+            | Tile::BusDepot
+            | Tile::RailDepot
+            | Tile::SubwayStation
+            | Tile::School
+            | Tile::Stadium
+            | Tile::Library
+            | Tile::ZoneRes
+            | Tile::ZoneComm
+            | Tile::ZoneInd => ResourceRole::Consumer,
+
+            _ => ResourceRole::None,
+        }
+    }
+
+    /// Whether this tile participates in the power network at all.
+    pub fn receives_power(self) -> bool {
+        self.power_role() != ResourceRole::None
+    }
+
+    /// MW consumed by this tile. Returns 0 for non-consumers.
+    pub fn power_demand(self) -> u32 {
+        match self {
+            Tile::ResLow => 10,
+            Tile::ResMed => 40,
+            Tile::ResHigh => 150,
+            Tile::CommLow => 30,
+            Tile::CommHigh => 120,
+            Tile::IndLight => 100,
+            Tile::IndHeavy => 400,
+            Tile::Police => 50,
+            Tile::Fire => 50,
+            Tile::Hospital => 200,
+            Tile::BusDepot | Tile::RailDepot | Tile::SubwayStation => 25,
+            Tile::WaterPump => 25,
+            Tile::WaterTower => 15,
+            Tile::WaterTreatment => 60,
+            Tile::Desalination => 90,
+            Tile::School => 50,
+            Tile::Stadium => 300,
+            Tile::Library => 30,
+            Tile::ZoneRes | Tile::ZoneComm | Tile::ZoneInd => 2,
+            _ => 0,
+        }
+    }
+
+    /// Water units consumed by this tile. Returns 0 for non-consumers.
+    ///
+    /// Zone tiles use `zone_density` for the Dense vs Light distinction;
+    /// pass `None` if the tile is not a zone.
+    pub fn water_demand(self, zone_density: Option<ZoneDensity>) -> u32 {
+        match self {
+            Tile::ResLow | Tile::CommLow | Tile::IndLight => 6,
+            Tile::ResMed | Tile::CommHigh | Tile::IndHeavy => 18,
+            Tile::ResHigh => 40,
+            Tile::Police | Tile::Fire | Tile::Hospital => 10,
+            Tile::BusDepot | Tile::RailDepot | Tile::SubwayStation => 8,
+            Tile::School => 15,
+            Tile::Stadium => 50,
+            Tile::Library => 8,
+            Tile::ZoneRes | Tile::ZoneComm | Tile::ZoneInd => match zone_density {
+                Some(ZoneDensity::Dense) => 4,
+                Some(_) => 2,
+                None => 0,
+            },
+            _ => 0,
+        }
     }
 
     pub fn road_connects(self) -> bool {

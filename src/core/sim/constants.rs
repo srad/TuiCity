@@ -28,11 +28,20 @@ pub const FIRE_SUPPRESS_CHANCE_BASE: f32 = 0.08;
 
 // ── Power / water propagation ─────────────────────────────────────────────────
 
-/// Power level drop per tile during BFS propagation.
-pub const POWER_FALLOFF_PER_TILE: u8 = 2;
+/// Power level drop per tile for dedicated power lines (best conductor).
+pub const POWER_FALLOFF_LINE: u8 = 1;
 
-/// Water service level drop per tile during BFS propagation.
-pub const WATER_FALLOFF_PER_TILE: u8 = 3;
+/// Power level drop per tile for buildings and service structures.
+pub const POWER_FALLOFF_BUILDING: u8 = 3;
+
+/// Power level drop per tile for undeveloped zones (poor conductor).
+pub const POWER_FALLOFF_ZONE: u8 = 8;
+
+/// Water service level drop per tile for underground pipes.
+pub const WATER_FALLOFF_PIPE: u8 = 2;
+
+/// Water service level drop per tile for water facility-to-facility relay.
+pub const WATER_FALLOFF_FACILITY: u8 = 1;
 
 // ── Transport ─────────────────────────────────────────────────────────────────
 
@@ -200,11 +209,14 @@ mod tests {
         );
     }
 
-    /// Power and water falloff must be positive (otherwise BFS never terminates).
+    /// Power and water falloff values must be positive (otherwise BFS never terminates).
     #[test]
     fn propagation_falloffs_are_positive() {
-        assert!(POWER_FALLOFF_PER_TILE > 0);
-        assert!(WATER_FALLOFF_PER_TILE > 0);
+        assert!(POWER_FALLOFF_LINE > 0);
+        assert!(POWER_FALLOFF_BUILDING > 0);
+        assert!(POWER_FALLOFF_ZONE > 0);
+        assert!(WATER_FALLOFF_PIPE > 0);
+        assert!(WATER_FALLOFF_FACILITY > 0);
     }
 
     /// History ring buffer must hold at least one entry.

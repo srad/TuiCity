@@ -116,10 +116,16 @@ efficiency = min(remaining_months / 12, 1.0)
 
 ### Conduction Rules
 
-- Power propagates from plant footprint (4×4 tiles) at level 255.
-- Each step away: `next_level = current_level − 2`. Propagation stops when level ≤ 1.
-- **Conducts power:** plants, power lines, conductive structures (roads with power lines, developed buildings), and empty zones (ZoneRes, ZoneComm, ZoneInd).
-- Roads without power lines do NOT conduct.
+- Power propagates from plant footprint (4×4 tiles) at level 255 via BFS.
+- Each tile type has its own **falloff** (level drop per tile):
+  - **Power lines** (PowerLine, RoadPowerLine): falloff **1** — best conductors.
+  - **Buildings & service buildings** (ResLow…IndHeavy, Police, Fire, etc.): falloff **3**.
+  - **Empty zones** (ZoneRes, ZoneComm, ZoneInd): falloff **8** — poor conductors.
+- **Producers** (power plants): seed BFS at 255, immune to shortage scaling.
+- **Conductors** (lines, buildings, zones): relay power onward; scaled during brownout.
+- **Consumers** (receive only, don't relay): not currently used for power — all power-participating tiles are conductors.
+- Roads without power lines do NOT participate in the power network.
+- Propagation stops when level reaches 0.
 - Explosion on expiry: all tiles in 4×4 area become `Rubble`.
 
 ---
@@ -154,9 +160,13 @@ All require power to produce. If unpowered, production = 0.
 
 ### Water Conduction Rules
 
-- Spreads underground: `next_level = current_level − 3` per tile. Stops when level ≤ 1.
-- **Conducts (relays):** water pipes (underground), water facilities (WaterPump, WaterTower, WaterTreatment, Desalination).
-- **Receives but does not relay:** developed buildings, service buildings (without a pipe), empty zones.
+- Water propagates from producer facilities at level 255 via BFS.
+- Each conductor type has its own **falloff**:
+  - **Water pipes** (underground layer): falloff **2** — primary conductor.
+  - **Water facilities** (WaterPump, WaterTower, etc.): falloff **1** — facility-to-facility relay.
+- **Producers** (water facilities): seed BFS at 255, immune to shortage scaling.
+- **Conductors** (pipes, facilities): relay water onward; scaled during shortage.
+- **Consumers** (buildings, zones, service buildings): receive water but do NOT relay.
 - SC2K-style: zoning and building placement auto-places a water pipe underground. Players must connect zone areas to water facilities via manual pipe lines.
 
 ---

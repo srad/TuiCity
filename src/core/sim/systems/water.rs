@@ -1,5 +1,5 @@
-use crate::core::map::{Map, Tile, ZoneDensity, ZoneKind};
-use crate::core::sim::constants::WATER_FALLOFF_PER_TILE;
+use crate::core::map::{Map, ResourceRole, Tile};
+use crate::core::sim::constants::WATER_FALLOFF_PIPE;
 use crate::core::sim::system::SimSystem;
 use crate::core::sim::SimState;
 
@@ -31,29 +31,6 @@ impl WaterSystem {
             _ => 0,
         }
     }
-
-    fn demand_for_tile(
-        tile: Tile,
-        zone_kind: Option<ZoneKind>,
-        zone_density: Option<ZoneDensity>,
-    ) -> u32 {
-        match tile {
-            Tile::ResLow | Tile::CommLow | Tile::IndLight => 6,
-            Tile::ResMed | Tile::CommHigh | Tile::IndHeavy => 18,
-            Tile::ResHigh => 40,
-            Tile::Police | Tile::Fire | Tile::Hospital => 10,
-            Tile::BusDepot | Tile::RailDepot | Tile::SubwayStation => 8,
-            Tile::School => 15,
-            Tile::Stadium => 50,
-            Tile::Library => 8,
-            Tile::ZoneRes | Tile::ZoneComm | Tile::ZoneInd => match (zone_kind, zone_density) {
-                (Some(_), Some(ZoneDensity::Dense)) => 4,
-                (Some(_), _) => 2,
-                _ => 0,
-            },
-            _ => 0,
-        }
-    }
 }
 
 impl SimSystem for WaterSystem {
@@ -65,6 +42,7 @@ impl SimSystem for WaterSystem {
         let mut queue = std::collections::VecDeque::new();
         let mut total_capacity = 0;
 
+        // Seed BFS from water producers
         for y in 0..map.height {
             for x in 0..map.width {
                 let tile = map.get(x, y);
@@ -80,58 +58,59 @@ impl SimSystem for WaterSystem {
             }
         }
 
+        // BFS propagation with per-conductor falloff
         while let Some((x, y, level)) = queue.pop_front() {
             if level <= 1 {
                 continue;
             }
-            let next_level = level.saturating_sub(WATER_FALLOFF_PER_TILE);
 
             for (nx, ny, _tile) in map.neighbors4(x, y) {
                 let idx = ny * map.width + nx;
                 let underground = map.underground_at(nx, ny);
                 let lot_tile = map.surface_lot_tile(nx, ny);
-                // SC2K-style: only underground pipes and water facilities
-                // conduct water. Buildings placed on zones get auto-piped,
-                // so they conduct via the pipe layer, not the building itself.
-                let conductive = underground.water_pipe
-                    || matches!(
-                        lot_tile,
-                        Tile::WaterPump
-                            | Tile::WaterTower
-                            | Tile::WaterTreatment
-                            | Tile::Desalination
-                    );
-                let receivable = conductive
-                    || lot_tile.is_building()
-                    || lot_tile.is_zone()
-                    || lot_tile.is_service_building();
-                if !receivable || map.overlays[idx].water_service >= next_level {
+
+                // Determine role: underground pipe overrides surface role
+                let role = if underground.water_pipe {
+                    ResourceRole::Conductor { falloff: WATER_FALLOFF_PIPE }
+                } else {
+                    lot_tile.water_role()
+                };
+
+                let falloff = match role {
+                    ResourceRole::None => continue,
+                    ResourceRole::Producer => continue,
+                    ResourceRole::Consumer => {
+                        let next_level = level.saturating_sub(1);
+                        if next_level > map.overlays[idx].water_service {
+                            map.overlays[idx].water_service = next_level;
+                        }
+                        continue;
+                    }
+                    ResourceRole::Conductor { falloff } => falloff,
+                };
+
+                let next_level = level.saturating_sub(falloff);
+                if next_level == 0 || next_level <= map.overlays[idx].water_service {
                     continue;
                 }
+
                 map.overlays[idx].water_service = next_level;
-                if conductive {
-                    queue.push_back((nx, ny, next_level));
-                }
+                queue.push_back((nx, ny, next_level));
             }
         }
 
-        let mut connected_demand = 0;
-        let mut connected_consumers = Vec::new();
+        // Calculate connected demand
+        let mut connected_demand = 0u32;
         for y in 0..map.height {
             for x in 0..map.width {
                 let tile = map.surface_lot_tile(x, y);
-                let demand = Self::demand_for_tile(
-                    tile,
-                    map.effective_zone_kind(x, y),
-                    map.zone_density(x, y),
-                );
+                let demand = tile.water_demand(map.zone_density(x, y));
                 if demand == 0 {
                     continue;
                 }
                 let idx = y * map.width + x;
                 if map.overlays[idx].water_service > 0 {
                     connected_demand += demand;
-                    connected_consumers.push((idx, map.overlays[idx].water_service));
                 }
             }
         }
@@ -139,24 +118,16 @@ impl SimSystem for WaterSystem {
         sim.utilities.water_produced_units = total_capacity;
         sim.utilities.water_consumed_units = connected_demand;
 
-        let shortage_factor = if total_capacity == 0 {
-            0.0
-        } else if connected_demand > total_capacity {
-            total_capacity as f32 / connected_demand as f32
-        } else {
-            1.0
-        };
-
-        for (idx, level) in connected_consumers {
-            map.overlays[idx].water_service = (level as f32 * shortage_factor) as u8;
-        }
+        // NOTE: water_service overlay stores raw BFS signal strength.
+        // Water shortage (supply < demand) is communicated via
+        // sim.utilities and consumed by the growth system separately.
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::core::map::ZoneSpec;
+    use crate::core::map::{ZoneDensity, ZoneKind, ZoneSpec};
     use crate::core::sim::system::SimSystem;
     use crate::core::sim::SimState;
 
@@ -241,5 +212,103 @@ mod tests {
         assert_eq!(sim.utilities.water_consumed_units, 40);
         assert!(map.get_overlay(2, 0).has_water());
         assert_eq!(map.get_overlay(7, 0).water_service, 0);
+    }
+
+    // ── ResourceRole classification (water) ───────────────────────────────────
+
+    #[test]
+    fn water_role_producers() {
+        use crate::core::map::ResourceRole;
+        for tile in [Tile::WaterPump, Tile::WaterTower, Tile::WaterTreatment, Tile::Desalination] {
+            assert_eq!(tile.water_role(), ResourceRole::Producer, "{:?}", tile);
+        }
+    }
+
+    #[test]
+    fn water_role_consumers() {
+        use crate::core::map::ResourceRole;
+        for tile in [
+            Tile::ResLow, Tile::CommHigh, Tile::IndHeavy, Tile::Hospital,
+            Tile::ZoneRes, Tile::ZoneComm, Tile::ZoneInd,
+        ] {
+            assert_eq!(tile.water_role(), ResourceRole::Consumer, "{:?}", tile);
+        }
+    }
+
+    #[test]
+    fn water_role_none_for_non_participants() {
+        use crate::core::map::ResourceRole;
+        for tile in [Tile::Road, Tile::Highway, Tile::PowerLine, Tile::Grass] {
+            assert_eq!(tile.water_role(), ResourceRole::None, "{:?}", tile);
+        }
+    }
+
+    #[test]
+    fn water_demand_values() {
+        assert_eq!(Tile::ResLow.water_demand(None), 6);
+        assert_eq!(Tile::ResHigh.water_demand(None), 40);
+        assert_eq!(Tile::Stadium.water_demand(None), 50);
+        assert_eq!(Tile::ZoneRes.water_demand(Some(ZoneDensity::Dense)), 4);
+        assert_eq!(Tile::ZoneRes.water_demand(Some(ZoneDensity::Light)), 2);
+        assert_eq!(Tile::ZoneRes.water_demand(None), 0);
+        assert_eq!(Tile::Road.water_demand(None), 0);
+    }
+
+    // ── Water shortage consistency ────────────────────────────────────────────
+
+    #[test]
+    fn water_shortage_scales_all_tiles_uniformly() {
+        let mut map = Map::new(10, 1);
+        let mut sim = SimState::default();
+
+        // Small water tower
+        map.set(0, 0, Tile::WaterTower);
+        map.overlays[0].power_level = 255;
+        // Lots of heavy consumers via pipe
+        for x in 1..10 {
+            map.set(x, 0, Tile::IndHeavy);
+            map.set_water_pipe(x, 0, true);
+        }
+
+        WaterSystem.tick(&mut map, &mut sim);
+
+        // All connected consumers should have similar (low) levels - no huge gap
+        let level_1 = map.get_overlay(1, 0).water_service;
+        let level_5 = map.get_overlay(5, 0).water_service;
+        if level_1 > 0 && level_5 > 0 {
+            let gap = level_1.abs_diff(level_5);
+            assert!(
+                gap < 30,
+                "Water levels between adjacent pipes should not have huge gaps ({} vs {})",
+                level_1, level_5
+            );
+        }
+    }
+
+    #[test]
+    fn water_overlay_shows_raw_signal_during_shortage() {
+        use crate::core::map::ResourceRole;
+        let mut map = Map::new(10, 1);
+        let mut sim = SimState::default();
+
+        map.set(0, 0, Tile::WaterTower);
+        map.overlays[0].power_level = 255;
+        for x in 1..10 {
+            map.set(x, 0, Tile::IndHeavy);
+            map.set_water_pipe(x, 0, true);
+        }
+
+        WaterSystem.tick(&mut map, &mut sim);
+
+        assert_eq!(Tile::WaterTower.water_role(), ResourceRole::Producer);
+        // Overlay keeps raw BFS signal
+        let producer_level = map.get_overlay(0, 0).water_service;
+        assert_eq!(producer_level, 255, "Producer keeps raw signal level 255");
+        // Shortage reported in utilities
+        assert!(
+            sim.utilities.water_consumed_units > sim.utilities.water_produced_units,
+            "Should report water shortage: consumed={} > produced={}",
+            sim.utilities.water_consumed_units, sim.utilities.water_produced_units
+        );
     }
 }

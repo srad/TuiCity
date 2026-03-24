@@ -2,8 +2,8 @@ pub mod gen;
 pub mod tile;
 
 pub use tile::{
-    TerrainTile, Tile, TileOverlay, TransportTile, TripFailure, TripMode, UndergroundTile,
-    ZoneDensity, ZoneKind, ZoneSpec,
+    ResourceRole, TerrainTile, Tile, TileOverlay, TransportTile, TripFailure, TripMode,
+    UndergroundTile, ZoneDensity, ZoneKind, ZoneSpec,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]

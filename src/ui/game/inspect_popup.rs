@@ -1,7 +1,7 @@
 use crate::{
     core::{
-        map::Map,
-        sim::economy::{tile_sector_capacity, TaxSector},
+        map::{Map, ResourceRole},
+        sim::{economy::{tile_sector_capacity, TaxSector}, UtilityState},
     },
     ui::theme,
 };
@@ -59,6 +59,7 @@ struct InspectContent<'a> {
     pos: (usize, usize),
     map: &'a Map,
     plant_info: Option<PlantInfo>,
+    utilities: &'a UtilityState,
 }
 
 impl<'a> Widget for InspectContent<'a> {
@@ -138,7 +139,9 @@ impl<'a> Widget for InspectContent<'a> {
 
         row += 1; // blank separator
 
-        let (powered_text, powered_color) = if overlay.is_powered() {
+        let (powered_text, powered_color) = if tile.power_role() == ResourceRole::Producer {
+            (format!("Power:      {}% (Source)", pct(overlay.power_level)), ui.success)
+        } else if overlay.is_powered() {
             (
                 format!("Power:      {}%", pct(overlay.power_level)),
                 ui.success,
@@ -147,18 +150,37 @@ impl<'a> Widget for InspectContent<'a> {
             ("Power:      None".to_string(), ui.danger)
         };
         put!(powered_text, Style::default().fg(powered_color));
-        put!(
-            if overlay.has_water() {
-                format!("Water:      {}%", pct(overlay.water_service))
-            } else {
-                "Water:      None".to_string()
-            },
-            Style::default().fg(if overlay.has_water() {
-                ui.info
-            } else {
-                ui.danger
-            })
-        );
+
+        // Show grid-wide brownout warning when supply < demand
+        if self.utilities.power_consumed_mw > self.utilities.power_produced_mw {
+            let pwr_pct = (self.utilities.power_produced_mw as f32
+                / self.utilities.power_consumed_mw as f32
+                * 100.0) as u32;
+            put!(
+                format!("⚡ Brownout  {}% supply", pwr_pct),
+                Style::default().fg(ui.danger)
+            );
+        }
+
+        let (water_text, water_color) = if tile.water_role() == ResourceRole::Producer {
+            (format!("Water:      {}% (Source)", pct(overlay.water_service)), ui.info)
+        } else if overlay.has_water() {
+            (format!("Water:      {}%", pct(overlay.water_service)), ui.info)
+        } else {
+            ("Water:      None".to_string(), ui.danger)
+        };
+        put!(water_text, Style::default().fg(water_color));
+
+        // Show grid-wide water shortage warning
+        if self.utilities.water_consumed_units > self.utilities.water_produced_units {
+            let wtr_pct = (self.utilities.water_produced_units as f32
+                / self.utilities.water_consumed_units as f32
+                * 100.0) as u32;
+            put!(
+                format!("💧 Shortage  {}% supply", wtr_pct),
+                Style::default().fg(ui.danger)
+            );
+        }
         if overlay.trip_success {
             let mode = overlay
                 .trip_mode
@@ -219,11 +241,13 @@ pub fn render_inspect_content(
     pos: (usize, usize),
     map: &Map,
     plant_info: Option<PlantInfo>,
+    utilities: &UtilityState,
 ) {
     InspectContent {
         pos,
         map,
         plant_info,
+        utilities,
     }
     .render(inner, buf);
 }

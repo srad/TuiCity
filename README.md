@@ -237,9 +237,12 @@ All tools listed below are accessible from the toolbox chooser. Tools with a yea
 - In the surface view, busy roads and highways now show ambient moving traffic markers so congestion is visible even without opening the traffic overlay.
 
 **Power & Water**
+- Every tile has a **resource role** — Producer, Conductor, Consumer, or None — for both power and water. This determines how BFS propagation flows through the grid.
 - Power follows SC2000-style conduction: power lines, plants, developed buildings, and empty zones all conduct; placing a power line through an undeveloped zone is enough to chain electricity to the next tile.
+- Each conductor type has its own **falloff rate**: power lines lose 1 level per tile, buildings lose 3, and zones lose 8. This creates natural signal degradation over distance.
+- The **Power Grid** and **Water Service** overlays show raw **signal reach** (BFS propagation strength). Brownout and water shortage are tracked separately as a global supply-vs-demand ratio and displayed as a distinct warning in the inspect popup and info panel.
 - Roads and power lines can cross on the same surface tile, SC2000-style; the shared tile still counts as both a road connection and a power connection.
-- Water behaves similarly underground: pipes and developed buildings relay service, while empty zones do not chain utilities by themselves.
+- Water behaves similarly underground: pipes (falloff 2) and developed buildings relay service, while empty zones do not chain utilities by themselves.
 - The **Water Service** overlay is a surface coverage view. The **Underground** layer is a separate infrastructure view for pipes and subway tunnels, with faint roads and landmarks left visible for orientation.
 - The **Power Grid** overlay now shows a subtle flow pulse on live power lines, while underground pipes and subway stations have their own low-key activity pulses in underground view.
 - Power lines can be laid through zones and later be replaced by the building that grows there.
@@ -406,8 +409,9 @@ src/
 | Type | Location | Description |
 |------|----------|-------------|
 | `Tool` | `core/tool.rs` | Enum of all gameplay tools; explicit light/dense zoning, transport, power, water, and services |
-| `Tile` | `core/map/tile.rs` | Visible tile variant for terrain, transport, zones, buildings, and utilities |
-| `TileOverlay` | `core/map/tile.rs` | Per-tile overlay data: power, water, traffic, pollution, land value, crime, fire risk, trip diagnostics |
+| `Tile` | `core/map/tile.rs` | Visible tile variant for terrain, transport, zones, buildings, and utilities; exposes `power_role()`, `water_role()`, `power_demand()`, `water_demand()` |
+| `ResourceRole` | `core/map/tile.rs` | Per-tile resource role (Producer, Conductor with falloff, Consumer, None) for power and water BFS |
+| `TileOverlay` | `core/map/tile.rs` | Per-tile overlay data: power signal, water signal, traffic, pollution, land value, crime, fire risk, trip diagnostics |
 | `Map` | `core/map/mod.rs` | Layered map state: terrain, zoning, transport, power lines, underground utilities, occupants, overlays |
 | `SimState` | `core/sim/mod.rs` | Full simulation snapshot: treasury, date, population, demand, history, utilities, transport summaries, RNG state |
 | `Camera` | `app/camera.rs` | Viewport offset; clamping; mouse-pan delta |

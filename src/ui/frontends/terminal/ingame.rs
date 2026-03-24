@@ -979,6 +979,7 @@ impl<'a, 'f> InGamePainter for TerminalPainter<'a, 'f> {
                     pos,
                     map,
                     plant_info,
+                    &sim.utilities,
                 );
             }
         }

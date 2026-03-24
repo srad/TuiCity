@@ -4,6 +4,16 @@ All notable changes to TuiCity 2000 are documented here.
 
 ## [Unreleased]
 
+### ResourceRole Architecture & Signal/Brownout Separation
+
+- **`ResourceRole` enum** — every tile now has a typed role (Producer, Conductor, Consumer, or None) for both power and water, replacing ad-hoc conduction checks
+- **Per-conductor falloff rates** — signal degradation varies by conductor type: power lines (1), buildings (3), zones (8), water pipes (2); replaces the old flat per-tile constants
+- **Signal vs brownout separation** — `power_level` and `water_service` overlays now store raw BFS signal reach (0–255); brownout and water shortage are tracked as a global supply-vs-demand ratio in `sim.utilities`, no longer baked into the overlay
+- **Growth system uses global ratio** — `severely_brownout` is derived from the supply/demand ratio instead of per-tile power levels, matching SC2000-style global brownout behavior
+- **Inspect popup clarity** — producers display `Power: X% (Source)`, conductors/consumers show `Power: X%`; brownout and shortage appear as separate `⚡ Brownout` / `💧 Shortage` warning lines with the supply percentage
+- **`Tile::power_demand()` / `water_demand()`** — demand values moved from system structs to tile methods, centralizing consumption data next to role definitions
+- **RULES.md updated** — power and water conduction rules sections reflect per-conductor falloff values and role descriptions
+
 ### Frontend Support
 
 - **Pixel frontend disabled in product flow:** normal startup now always runs the supported terminal frontend

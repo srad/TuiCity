@@ -1,5 +1,5 @@
 use crate::core::{
-    map::{Tile, TileOverlay, ZoneKind},
+    map::{ResourceRole, Tile, TileOverlay, ZoneKind},
     sim::TaxSector,
     tool::Tool,
 };
@@ -239,7 +239,10 @@ impl Widget for InfoPanel {
             p_color
         );
 
-        if self.overlay.is_powered() {
+        if self.tile.power_role() == ResourceRole::Producer {
+            let level = self.overlay.power_level as u16 * 100 / 255;
+            print_row!(&format!("Signal: {}% (Src)", level), ui.success);
+        } else if self.overlay.is_powered() {
             let level = self.overlay.power_level as u16 * 100 / 255;
             print_row!(&format!("Signal: {}%", level), ui.warning);
         } else if self.tile.receives_power() {

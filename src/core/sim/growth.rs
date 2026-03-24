@@ -207,6 +207,17 @@ pub fn tick_growth(map: &mut Map, sim: &mut SimState) {
     let mut changes: Vec<(usize, usize, Tile)> = Vec::new();
     let mut neglect_degrades: Vec<(usize, usize)> = Vec::new();
 
+    // Grid-wide brownout: supply/demand ratio.
+    let grid_brownout = if sim.utilities.power_produced_mw == 0 {
+        true
+    } else if sim.utilities.power_consumed_mw > sim.utilities.power_produced_mw {
+        let ratio = sim.utilities.power_produced_mw as f32
+            / sim.utilities.power_consumed_mw as f32;
+        ratio < BROWNOUT_THRESHOLD
+    } else {
+        false
+    };
+
     for y in 0..h {
         for x in 0..w {
             let idx = y * w + x;
@@ -229,13 +240,12 @@ pub fn tick_growth(map: &mut Map, sim: &mut SimState) {
                 }
             }
 
-            let power_ratio = overlay_data.power_level as f32 / 255.0;
             let ctx = TileCtx {
                 zone_spec: map.effective_zone_spec(x, y),
                 functional: powered && trip_success,
                 bootstrap_ready: powered && has_local_road_access(map, x, y, WALK_DIST),
                 watered,
-                severely_brownout: power_ratio < BROWNOUT_THRESHOLD && powered,
+                severely_brownout: grid_brownout && powered,
                 fully_unpowered: overlay_data.power_level == 0,
                 pollution_penalty: 1.0 - (overlay_data.pollution as f32 / 255.0) * 0.7,
                 lv_bonus: overlay_data.land_value as f32 / 255.0 * 0.1,
