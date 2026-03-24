@@ -4,6 +4,14 @@ All notable changes to TuiCity 2000 are documented here.
 
 ## [Unreleased]
 
+### Pollution Producer-Consumer Refactor
+
+- **`Tile::pollution_emission(traffic)`** — new tile method classifying all polluter tiles (IndHeavy, IndLight, PowerPlantCoal, PowerPlantGas, Highway, Road), mirroring the `power_role`/`water_role` pattern; all numeric values moved to named constants in `constants.rs`
+- **`Tile::pollution_cleaner()`** — new tile method returning `Option<(radius, scrub_amount)>` for cleaner tiles; no tile-name literals remain in `PollutionSystem`
+- **Trees reduce pollution** — `Tile::Trees` now acts as a pollution cleaner (radius 2, −15 per tile per tick); Parks remain radius 3, −20
+- **`UtilityState` extended** — `pollution_emitted` and `pollution_absorbed` fields added, tracking city-wide emission and absorption each tick (mirrors power/water supply/demand tracking)
+- **RULES.md updated** — Pollution section documents the producer/cleaner API, the Trees cleaner, and the new utility fields
+
 ### ResourceRole Architecture & Signal/Brownout Separation
 
 - **`ResourceRole` enum** — every tile now has a typed role (Producer, Conductor, Consumer, or None) for both power and water, replacing ad-hoc conduction checks

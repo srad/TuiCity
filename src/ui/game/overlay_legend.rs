@@ -1,5 +1,5 @@
 use crate::ui::theme::{self, OverlayMode};
-use ratatui::{buffer::Buffer, layout::Rect, style::{Color, Style}, widgets::Widget};
+use ratatui::{buffer::Buffer, layout::Rect, style::Style, widgets::Widget};
 
 /// Renders a heatmap legend for the active overlay mode.
 /// Takes 3 rows: a title/divider, a gradient color bar, and Low/High edge labels.

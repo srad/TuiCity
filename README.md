@@ -237,7 +237,7 @@ All tools listed below are accessible from the toolbox chooser. Tools with a yea
 - In the surface view, busy roads and highways now show ambient moving traffic markers so congestion is visible even without opening the traffic overlay.
 
 **Power & Water**
-- Every tile has a **resource role** — Producer, Conductor, Consumer, or None — for both power and water. This determines how BFS propagation flows through the grid.
+- Every tile has a **resource role** — Producer, Conductor, Consumer, or None — for both power and water. This determines how BFS propagation flows through the grid. For pollution, tiles expose `pollution_emission()` (producers) and `pollution_cleaner()` (cleaners) instead, since pollution uses radial diffusion rather than BFS.
 - Power follows SC2000-style conduction: power lines, plants, developed buildings, and empty zones all conduct; placing a power line through an undeveloped zone is enough to chain electricity to the next tile.
 - Each conductor type has its own **falloff rate**: power lines lose 1 level per tile, buildings lose 3, and zones lose 8. This creates natural signal degradation over distance.
 - The **Power Grid** and **Water Service** overlays show raw **signal reach** (BFS propagation strength). Brownout and water shortage are tracked separately as a global supply-vs-demand ratio and displayed as a distinct warning in the inspect popup and info panel.
@@ -250,7 +250,7 @@ All tools listed below are accessible from the toolbox chooser. Tools with a yea
 
 **Zoning Ratios**
 - A healthy city runs approximately 50% residential, 12% commercial, 38% industrial by tile count.
-- Too much industry drives down land value through pollution. Buffer industrial zones with roads or parks.
+- Too much industry drives down land value through pollution. Buffer industrial zones with roads, parks, or trees.
 
 **Disaster Prep**
 - Fire stations are the most cost-effective disaster defence. One station per residential cluster keeps fire spread contained.
@@ -430,7 +430,7 @@ src/
 | 1 | `PowerSystem` | Ages plants, decays efficiency in final 12 months, spreads power with distance decay, and explodes expired plants |
 | 2 | `WaterSystem` | Produces water from powered utilities, spreads underground service, and applies connected-network shortages |
 | 3 | `TransportSystem` | Builds network caches, simulates trips, chooses modes, and accumulates road traffic |
-| 4 | `PollutionSystem` | Radial diffusion from industry and traffic; parks scrub nearby pollution |
+| 4 | `PollutionSystem` | Radial diffusion from industry and traffic; parks and trees scrub nearby pollution via `Tile::pollution_cleaner()` |
 | 5 | `LandValueSystem` | Scores each tile: +water view, +parks, +services; −pollution |
 | 6 | `PoliceSystem` | Sets baseline crime per zone density; police stations suppress within radius 12 |
 | 7 | `FireSystem` | Sets baseline fire risk per zone density; fire departments suppress within radius 12 |

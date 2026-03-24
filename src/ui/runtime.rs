@@ -589,6 +589,7 @@ impl DesktopState {
         }
     }
 
+    #[allow(dead_code)]
     pub fn toggle(&mut self, id: WindowId, centered: bool) {
         if self.is_open(id) {
             self.close(id);

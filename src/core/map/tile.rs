@@ -480,6 +480,37 @@ impl Tile {
         }
     }
 
+    /// Pollution emitted by this tile per tick.
+    ///
+    /// `traffic` is the current traffic overlay value for the tile; it is used
+    /// only by road tiles and ignored by all others.  Pass `0` for non-road tiles.
+    pub fn pollution_emission(self, traffic: u8) -> u8 {
+        use crate::core::sim::constants::*;
+        match self {
+            Tile::IndHeavy => POLLUTION_IND_HEAVY,
+            Tile::IndLight => POLLUTION_IND_LIGHT,
+            Tile::PowerPlantCoal => POLLUTION_COAL_PLANT,
+            Tile::PowerPlantGas => POLLUTION_GAS_PLANT,
+            Tile::Highway => POLLUTION_HIGHWAY,
+            Tile::Road | Tile::RoadPowerLine => traffic / 4,
+            _ => 0,
+        }
+    }
+
+    /// If this tile actively cleans nearby pollution, returns `(radius, scrub_amount)`.
+    ///
+    /// During each pollution tick every tile in the square of `radius` around a cleaner
+    /// has `scrub_amount` subtracted from its pollution overlay (saturating).
+    /// Returns `None` for tiles that have no cleaning effect.
+    pub fn pollution_cleaner(self) -> Option<(i32, u8)> {
+        use crate::core::sim::constants::*;
+        match self {
+            Tile::Park => Some((POLLUTION_PARK_RADIUS, POLLUTION_PARK_SCRUB)),
+            Tile::Trees => Some((POLLUTION_TREE_RADIUS, POLLUTION_TREE_SCRUB)),
+            _ => None,
+        }
+    }
+
     pub fn road_connects(self) -> bool {
         matches!(self, Tile::Road | Tile::RoadPowerLine | Tile::Onramp)
     }

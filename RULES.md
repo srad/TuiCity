@@ -217,7 +217,9 @@ When a bus depot's trip count reaches capacity, subsequent bus trips fall back t
 
 ## Pollution System
 
-### Pollution Sources
+Tile classification lives in `Tile::pollution_emission(traffic)` and `Tile::pollution_cleaner()` in `tile.rs`; constants live in `constants.rs`. `PollutionSystem` calls these methods rather than matching tile names directly — the same producer/consumer discipline used by power and water.
+
+### Pollution Sources (`Tile::pollution_emission`)
 
 | Source | Strength |
 |--------|----------|
@@ -226,17 +228,27 @@ When a bus depot's trip count reaches capacity, subsequent bus trips fall back t
 | IndLight | 120 |
 | PowerPlantGas | 80 |
 | Highway | 35 |
-| Road | traffic / 4 |
+| Road / RoadPowerLine | `traffic / 4` |
 
 ### Diffusion
 
-- Radius: 10 tiles (Manhattan or Euclidean? — codebase uses radial check: `dx² + dy² ≤ 100`).
-- Falloff: `pollution × (1 − dist² / radius²)`.
+- Radius: 10 tiles (Euclidean check: `dx² + dy² ≤ 100`).
+- Falloff: `emission × (1 − dist² / radius²)`.
 - Clamped to 0–255.
 
-### Park Scrubbing
+### Cleaners (`Tile::pollution_cleaner`)
 
-- Parks remove 20 pollution from each tile within radius 3 (Euclidean).
+| Cleaner | Radius | Scrub per tile |
+|---------|--------|---------------|
+| Park | 3 | −20 |
+| Trees | 2 | −15 |
+
+Scrubbing is applied after diffusion (saturating subtraction).
+
+### Utility Tracking
+
+- `sim.utilities.pollution_emitted` — sum of all emitter strengths this tick.
+- `sim.utilities.pollution_absorbed` — sum of all cleaner scrub amounts this tick.
 
 ---
 

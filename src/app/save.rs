@@ -657,6 +657,8 @@ mod tests {
                 power_consumed_mw: 420,
                 water_produced_units: 300,
                 water_consumed_units: 180,
+                pollution_emitted: 0,
+                pollution_absorbed: 0,
             },
             trips: TripStats {
                 attempts: 70,

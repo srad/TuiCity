@@ -15,6 +15,37 @@ pub const FIRE_SPREAD_SUPPRESS_RADIUS: i32 = 12;
 /// Radius (in tiles) for pollution diffusion from industrial sources.
 pub const POLLUTION_RADIUS: i32 = 10;
 
+// ── Pollution emission strengths ──────────────────────────────────────────────
+
+/// Emission strength for heavy industrial zones.
+pub const POLLUTION_IND_HEAVY: u8 = 200;
+
+/// Emission strength for light industrial zones.
+pub const POLLUTION_IND_LIGHT: u8 = 120;
+
+/// Emission strength for coal power plants.
+pub const POLLUTION_COAL_PLANT: u8 = 250;
+
+/// Emission strength for gas power plants.
+pub const POLLUTION_GAS_PLANT: u8 = 80;
+
+/// Emission strength for highways (constant regardless of traffic).
+pub const POLLUTION_HIGHWAY: u8 = 35;
+
+// ── Pollution cleaner parameters ──────────────────────────────────────────────
+
+/// Radius (tiles) within which a park scrubs nearby pollution.
+pub const POLLUTION_PARK_RADIUS: i32 = 3;
+
+/// Flat pollution reduction applied by a park to each tile in its radius.
+pub const POLLUTION_PARK_SCRUB: u8 = 20;
+
+/// Radius (tiles) within which a tree tile scrubs nearby pollution.
+pub const POLLUTION_TREE_RADIUS: i32 = 2;
+
+/// Flat pollution reduction applied by a tree tile to each tile in its radius.
+pub const POLLUTION_TREE_SCRUB: u8 = 15;
+
 // ── Service strengths ─────────────────────────────────────────────────────────
 
 /// Maximum crime reduction (at distance 0) applied by a police station.
@@ -41,6 +72,7 @@ pub const POWER_FALLOFF_ZONE: u8 = 8;
 pub const WATER_FALLOFF_PIPE: u8 = 2;
 
 /// Water service level drop per tile for water facility-to-facility relay.
+#[allow(dead_code)]
 pub const WATER_FALLOFF_FACILITY: u8 = 1;
 
 // ── Transport ─────────────────────────────────────────────────────────────────

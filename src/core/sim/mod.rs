@@ -228,6 +228,12 @@ pub struct UtilityState {
     pub power_consumed_mw: u32,
     pub water_produced_units: u32,
     pub water_consumed_units: u32,
+    /// Total raw emission strength summed across all polluter tiles this tick.
+    #[serde(default)]
+    pub pollution_emitted: u32,
+    /// Total absorption capacity summed across all cleaner tiles this tick.
+    #[serde(default)]
+    pub pollution_absorbed: u32,
 }
 
 #[derive(Default, Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
